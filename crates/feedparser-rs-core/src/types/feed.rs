@@ -27,6 +27,8 @@ pub struct FeedMeta {
     pub subtitle_detail: Option<TextConstruct>,
     /// Last update date
     pub updated: Option<DateTime<Utc>>,
+    /// Initial publication date (RSS pubDate, Atom published)
+    pub published: Option<DateTime<Utc>>,
     /// Primary author name
     pub author: Option<String>,
     /// Detailed author information

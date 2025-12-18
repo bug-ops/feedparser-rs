@@ -8,13 +8,14 @@ use crate::{
         Content, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail, ParsedFeed,
         Person, Source, Tag, TextConstruct, TextType,
     },
-    util::parse_date,
+    util::{base_url::BaseUrlContext, parse_date},
 };
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    init_feed, is_content_tag, is_dc_tag, is_media_tag, read_text, skip_element, skip_to_end,
+    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, read_text, skip_element,
+    skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -63,12 +64,19 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
     let mut feed = init_feed(FeedVersion::Atom10, limits.max_entries);
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
+    let mut base_ctx = BaseUrlContext::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"feed" => {
+                if let Some(xml_base) = extract_xml_base(&e, limits.max_attribute_length) {
+                    base_ctx.update_base(&xml_base);
+                }
+
                 depth += 1;
-                if let Err(e) = parse_feed_element(&mut reader, &mut feed, &limits, &mut depth) {
+                if let Err(e) =
+                    parse_feed_element(&mut reader, &mut feed, &limits, &mut depth, &base_ctx)
+                {
                     feed.bozo = true;
                     feed.bozo_exception = Some(e.to_string());
                 }
@@ -95,6 +103,7 @@ fn parse_feed_element(
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     depth: &mut usize,
+    base_ctx: &BaseUrlContext,
 ) -> Result<()> {
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
 
@@ -117,10 +126,12 @@ fn parse_feed_element(
                         feed.feed.set_title(text);
                     }
                     b"link" => {
-                        if let Some(link) = Link::from_attributes(
+                        if let Some(mut link) = Link::from_attributes(
                             element.attributes().flatten(),
                             limits.max_attribute_length,
                         ) {
+                            link.href = base_ctx.resolve_safe(&link.href);
+
                             if feed.feed.link.is_none() && link.rel.as_deref() == Some("alternate")
                             {
                                 feed.feed.link = Some(link.href.clone());
@@ -143,6 +154,10 @@ fn parse_feed_element(
                     b"updated" if !is_empty => {
                         let text = read_text(reader, &mut buf, limits)?;
                         feed.feed.updated = parse_date(&text);
+                    }
+                    b"published" if !is_empty => {
+                        let text = read_text(reader, &mut buf, limits)?;
+                        feed.feed.published = parse_date(&text);
                     }
                     b"author" if !is_empty => {
                         if let Ok(person) = parse_person(reader, &mut buf, limits, depth) {
@@ -177,10 +192,12 @@ fn parse_feed_element(
                         feed.feed.set_generator(generator);
                     }
                     b"icon" if !is_empty => {
-                        feed.feed.icon = Some(read_text(reader, &mut buf, limits)?);
+                        let url = read_text(reader, &mut buf, limits)?;
+                        feed.feed.icon = Some(base_ctx.resolve_safe(&url));
                     }
                     b"logo" if !is_empty => {
-                        feed.feed.logo = Some(read_text(reader, &mut buf, limits)?);
+                        let url = read_text(reader, &mut buf, limits)?;
+                        feed.feed.logo = Some(base_ctx.resolve_safe(&url));
                     }
                     b"rights" if !is_empty => {
                         let text = parse_text_construct(reader, &mut buf, &element, limits)?;
@@ -191,7 +208,14 @@ fn parse_feed_element(
                             continue;
                         }
 
-                        match parse_entry(reader, &mut buf, limits, depth) {
+                        let mut entry_ctx = base_ctx.child();
+                        if let Some(xml_base) =
+                            extract_xml_base(&element, limits.max_attribute_length)
+                        {
+                            entry_ctx.update_base(&xml_base);
+                        }
+
+                        match parse_entry(reader, &mut buf, limits, depth, &entry_ctx) {
                             Ok(entry) => feed.entries.push(entry),
                             Err(e) => {
                                 feed.bozo = true;
@@ -249,6 +273,7 @@ fn parse_entry(
     buf: &mut Vec<u8>,
     limits: &ParserLimits,
     depth: &mut usize,
+    base_ctx: &BaseUrlContext,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
 
@@ -271,10 +296,12 @@ fn parse_entry(
                         entry.set_title(text);
                     }
                     b"link" => {
-                        if let Some(link) = Link::from_attributes(
+                        if let Some(mut link) = Link::from_attributes(
                             element.attributes().flatten(),
                             limits.max_attribute_length,
                         ) {
+                            link.href = base_ctx.resolve_safe(&link.href);
+
                             if entry.link.is_none() && link.rel.as_deref() == Some("alternate") {
                                 entry.link = Some(link.href.clone());
                             }

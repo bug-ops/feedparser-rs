@@ -10,7 +10,7 @@ use crate::{
         PodcastPerson, PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration,
         parse_explicit,
     },
-    util::{parse_date, text::truncate_to_length},
+    util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
 use quick_xml::{Reader, events::Event};
 
@@ -105,12 +105,15 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     let mut feed = init_feed(FeedVersion::Rss20, limits.max_entries);
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
+    let mut base_ctx = BaseUrlContext::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"channel" => {
                 depth += 1;
-                if let Err(e) = parse_channel(&mut reader, &mut feed, &limits, &mut depth) {
+                if let Err(e) =
+                    parse_channel(&mut reader, &mut feed, &limits, &mut depth, &mut base_ctx)
+                {
                     feed.bozo = true;
                     feed.bozo_exception = Some(e.to_string());
                 }
@@ -136,6 +139,7 @@ fn parse_channel(
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     depth: &mut usize,
+    base_ctx: &mut BaseUrlContext,
 ) -> Result<()> {
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
 
@@ -159,7 +163,7 @@ fn parse_channel(
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
                     | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"category" => {
-                        parse_channel_standard(reader, &mut buf, &tag, feed, limits)?;
+                        parse_channel_standard(reader, &mut buf, &tag, feed, limits, base_ctx)?;
                     }
                     b"image" => {
                         if let Ok(image) = parse_image(reader, &mut buf, limits, depth) {
@@ -171,7 +175,7 @@ fn parse_channel(
                             continue;
                         }
 
-                        match parse_item(reader, &mut buf, limits, depth) {
+                        match parse_item(reader, &mut buf, limits, depth, base_ctx) {
                             Ok((entry, has_attr_errors)) => {
                                 if has_attr_errors {
                                     feed.bozo = true;
@@ -256,6 +260,7 @@ fn parse_channel_standard(
     tag: &[u8],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
+    base_ctx: &mut BaseUrlContext,
 ) -> Result<()> {
     match tag {
         b"title" => {
@@ -264,7 +269,11 @@ fn parse_channel_standard(
         b"link" => {
             let link_text = read_text(reader, buf, limits)?;
             feed.feed
-                .set_alternate_link(link_text, limits.max_links_per_feed);
+                .set_alternate_link(link_text.clone(), limits.max_links_per_feed);
+
+            if base_ctx.base().is_none() {
+                base_ctx.update_base(&link_text);
+            }
         }
         b"description" => {
             feed.feed.subtitle = Some(read_text(reader, buf, limits)?);
@@ -275,7 +284,7 @@ fn parse_channel_standard(
         b"pubDate" => {
             let text = read_text(reader, buf, limits)?;
             match parse_date(&text) {
-                Some(dt) => feed.feed.updated = Some(dt),
+                Some(dt) => feed.feed.published = Some(dt),
                 None if !text.is_empty() => {
                     feed.bozo = true;
                     feed.bozo_exception = Some("Invalid pubDate format".to_string());
@@ -506,6 +515,7 @@ fn parse_item(
     buf: &mut Vec<u8>,
     limits: &ParserLimits,
     depth: &mut usize,
+    base_ctx: &BaseUrlContext,
 ) -> Result<(Entry, bool)> {
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
@@ -534,10 +544,11 @@ fn parse_item(
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"guid" | b"pubDate" | b"author"
                     | b"category" | b"comments" => {
-                        parse_item_standard(reader, buf, &tag, &mut entry, limits)?;
+                        parse_item_standard(reader, buf, &tag, &mut entry, limits, base_ctx)?;
                     }
                     b"enclosure" => {
-                        if let Some(enclosure) = parse_enclosure(&attrs, limits) {
+                        if let Some(mut enclosure) = parse_enclosure(&attrs, limits) {
+                            enclosure.url = base_ctx.resolve_safe(&enclosure.url);
                             entry
                                 .enclosures
                                 .try_push_limited(enclosure, limits.max_enclosures);
@@ -591,6 +602,7 @@ fn parse_item_standard(
     tag: &[u8],
     entry: &mut Entry,
     limits: &ParserLimits,
+    base_ctx: &BaseUrlContext,
 ) -> Result<()> {
     match tag {
         b"title" => {
@@ -598,10 +610,11 @@ fn parse_item_standard(
         }
         b"link" => {
             let link_text = read_text(reader, buf, limits)?;
-            entry.link = Some(link_text.clone());
+            let resolved_link = base_ctx.resolve_safe(&link_text);
+            entry.link = Some(resolved_link.clone());
             entry.links.try_push_limited(
                 Link {
-                    href: link_text,
+                    href: resolved_link,
                     rel: Some("alternate".to_string()),
                     ..Default::default()
                 },
@@ -1109,10 +1122,10 @@ mod tests {
         </rss>"#;
 
         let feed = parse_rss20(xml).unwrap();
-        assert!(feed.feed.updated.is_some());
+        assert!(feed.feed.published.is_some());
         assert!(feed.entries[0].published.is_some());
 
-        let dt = feed.feed.updated.unwrap();
+        let dt = feed.feed.published.unwrap();
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 12);
         assert_eq!(dt.day(), 14);

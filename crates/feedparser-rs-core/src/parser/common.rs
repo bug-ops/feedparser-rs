@@ -244,6 +244,47 @@ pub fn is_itunes_tag(name: &[u8], tag: &[u8]) -> bool {
     name == tag
 }
 
+/// Extract xml:base attribute from element
+///
+/// Returns the base URL string if xml:base attribute exists.
+/// Respects `max_attribute_length` limit for `DoS` protection.
+///
+/// # Arguments
+///
+/// * `element` - The XML element to extract xml:base from
+/// * `max_attr_length` - Maximum allowed attribute length (`DoS` protection)
+///
+/// # Returns
+///
+/// * `Some(String)` - The xml:base value if found and within length limit
+/// * `None` - If attribute not found or exceeds length limit
+///
+/// # Examples
+///
+/// ```ignore
+/// use feedparser_rs::parser::common::extract_xml_base;
+///
+/// let element = /* BytesStart from quick-xml */;
+/// if let Some(base) = extract_xml_base(&element, 1024) {
+///     println!("Base URL: {}", base);
+/// }
+/// ```
+pub fn extract_xml_base(
+    element: &quick_xml::events::BytesStart,
+    max_attr_length: usize,
+) -> Option<String> {
+    element
+        .attributes()
+        .flatten()
+        .find(|attr| {
+            let key = attr.key.as_ref();
+            key == b"xml:base" || key == b"base"
+        })
+        .filter(|attr| attr.value.len() <= max_attr_length)
+        .and_then(|attr| attr.unescape_value().ok())
+        .map(|s| s.to_string())
+}
+
 /// Read text content from current XML element (handles text and CDATA)
 pub fn read_text(
     reader: &mut Reader<&[u8]>,

@@ -70,6 +70,16 @@ impl PyFeedMeta {
     }
 
     #[getter]
+    fn published(&self) -> Option<String> {
+        self.inner.published.map(|dt| dt.to_rfc3339())
+    }
+
+    #[getter]
+    fn published_parsed(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        optional_datetime_to_struct_time(py, &self.inner.published)
+    }
+
+    #[getter]
     fn author(&self) -> Option<&str> {
         self.inner.author.as_deref()
     }

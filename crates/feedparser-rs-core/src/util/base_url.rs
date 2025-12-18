@@ -264,6 +264,67 @@ impl BaseUrlContext {
         resolve_url(href, self.base.as_deref())
     }
 
+    /// Resolves a URL against the current base with SSRF protection
+    ///
+    /// This method performs URL resolution and validates the result to prevent
+    /// Server-Side Request Forgery (SSRF) attacks via malicious xml:base attributes.
+    ///
+    /// # Security
+    ///
+    /// If the resolved URL fails SSRF safety checks (localhost, private IPs,
+    /// dangerous schemes), the original `href` is returned unchanged instead
+    /// of the resolved URL.
+    ///
+    /// # Arguments
+    ///
+    /// * `href` - The URL to resolve (may be relative or absolute)
+    ///
+    /// # Returns
+    ///
+    /// The resolved URL if safe, otherwise the original `href`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::util::base_url::BaseUrlContext;
+    ///
+    /// // Safe URL resolution
+    /// let ctx = BaseUrlContext::with_base("http://example.com/");
+    /// assert_eq!(ctx.resolve_safe("page.html"), "http://example.com/page.html");
+    ///
+    /// // SSRF blocked - returns original href
+    /// let dangerous_ctx = BaseUrlContext::with_base("http://localhost/");
+    /// assert_eq!(dangerous_ctx.resolve_safe("admin"), "admin");
+    /// ```
+    #[must_use]
+    pub fn resolve_safe(&self, href: &str) -> String {
+        let resolved = self.resolve(href);
+
+        // Block dangerous schemes (file://, data://, javascript://, etc.)
+        if resolved.starts_with("file://")
+            || resolved.starts_with("data:")
+            || resolved.starts_with("javascript:")
+            || resolved.starts_with("ftp://")
+            || resolved.starts_with("gopher://")
+        {
+            // Dangerous scheme - return original href
+            return href.to_string();
+        }
+
+        // Validate HTTP(S) URLs for SSRF
+        if resolved.starts_with("http://") || resolved.starts_with("https://") {
+            if is_safe_url(&resolved) {
+                resolved
+            } else {
+                // SSRF blocked - return original relative URL
+                href.to_string()
+            }
+        } else {
+            // Other schemes (mailto:, tel:) or relative URLs pass through
+            resolved
+        }
+    }
+
     /// Creates a child context inheriting this context's base
     #[must_use]
     pub fn child(&self) -> Self {
