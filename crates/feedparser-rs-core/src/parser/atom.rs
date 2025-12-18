@@ -136,6 +136,10 @@ fn parse_feed_element(
                             {
                                 feed.feed.link = Some(link.href.clone());
                             }
+                            if feed.feed.license.is_none() && link.rel.as_deref() == Some("license")
+                            {
+                                feed.feed.license = Some(link.href.clone());
+                            }
                             feed.feed
                                 .links
                                 .try_push_limited(link, limits.max_links_per_feed);
@@ -304,6 +308,9 @@ fn parse_entry(
 
                             if entry.link.is_none() && link.rel.as_deref() == Some("alternate") {
                                 entry.link = Some(link.href.clone());
+                            }
+                            if entry.license.is_none() && link.rel.as_deref() == Some("license") {
+                                entry.license = Some(link.href.clone());
                             }
                             entry
                                 .links
@@ -925,5 +932,46 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         assert_eq!(feed.feed.links.len(), 1);
         assert_eq!(feed.feed.tags.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_atom_license_feed() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test Feed</title>
+            <link rel="license" href="https://creativecommons.org/licenses/by/4.0/"/>
+            <link rel="alternate" href="https://example.com/"/>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.feed.license.as_deref(),
+            Some("https://creativecommons.org/licenses/by/4.0/")
+        );
+        assert_eq!(feed.feed.link.as_deref(), Some("https://example.com/"));
+    }
+
+    #[test]
+    fn test_parse_atom_license_entry() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <title>Licensed Entry</title>
+                <id>urn:uuid:1</id>
+                <link rel="license" href="https://creativecommons.org/licenses/by-sa/3.0/"/>
+                <link rel="alternate" href="https://example.com/entry/1"/>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries.len(), 1);
+        assert_eq!(
+            feed.entries[0].license.as_deref(),
+            Some("https://creativecommons.org/licenses/by-sa/3.0/")
+        );
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("https://example.com/entry/1")
+        );
     }
 }

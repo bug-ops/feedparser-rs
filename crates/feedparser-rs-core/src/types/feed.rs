@@ -73,6 +73,8 @@ pub struct FeedMeta {
     pub dc_publisher: Option<String>,
     /// Dublin Core rights (copyright)
     pub dc_rights: Option<String>,
+    /// License URL (Creative Commons, etc.)
+    pub license: Option<String>,
 }
 
 /// Parsed feed result

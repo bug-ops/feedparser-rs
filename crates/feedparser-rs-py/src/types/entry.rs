@@ -214,6 +214,11 @@ impl PyEntry {
             .collect()
     }
 
+    #[getter]
+    fn license(&self) -> Option<&str> {
+        self.inner.license.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "Entry(title='{}', id='{}')",
