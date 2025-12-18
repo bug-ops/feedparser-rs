@@ -316,8 +316,18 @@ impl BaseUrlContext {
             if is_safe_url(&resolved) {
                 resolved
             } else {
-                // SSRF blocked - return original relative URL
-                href.to_string()
+                // SSRF blocked - check if href itself is an unsafe absolute URL
+                // If href is an absolute URL pointing to dangerous target, return empty
+                // Otherwise return original relative href (safe since it requires base to resolve)
+                let href_is_unsafe_absolute = Url::parse(href)
+                    .ok()
+                    .is_some_and(|u| matches!(u.scheme(), "http" | "https") && !is_safe_url(href));
+
+                if href_is_unsafe_absolute {
+                    String::new()
+                } else {
+                    href.to_string()
+                }
             }
         } else {
             // Other schemes (mailto:, tel:) or relative URLs pass through

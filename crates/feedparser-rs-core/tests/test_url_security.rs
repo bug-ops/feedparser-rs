@@ -335,3 +335,41 @@ fn test_google_metadata_domain_blocked() {
         "Google metadata endpoint should be blocked, got: {icon}"
     );
 }
+
+#[test]
+fn test_absolute_malicious_url_in_href_blocked() {
+    // If href itself is an absolute malicious URL, it should be blocked
+    // even when base URL is safe (or when there's no base URL)
+    let xml = br#"<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xml:base="http://example.com/">
+        <icon>http://localhost/admin/config</icon>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    let icon = feed.feed.icon.as_deref().unwrap_or("");
+    assert!(
+        !icon.contains("localhost"),
+        "Absolute malicious URL in href should be blocked, got: {icon}"
+    );
+    // Should return empty string for dangerous absolute URLs
+    assert!(
+        icon.is_empty(),
+        "Dangerous absolute URL should result in empty string, got: {icon}"
+    );
+}
+
+#[test]
+fn test_absolute_malicious_private_ip_in_href_blocked() {
+    // Private IP in href should be blocked
+    let xml = br#"<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+        <link href="http://192.168.1.1/internal/api" rel="alternate" />
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    let link_href = &feed.feed.links[0].href;
+    assert!(
+        !link_href.contains("192.168"),
+        "Absolute malicious private IP in href should be blocked, got: {link_href}"
+    );
+}
