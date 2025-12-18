@@ -128,6 +128,29 @@ describe('feedparser-rs', () => {
       }
     });
 
+    it('should parse feed-level published date', () => {
+      const xml = `
+        <?xml version="1.0"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test Feed</title>
+            <pubDate>Wed, 18 Dec 2024 10:00:00 +0000</pubDate>
+            <item>
+              <title>Test Entry</title>
+            </item>
+          </channel>
+        </rss>
+      `;
+
+      const feed = parse(xml);
+
+      assert(feed.feed.published !== null && feed.feed.published !== undefined);
+      assert.strictEqual(typeof feed.feed.published, 'number');
+      assert(feed.feed.published > 0);
+      // Verify it's the expected timestamp (Wed, 18 Dec 2024 10:00:00 +0000)
+      assert.strictEqual(feed.feed.published, 1734516000000);
+    });
+
     it('should handle multiple entries', () => {
       const xml = `
         <?xml version="1.0"?>

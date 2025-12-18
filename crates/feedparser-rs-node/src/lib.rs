@@ -281,6 +281,8 @@ pub struct FeedMeta {
     pub subtitle_detail: Option<TextConstruct>,
     /// Last update date (milliseconds since epoch)
     pub updated: Option<i64>,
+    /// Initial publication date (milliseconds since epoch)
+    pub published: Option<i64>,
     /// Primary author name
     pub author: Option<String>,
     /// Detailed author information
@@ -327,6 +329,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
             updated: core.updated.map(|dt| dt.timestamp_millis()),
+            published: core.published.map(|dt| dt.timestamp_millis()),
             author: core.author,
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),

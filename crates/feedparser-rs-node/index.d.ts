@@ -81,6 +81,10 @@ export interface Entry {
   comments?: string
   /** Source feed reference */
   source?: Source
+  /** Podcast transcripts */
+  podcastTranscripts: Array<PodcastTranscript>
+  /** Podcast persons */
+  podcastPersons: Array<PodcastPerson>
 }
 
 /** Feed metadata */
@@ -99,6 +103,8 @@ export interface FeedMeta {
   subtitleDetail?: TextConstruct
   /** Last update date (milliseconds since epoch) */
   updated?: number
+  /** Initial publication date (milliseconds since epoch) */
+  published?: number
   /** Primary author name */
   author?: string
   /** Detailed author information */
@@ -214,7 +220,86 @@ export interface ParsedFeed {
   version: string
   /** XML namespaces (prefix -> URI) */
   namespaces: Record<string, string>
+  /** HTTP status code (if fetched from URL) */
+  status?: number
+  /** Final URL after redirects (if fetched from URL) */
+  href?: string
+  /** ETag header from HTTP response */
+  etag?: string
+  /** Last-Modified header from HTTP response */
+  modified?: string
+  /** HTTP response headers (if fetched from URL) */
+  headers?: Record<string, string>
 }
+
+/**
+ * Parse feed from HTTP/HTTPS URL with conditional GET support
+ *
+ * Fetches the feed from the given URL and parses it. Supports conditional GET
+ * using ETag and Last-Modified headers for bandwidth-efficient caching.
+ *
+ * # Arguments
+ *
+ * * `url` - HTTP or HTTPS URL to fetch
+ * * `etag` - Optional ETag from previous fetch for conditional GET
+ * * `modified` - Optional Last-Modified timestamp from previous fetch
+ * * `user_agent` - Optional custom User-Agent header
+ *
+ * # Returns
+ *
+ * Parsed feed result with HTTP metadata fields populated:
+ * - `status`: HTTP status code (200, 304, etc.)
+ * - `href`: Final URL after redirects
+ * - `etag`: ETag header value (for next request)
+ * - `modified`: Last-Modified header value (for next request)
+ * - `headers`: Full HTTP response headers
+ *
+ * On 304 Not Modified, returns a feed with empty entries but status=304.
+ *
+ * # Examples
+ *
+ * ```javascript
+ * const feedparser = require('feedparser-rs');
+ *
+ * // First fetch
+ * const feed = await feedparser.parseUrl("https://example.com/feed.xml");
+ * console.log(feed.feed.title);
+ * console.log(`ETag: ${feed.etag}`);
+ *
+ * // Subsequent fetch with caching
+ * const feed2 = await feedparser.parseUrl(
+ *   "https://example.com/feed.xml",
+ *   feed.etag,
+ *   feed.modified
+ * );
+ *
+ * if (feed2.status === 304) {
+ *   console.log("Feed not modified, use cached version");
+ * }
+ * ```
+ */
+export declare function parseUrl(url: string, etag?: string | undefined | null, modified?: string | undefined | null, userAgent?: string | undefined | null): ParsedFeed
+
+/**
+ * Parse feed from URL with custom resource limits
+ *
+ * Like `parseUrl` but allows specifying custom limits for DoS protection.
+ *
+ * # Examples
+ *
+ * ```javascript
+ * const feedparser = require('feedparser-rs');
+ *
+ * const feed = await feedparser.parseUrlWithOptions(
+ *   "https://example.com/feed.xml",
+ *   null, // etag
+ *   null, // modified
+ *   null, // user_agent
+ *   10485760 // max_size: 10MB
+ * );
+ * ```
+ */
+export declare function parseUrlWithOptions(url: string, etag?: string | undefined | null, modified?: string | undefined | null, userAgent?: string | undefined | null, maxSize?: number | undefined | null): ParsedFeed
 
 /**
  * Parse an RSS/Atom/JSON Feed with custom size limit
@@ -242,6 +327,32 @@ export interface Person {
   email?: string
   /** Person's URI/website */
   uri?: string
+}
+
+/** Podcast person metadata */
+export interface PodcastPerson {
+  /** Person's name */
+  name: string
+  /** Person's role (e.g., "host", "guest") */
+  role?: string
+  /** Person's group (e.g., "cast", "crew") */
+  group?: string
+  /** Person's image URL */
+  img?: string
+  /** Person's URL/website */
+  href?: string
+}
+
+/** Podcast transcript metadata */
+export interface PodcastTranscript {
+  /** Transcript URL */
+  url: string
+  /** Transcript type (e.g., "text/plain", "application/srt") */
+  type?: string
+  /** Transcript language */
+  language?: string
+  /** Relationship type (e.g., "captions", "chapters") */
+  rel?: string
 }
 
 /** Source reference (for entries) */
