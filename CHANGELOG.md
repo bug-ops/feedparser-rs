@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2025-12-18
+
+### Added
+- Syndication Module namespace support (`syn:updatePeriod`, `syn:updateFrequency`, `syn:updateBase`)
+- `feed.published` field for Atom feeds and RSS channel `pubDate`
+- `xml:base` URL resolution for relative URLs in Atom and RSS feeds
+- `xml:lang` attribute tracking for feed and entry language detection
+- Creative Commons `license` field extraction from `rel="license"` links
+- Comprehensive RSS 1.0 integration tests (12+ test cases)
+- Syndication metadata exposed in Python and Node.js bindings
+- Dublin Core fields (`dc_creator`, `dc_publisher`, `dc_rights`) in bindings
+- Benchmark results in all README files
+
+### Changed
+- Improved test coverage from 83% to 91%+
+- Optimized Python bindings to return `&str` instead of `String` for enum values
+- Simplified Node.js Entry conversion using idiomatic `.collect()` pattern
+- Updated documentation with performance benchmarks (90-94x faster than Python feedparser)
+
+### Fixed
+- Performance issue with unnecessary string allocations in Python `__repr__` methods
+
 ## [0.2.1] - 2025-12-16
 
 ### Changed
@@ -125,7 +147,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.1.8...v0.2.0
 [0.1.8]: https://github.com/bug-ops/feedparser-rs/compare/v0.1.7...v0.1.8

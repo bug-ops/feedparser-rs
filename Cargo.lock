@@ -472,7 +472,7 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "feedparser-rs"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "ammonia",
  "chrono",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "feedparser-rs-node"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "feedparser-rs",
  "napi",
@@ -503,7 +503,7 @@ dependencies = [
 
 [[package]]
 name = "feedparser-rs-py"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "feedparser-rs",
