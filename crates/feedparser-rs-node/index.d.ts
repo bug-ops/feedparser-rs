@@ -143,6 +143,14 @@ export interface FeedMeta {
   ttl?: number
   /** License URL (Creative Commons, etc.) */
   license?: string
+  /** Syndication module metadata (RSS 1.0) */
+  syndication?: SyndicationMeta
+  /** Dublin Core creator (author fallback) */
+  dcCreator?: string
+  /** Dublin Core publisher */
+  dcPublisher?: string
+  /** Dublin Core rights (copyright) */
+  dcRights?: string
 }
 
 /** Generator metadata */
@@ -367,6 +375,16 @@ export interface Source {
   link?: string
   /** Source ID */
   id?: string
+}
+
+/** Syndication module metadata (RSS 1.0) */
+export interface SyndicationMeta {
+  /** Update period (hourly, daily, weekly, monthly, yearly) */
+  updatePeriod?: string
+  /** Number of times updated per period */
+  updateFrequency?: number
+  /** Base date for update schedule (ISO 8601) */
+  updateBase?: string
 }
 
 /** Tag/category */

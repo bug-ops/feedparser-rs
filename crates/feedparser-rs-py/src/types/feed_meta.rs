@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use super::common::{PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct};
 use super::datetime::optional_datetime_to_struct_time;
 use super::podcast::{PyItunesFeedMeta, PyPodcastMeta};
+use super::syndication::PySyndicationMeta;
 
 #[pyclass(name = "FeedMeta", module = "feedparser_rs")]
 #[derive(Clone)]
@@ -210,6 +211,29 @@ impl PyFeedMeta {
     #[getter]
     fn license(&self) -> Option<&str> {
         self.inner.license.as_deref()
+    }
+
+    #[getter]
+    fn syndication(&self) -> Option<PySyndicationMeta> {
+        self.inner
+            .syndication
+            .as_ref()
+            .map(|s| PySyndicationMeta::from_core(s.clone()))
+    }
+
+    #[getter]
+    fn dc_creator(&self) -> Option<&str> {
+        self.inner.dc_creator.as_deref()
+    }
+
+    #[getter]
+    fn dc_publisher(&self) -> Option<&str> {
+        self.inner.dc_publisher.as_deref()
+    }
+
+    #[getter]
+    fn dc_rights(&self) -> Option<&str> {
+        self.inner.dc_rights.as_deref()
     }
 
     fn __repr__(&self) -> String {

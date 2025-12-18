@@ -72,6 +72,8 @@ pub use types::{
     TextType, parse_duration, parse_explicit,
 };
 
+pub use namespace::syndication::{SyndicationMeta, UpdatePeriod};
+
 #[cfg(feature = "http")]
 pub use http::{FeedHttpClient, FeedHttpResponse};
 

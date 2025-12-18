@@ -9,7 +9,8 @@ use feedparser_rs::{
     FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage, Link as CoreLink,
     ParsedFeed as CoreParsedFeed, ParserLimits, Person as CorePerson,
     PodcastPerson as CorePodcastPerson, PodcastTranscript as CorePodcastTranscript,
-    Source as CoreSource, Tag as CoreTag, TextConstruct as CoreTextConstruct, TextType,
+    Source as CoreSource, SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag,
+    TextConstruct as CoreTextConstruct, TextType,
 };
 
 /// Default maximum feed size (100 MB) - prevents DoS attacks
@@ -264,6 +265,27 @@ impl From<CoreParsedFeed> for ParsedFeed {
     }
 }
 
+/// Syndication module metadata (RSS 1.0)
+#[napi(object)]
+pub struct SyndicationMeta {
+    /// Update period (hourly, daily, weekly, monthly, yearly)
+    pub update_period: Option<String>,
+    /// Number of times updated per period
+    pub update_frequency: Option<u32>,
+    /// Base date for update schedule (ISO 8601)
+    pub update_base: Option<String>,
+}
+
+impl From<CoreSyndicationMeta> for SyndicationMeta {
+    fn from(core: CoreSyndicationMeta) -> Self {
+        Self {
+            update_period: core.update_period.map(|p| p.as_str().to_string()),
+            update_frequency: core.update_frequency,
+            update_base: core.update_base,
+        }
+    }
+}
+
 /// Feed metadata
 #[napi(object)]
 pub struct FeedMeta {
@@ -319,6 +341,14 @@ pub struct FeedMeta {
     pub ttl: Option<u32>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
+    /// Syndication module metadata (RSS 1.0)
+    pub syndication: Option<SyndicationMeta>,
+    /// Dublin Core creator (author fallback)
+    pub dc_creator: Option<String>,
+    /// Dublin Core publisher
+    pub dc_publisher: Option<String>,
+    /// Dublin Core rights (copyright)
+    pub dc_rights: Option<String>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -350,6 +380,10 @@ impl From<CoreFeedMeta> for FeedMeta {
             id: core.id,
             ttl: core.ttl,
             license: core.license,
+            syndication: core.syndication.map(SyndicationMeta::from),
+            dc_creator: core.dc_creator,
+            dc_publisher: core.dc_publisher,
+            dc_rights: core.dc_rights,
         }
     }
 }
