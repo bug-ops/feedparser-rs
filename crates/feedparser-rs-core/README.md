@@ -13,12 +13,12 @@ This is the core parsing library that powers the Python and Node.js bindings.
 
 - **Multi-format**: RSS 0.9x/1.0/2.0, Atom 0.3/1.0, JSON Feed 1.0/1.1
 - **Tolerant**: Bozo flag for graceful handling of malformed feeds
-- **Fast**: Native Rust performance
+- **Fast**: Native Rust performance (200+ MB/s throughput)
 - **Safe**: No unsafe code, comprehensive error handling
 - **HTTP support**: Fetch feeds from URLs with compression and conditional GET
 - **Podcast support**: iTunes and Podcast 2.0 namespace extensions
-- **Namespace extensions**: Dublin Core, Media RSS, GeoRSS, Creative Commons
-- **Well-tested**: 83%+ test coverage with real-world feed fixtures
+- **Namespace extensions**: Dublin Core, Media RSS, Syndication, GeoRSS, Creative Commons
+- **Well-tested**: 91%+ test coverage with real-world feed fixtures
 
 ## Installation
 
@@ -137,6 +137,24 @@ let feed = parse_with_limits(xml.as_bytes(), limits)?;
 
 > [!NOTE]
 > Default limits are generous for typical feeds. Use `ParserLimits::strict()` for untrusted input.
+
+## Benchmarks
+
+Measured on Apple M1 Pro:
+
+| Feed Size | Time | Throughput |
+|-----------|------|------------|
+| Small (2 KB) | 10.7 µs | 187 MB/s |
+| Medium (20 KB) | 93.6 µs | 214 MB/s |
+| Large (200 KB) | 939 µs | 213 MB/s |
+
+Format detection: 128 ns
+
+Run benchmarks:
+
+```bash
+cargo bench
+```
 
 ## Platform Bindings
 

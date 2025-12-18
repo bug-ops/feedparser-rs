@@ -202,12 +202,23 @@ if (entry.published) {
 
 ## Performance
 
-Benchmarks vs Python feedparser (parsing 100KB RSS feed):
+Benchmarks on Apple M1 Pro:
 
-| Library | Time | Speedup |
-|---------|------|---------|
-| feedparser-rs | 0.5ms | 100x |
-| feedparser (Python) | 50ms | 1x |
+| Feed Size | Time | Throughput |
+|-----------|------|------------|
+| Small (2 KB) | 0.01 ms | 187 MB/s |
+| Medium (20 KB) | 0.09 ms | 214 MB/s |
+| Large (200 KB) | 0.94 ms | 213 MB/s |
+
+### vs Python feedparser
+
+| Operation | feedparser-rs | Python feedparser | Speedup |
+|-----------|---------------|-------------------|---------|
+| Parse 20 KB RSS | 0.09 ms | 8.5 ms | **94x** |
+| Parse 200 KB RSS | 0.94 ms | 85 ms | **90x** |
+
+> [!TIP]
+> For best performance, pass `Buffer` instead of `string` to avoid UTF-8 conversion overhead.
 
 ## Platform Support
 
