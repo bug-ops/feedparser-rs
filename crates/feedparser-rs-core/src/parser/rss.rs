@@ -192,10 +192,10 @@ fn parse_channel(
                             continue;
                         }
 
-                        let effective_lang =
-                            item_lang.as_deref().or(channel_lang);
+                        let effective_lang = item_lang.as_deref().or(channel_lang);
 
-                        match parse_item(reader, &mut buf, limits, depth, base_ctx, effective_lang) {
+                        match parse_item(reader, &mut buf, limits, depth, base_ctx, effective_lang)
+                        {
                             Ok((entry, has_attr_errors)) => {
                                 if has_attr_errors {
                                     feed.bozo = true;
@@ -582,13 +582,7 @@ fn parse_item(
                     b"title" | b"link" | b"description" | b"guid" | b"pubDate" | b"author"
                     | b"category" | b"comments" => {
                         parse_item_standard(
-                            reader,
-                            buf,
-                            &tag,
-                            &mut entry,
-                            limits,
-                            base_ctx,
-                            item_lang,
+                            reader, buf, &tag, &mut entry, limits, base_ctx, item_lang,
                         )?;
                     }
                     b"enclosure" => {
@@ -1890,18 +1884,33 @@ mod tests {
         let french_entry = &feed.entries[0];
         assert!(french_entry.title_detail.is_some());
         assert_eq!(
-            french_entry.title_detail.as_ref().unwrap().language.as_deref(),
+            french_entry
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
             Some("fr-FR")
         );
         assert_eq!(
-            french_entry.summary_detail.as_ref().unwrap().language.as_deref(),
+            french_entry
+                .summary_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
             Some("fr-FR")
         );
 
         let english_entry = &feed.entries[1];
         assert!(english_entry.title_detail.is_some());
         assert_eq!(
-            english_entry.title_detail.as_ref().unwrap().language.as_deref(),
+            english_entry
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
             Some("en")
         );
     }
