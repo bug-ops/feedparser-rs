@@ -209,6 +209,20 @@ pub fn is_content_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"content:")
 }
 
+/// Check if element is a Syndication namespaced tag
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_syn_tag(b"syn:updatePeriod"), Some("updatePeriod"));
+/// assert_eq!(is_syn_tag(b"syn:updateFrequency"), Some("updateFrequency"));
+/// assert_eq!(is_syn_tag(b"dc:creator"), None);
+/// ```
+#[inline]
+pub fn is_syn_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"syn:")
+}
+
 /// Check if element is a Media RSS namespaced tag
 ///
 /// # Examples
@@ -279,6 +293,47 @@ pub fn extract_xml_base(
         .find(|attr| {
             let key = attr.key.as_ref();
             key == b"xml:base" || key == b"base"
+        })
+        .filter(|attr| attr.value.len() <= max_attr_length)
+        .and_then(|attr| attr.unescape_value().ok())
+        .map(|s| s.to_string())
+}
+
+/// Extract xml:lang attribute from element
+///
+/// Returns the language code if xml:lang or lang attribute exists.
+/// Respects `max_attribute_length` limit for `DoS` protection.
+///
+/// # Arguments
+///
+/// * `element` - The XML element to extract xml:lang from
+/// * `max_attr_length` - Maximum allowed attribute length (`DoS` protection)
+///
+/// # Returns
+///
+/// * `Some(String)` - The xml:lang value if found and within length limit
+/// * `None` - If attribute not found or exceeds length limit
+///
+/// # Examples
+///
+/// ```ignore
+/// use feedparser_rs::parser::common::extract_xml_lang;
+///
+/// let element = /* BytesStart from quick-xml */;
+/// if let Some(lang) = extract_xml_lang(&element, 1024) {
+///     println!("Language: {}", lang);
+/// }
+/// ```
+pub fn extract_xml_lang(
+    element: &quick_xml::events::BytesStart,
+    max_attr_length: usize,
+) -> Option<String> {
+    element
+        .attributes()
+        .flatten()
+        .find(|attr| {
+            let key = attr.key.as_ref();
+            key == b"xml:lang" || key == b"lang"
         })
         .filter(|attr| attr.value.len() <= max_attr_length)
         .and_then(|attr| attr.unescape_value().ok())

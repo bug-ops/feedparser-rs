@@ -15,8 +15,8 @@ use crate::{
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
-    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
-    is_itunes_tag, is_media_tag, read_text, skip_element,
+    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
+    is_content_tag, is_dc_tag, is_itunes_tag, is_media_tag, read_text, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -110,10 +110,16 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"channel" => {
+                let channel_lang = extract_xml_lang(&e, limits.max_attribute_length);
                 depth += 1;
-                if let Err(e) =
-                    parse_channel(&mut reader, &mut feed, &limits, &mut depth, &mut base_ctx)
-                {
+                if let Err(e) = parse_channel(
+                    &mut reader,
+                    &mut feed,
+                    &limits,
+                    &mut depth,
+                    &mut base_ctx,
+                    channel_lang.as_deref(),
+                ) {
                     feed.bozo = true;
                     feed.bozo_exception = Some(e.to_string());
                 }
@@ -140,6 +146,7 @@ fn parse_channel(
     limits: &ParserLimits,
     depth: &mut usize,
     base_ctx: &mut BaseUrlContext,
+    channel_lang: Option<&str>,
 ) -> Result<()> {
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
 
@@ -163,7 +170,15 @@ fn parse_channel(
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
                     | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"category" => {
-                        parse_channel_standard(reader, &mut buf, &tag, feed, limits, base_ctx)?;
+                        parse_channel_standard(
+                            reader,
+                            &mut buf,
+                            &tag,
+                            feed,
+                            limits,
+                            base_ctx,
+                            channel_lang,
+                        )?;
                     }
                     b"image" => {
                         if let Ok(image) = parse_image(reader, &mut buf, limits, depth) {
@@ -171,11 +186,16 @@ fn parse_channel(
                         }
                     }
                     b"item" => {
+                        let item_lang = extract_xml_lang(&e, limits.max_attribute_length);
+
                         if !feed.check_entry_limit(reader, &mut buf, limits, depth)? {
                             continue;
                         }
 
-                        match parse_item(reader, &mut buf, limits, depth, base_ctx) {
+                        let effective_lang = item_lang.as_deref().or(channel_lang);
+
+                        match parse_item(reader, &mut buf, limits, depth, base_ctx, effective_lang)
+                        {
                             Ok((entry, has_attr_errors)) => {
                                 if has_attr_errors {
                                     feed.bozo = true;
@@ -261,10 +281,17 @@ fn parse_channel_standard(
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     base_ctx: &mut BaseUrlContext,
+    channel_lang: Option<&str>,
 ) -> Result<()> {
     match tag {
         b"title" => {
-            feed.feed.title = Some(read_text(reader, buf, limits)?);
+            let text = read_text(reader, buf, limits)?;
+            feed.feed.set_title(TextConstruct {
+                value: text,
+                content_type: TextType::Text,
+                language: channel_lang.map(String::from),
+                base: base_ctx.base().map(String::from),
+            });
         }
         b"link" => {
             let link_text = read_text(reader, buf, limits)?;
@@ -276,7 +303,13 @@ fn parse_channel_standard(
             }
         }
         b"description" => {
-            feed.feed.subtitle = Some(read_text(reader, buf, limits)?);
+            let text = read_text(reader, buf, limits)?;
+            feed.feed.set_subtitle(TextConstruct {
+                value: text,
+                content_type: TextType::Html,
+                language: channel_lang.map(String::from),
+                base: base_ctx.base().map(String::from),
+            });
         }
         b"language" => {
             feed.feed.language = Some(read_text(reader, buf, limits)?);
@@ -500,6 +533,9 @@ fn parse_channel_namespace(
     } else if let Some(_media_element) = is_media_tag(tag) {
         skip_element(reader, buf, limits, depth)?;
         Ok(true)
+    } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
+        feed.feed.license = Some(read_text(reader, buf, limits)?);
+        Ok(true)
     } else {
         Ok(false)
     }
@@ -516,6 +552,7 @@ fn parse_item(
     limits: &ParserLimits,
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
+    item_lang: Option<&str>,
 ) -> Result<(Entry, bool)> {
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
@@ -544,7 +581,9 @@ fn parse_item(
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"guid" | b"pubDate" | b"author"
                     | b"category" | b"comments" => {
-                        parse_item_standard(reader, buf, &tag, &mut entry, limits, base_ctx)?;
+                        parse_item_standard(
+                            reader, buf, &tag, &mut entry, limits, base_ctx, item_lang,
+                        )?;
                     }
                     b"enclosure" => {
                         if let Some(mut enclosure) = parse_enclosure(&attrs, limits) {
@@ -603,10 +642,17 @@ fn parse_item_standard(
     entry: &mut Entry,
     limits: &ParserLimits,
     base_ctx: &BaseUrlContext,
+    item_lang: Option<&str>,
 ) -> Result<()> {
     match tag {
         b"title" => {
-            entry.title = Some(read_text(reader, buf, limits)?);
+            let text = read_text(reader, buf, limits)?;
+            entry.set_title(TextConstruct {
+                value: text,
+                content_type: TextType::Text,
+                language: item_lang.map(String::from),
+                base: base_ctx.base().map(String::from),
+            });
         }
         b"link" => {
             let link_text = read_text(reader, buf, limits)?;
@@ -622,13 +668,12 @@ fn parse_item_standard(
             );
         }
         b"description" => {
-            let desc = read_text(reader, buf, limits)?;
-            entry.summary = Some(desc.clone());
-            entry.summary_detail = Some(TextConstruct {
-                value: desc,
+            let text = read_text(reader, buf, limits)?;
+            entry.set_summary(TextConstruct {
+                value: text,
                 content_type: TextType::Html,
-                language: None,
-                base: None,
+                language: item_lang.map(String::from),
+                base: base_ctx.base().map(String::from),
             });
         }
         b"guid" => {
@@ -856,6 +901,9 @@ fn parse_item_namespace(
             is_empty,
             depth,
         )?;
+        Ok(true)
+    } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
+        entry.license = Some(read_text(reader, buf, limits)?);
         Ok(true)
     } else {
         Ok(false)
@@ -1790,5 +1838,143 @@ mod tests {
                 .contains("<strong>HTML content</strong>")
         );
         assert!(entry.content[0].value.contains("<ul>"));
+    }
+
+    #[test]
+    fn test_parse_rss_xml_lang_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel xml:lang="en-US">
+                <title>English Channel</title>
+                <description>Test description</description>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.title.as_deref(), Some("English Channel"));
+
+        assert!(feed.feed.title_detail.is_some());
+        let title_detail = feed.feed.title_detail.as_ref().unwrap();
+        assert_eq!(title_detail.language.as_deref(), Some("en-US"));
+
+        assert!(feed.feed.subtitle_detail.is_some());
+        let subtitle_detail = feed.feed.subtitle_detail.as_ref().unwrap();
+        assert_eq!(subtitle_detail.language.as_deref(), Some("en-US"));
+    }
+
+    #[test]
+    fn test_parse_rss_xml_lang_item() {
+        let xml = b"<?xml version=\"1.0\"?>
+        <rss version=\"2.0\">
+            <channel xml:lang=\"en\">
+                <item xml:lang=\"fr-FR\">
+                    <title>Article en fran\xc3\xa7ais</title>
+                    <description>Description en fran\xc3\xa7ais</description>
+                </item>
+                <item>
+                    <title>English Article</title>
+                    <description>English description</description>
+                </item>
+            </channel>
+        </rss>";
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries.len(), 2);
+
+        let french_entry = &feed.entries[0];
+        assert!(french_entry.title_detail.is_some());
+        assert_eq!(
+            french_entry
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
+            Some("fr-FR")
+        );
+        assert_eq!(
+            french_entry
+                .summary_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
+            Some("fr-FR")
+        );
+
+        let english_entry = &feed.entries[1];
+        assert!(english_entry.title_detail.is_some());
+        assert_eq!(
+            english_entry
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
+            Some("en")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_xml_lang_empty() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel xml:lang="">
+                <title>Empty Lang Channel</title>
+                <description>Test with empty xml:lang</description>
+                <item xml:lang="">
+                    <title>Empty Lang Item</title>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+
+        // Empty xml:lang should be treated as empty string (converted to None or empty)
+        if let Some(ref title_detail) = feed.feed.title_detail {
+            assert_eq!(title_detail.language.as_deref(), Some(""));
+        }
+
+        assert_eq!(feed.entries.len(), 1);
+        if let Some(ref title_detail) = feed.entries[0].title_detail {
+            assert_eq!(title_detail.language.as_deref(), Some(""));
+        }
+    }
+
+    #[test]
+    fn test_parse_rss_license_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:creativeCommons="http://backend.userland.com/creativeCommonsRssModule">
+            <channel>
+                <title>Test Feed</title>
+                <creativeCommons:license>https://creativecommons.org/licenses/by/4.0/</creativeCommons:license>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.license.as_deref(),
+            Some("https://creativecommons.org/licenses/by/4.0/")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_license_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Licensed Item</title>
+                    <license>https://creativecommons.org/licenses/by-sa/3.0/</license>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries.len(), 1);
+        assert_eq!(
+            feed.entries[0].license.as_deref(),
+            Some("https://creativecommons.org/licenses/by-sa/3.0/")
+        );
     }
 }

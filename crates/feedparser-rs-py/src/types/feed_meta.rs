@@ -207,6 +207,11 @@ impl PyFeedMeta {
             .map(|p| PyPodcastMeta::from_core(p.clone()))
     }
 
+    #[getter]
+    fn license(&self) -> Option<&str> {
+        self.inner.license.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "FeedMeta(title='{}', link='{}')",

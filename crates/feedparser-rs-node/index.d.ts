@@ -85,6 +85,8 @@ export interface Entry {
   podcastTranscripts: Array<PodcastTranscript>
   /** Podcast persons */
   podcastPersons: Array<PodcastPerson>
+  /** License URL (Creative Commons, etc.) */
+  license?: string
 }
 
 /** Feed metadata */
@@ -139,6 +141,8 @@ export interface FeedMeta {
   id?: string
   /** Time-to-live (update frequency hint) in minutes */
   ttl?: number
+  /** License URL (Creative Commons, etc.) */
+  license?: string
 }
 
 /** Generator metadata */

@@ -74,6 +74,8 @@ pub struct Entry {
     pub podcast_persons: Vec<PodcastPerson>,
     /// `GeoRSS` location data
     pub geo: Option<crate::namespace::georss::GeoLocation>,
+    /// License URL (Creative Commons, etc.)
+    pub license: Option<String>,
 }
 
 impl Entry {

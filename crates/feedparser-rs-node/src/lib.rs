@@ -317,6 +317,8 @@ pub struct FeedMeta {
     pub id: Option<String>,
     /// Time-to-live (update frequency hint) in minutes
     pub ttl: Option<u32>,
+    /// License URL (Creative Commons, etc.)
+    pub license: Option<String>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -347,6 +349,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             tags: core.tags.into_iter().map(Tag::from).collect(),
             id: core.id,
             ttl: core.ttl,
+            license: core.license,
         }
     }
 }
@@ -402,6 +405,8 @@ pub struct Entry {
     pub podcast_transcripts: Vec<PodcastTranscript>,
     /// Podcast persons
     pub podcast_persons: Vec<PodcastPerson>,
+    /// License URL (Creative Commons, etc.)
+    pub license: Option<String>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -477,6 +482,7 @@ impl From<CoreEntry> for Entry {
                 v.extend(core.podcast_persons.into_iter().map(PodcastPerson::from));
                 v
             },
+            license: core.license,
         }
     }
 }

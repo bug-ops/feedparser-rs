@@ -10,14 +10,14 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::dublin_core,
+    namespace::{content, dublin_core, syndication},
     types::{Entry, FeedVersion, Image, ParsedFeed, TextConstruct, TextType},
 };
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
-    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_dc_tag, read_text,
-    skip_element,
+    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
+    is_syn_tag, read_text, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -223,6 +223,10 @@ fn parse_channel(
                             let dc_elem = dc_element.to_string();
                             let text = read_text(reader, &mut buf, limits)?;
                             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
+                        } else if let Some(syn_element) = is_syn_tag(full_name.as_ref()) {
+                            let syn_elem = syn_element.to_string();
+                            let text = read_text(reader, &mut buf, limits)?;
+                            syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
                         } else {
                             skip_element(reader, &mut buf, limits, *depth)?;
                         }
@@ -288,6 +292,10 @@ fn parse_item(
                             let text = read_text(reader, buf, limits)?;
                             // dublin_core::handle_entry_element already handles dc:date -> published
                             dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
+                        } else if let Some(content_element) = is_content_tag(full_name.as_ref()) {
+                            let content_elem = content_element.to_string();
+                            let text = read_text(reader, buf, limits)?;
+                            content::handle_entry_element(&content_elem, &text, &mut entry);
                         } else {
                             skip_element(reader, buf, limits, *depth)?;
                         }
@@ -567,5 +575,65 @@ mod tests {
         assert!(is_dc_tag(b"title").is_none());
         assert!(is_dc_tag(b"link").is_none());
         assert!(is_dc_tag(b"atom:title").is_none());
+    }
+
+    #[test]
+    fn test_parse_rss10_with_content_encoded() {
+        let xml = br#"<?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                 xmlns="http://purl.org/rss/1.0/"
+                 xmlns:content="http://purl.org/rss/1.0/modules/content/">
+            <channel rdf:about="http://example.com/">
+                <title>Test</title>
+                <link>http://example.com</link>
+                <description>Test</description>
+            </channel>
+            <item rdf:about="http://example.com/1">
+                <title>Item 1</title>
+                <link>http://example.com/1</link>
+                <description>Brief summary</description>
+                <content:encoded><![CDATA[<p>Full <strong>HTML</strong> content</p>]]></content:encoded>
+            </item>
+        </rdf:RDF>"#;
+
+        let feed = parse_rss10(xml).unwrap();
+        assert_eq!(feed.entries.len(), 1);
+
+        let entry = &feed.entries[0];
+        assert_eq!(entry.summary.as_deref(), Some("Brief summary"));
+
+        // Verify content:encoded is parsed
+        assert!(!entry.content.is_empty());
+        assert_eq!(entry.content[0].content_type.as_deref(), Some("text/html"));
+        assert!(entry.content[0].value.contains("Full"));
+        assert!(entry.content[0].value.contains("HTML"));
+    }
+
+    #[test]
+    fn test_parse_rss10_with_syndication() {
+        let xml = br#"<?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                 xmlns="http://purl.org/rss/1.0/"
+                 xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+            <channel rdf:about="http://example.com/">
+                <title>Test</title>
+                <link>http://example.com</link>
+                <description>Test</description>
+                <syn:updatePeriod>hourly</syn:updatePeriod>
+                <syn:updateFrequency>2</syn:updateFrequency>
+                <syn:updateBase>2024-01-01T00:00:00Z</syn:updateBase>
+            </channel>
+        </rdf:RDF>"#;
+
+        let feed = parse_rss10(xml).unwrap();
+        assert!(feed.feed.syndication.is_some());
+
+        let syn = feed.feed.syndication.as_ref().unwrap();
+        assert_eq!(
+            syn.update_period,
+            Some(crate::namespace::syndication::UpdatePeriod::Hourly)
+        );
+        assert_eq!(syn.update_frequency, Some(2));
+        assert_eq!(syn.update_base.as_deref(), Some("2024-01-01T00:00:00Z"));
     }
 }

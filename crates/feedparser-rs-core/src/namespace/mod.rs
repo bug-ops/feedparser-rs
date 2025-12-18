@@ -35,6 +35,8 @@ pub mod dublin_core;
 pub mod georss;
 /// Media RSS specification
 pub mod media_rss;
+/// Syndication Module for RSS 1.0
+pub mod syndication;
 
 /// Common namespace URIs used in feeds
 pub mod namespaces {
@@ -55,6 +57,9 @@ pub mod namespaces {
 
     /// RSS 1.0
     pub const RSS_10: &str = "http://purl.org/rss/1.0/";
+
+    /// Syndication Module for RSS 1.0
+    pub const SYNDICATION: &str = "http://purl.org/rss/1.0/modules/syndication/";
 
     /// iTunes Podcast
     pub const ITUNES: &str = "http://www.itunes.com/dtds/podcast-1.0.dtd";
@@ -88,6 +93,7 @@ pub fn get_namespace_uri(prefix: &str) -> Option<&'static str> {
         "media" => Some(namespaces::MEDIA),
         "atom" => Some(namespaces::ATOM),
         "rdf" => Some(namespaces::RDF),
+        "syn" | "syndication" => Some(namespaces::SYNDICATION),
         "itunes" => Some(namespaces::ITUNES),
         "podcast" => Some(namespaces::PODCAST),
         "georss" => Some(namespaces::GEORSS),
@@ -113,6 +119,7 @@ pub fn get_namespace_prefix(uri: &str) -> Option<&'static str> {
         namespaces::MEDIA => Some("media"),
         namespaces::ATOM => Some("atom"),
         namespaces::RDF => Some("rdf"),
+        namespaces::SYNDICATION => Some("syn"),
         namespaces::ITUNES => Some("itunes"),
         namespaces::PODCAST => Some("podcast"),
         namespaces::GEORSS => Some("georss"),
