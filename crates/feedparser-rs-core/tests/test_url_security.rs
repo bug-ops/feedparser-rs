@@ -372,4 +372,41 @@ fn test_absolute_malicious_private_ip_in_href_blocked() {
         !link_href.contains("192.168"),
         "Absolute malicious private IP in href should be blocked, got: {link_href}"
     );
+    // Should return empty string for dangerous absolute URLs
+    assert!(
+        link_href.is_empty(),
+        "Dangerous absolute URL should result in empty string, got: {link_href}"
+    );
+}
+
+#[test]
+fn test_case_insensitive_scheme_bypass_blocked() {
+    // Uppercase schemes should also be blocked (RFC 3986 - schemes are case-insensitive)
+    let xml = br#"<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xml:base="FILE:///etc/">
+        <icon>passwd</icon>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    let icon = feed.feed.icon.as_deref().unwrap();
+    assert!(
+        !icon.to_lowercase().starts_with("file://"),
+        "Uppercase FILE:// scheme should be blocked, got: {icon}"
+    );
+}
+
+#[test]
+fn test_mixed_case_javascript_scheme_blocked() {
+    // Mixed case javascript: should be blocked
+    let xml = br#"<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xml:base="JaVaScRiPt:alert(1)//">
+        <icon>test</icon>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    let icon = feed.feed.icon.as_deref().unwrap();
+    assert!(
+        !icon.to_lowercase().contains("javascript"),
+        "Mixed case javascript: scheme should be blocked, got: {icon}"
+    );
 }

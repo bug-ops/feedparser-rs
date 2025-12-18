@@ -300,28 +300,33 @@ impl BaseUrlContext {
     pub fn resolve_safe(&self, href: &str) -> String {
         let resolved = self.resolve(href);
 
+        // Use lowercase for case-insensitive scheme comparison (RFC 3986)
+        let resolved_lower = resolved.to_lowercase();
+
         // Block dangerous schemes (file://, data://, javascript://, etc.)
-        if resolved.starts_with("file://")
-            || resolved.starts_with("data:")
-            || resolved.starts_with("javascript:")
-            || resolved.starts_with("ftp://")
-            || resolved.starts_with("gopher://")
+        // Case-insensitive to prevent bypass via FILE://, JAVASCRIPT:, etc.
+        if resolved_lower.starts_with("file://")
+            || resolved_lower.starts_with("data:")
+            || resolved_lower.starts_with("javascript:")
+            || resolved_lower.starts_with("ftp://")
+            || resolved_lower.starts_with("gopher://")
         {
             // Dangerous scheme - return original href
             return href.to_string();
         }
 
         // Validate HTTP(S) URLs for SSRF
-        if resolved.starts_with("http://") || resolved.starts_with("https://") {
+        if resolved_lower.starts_with("http://") || resolved_lower.starts_with("https://") {
             if is_safe_url(&resolved) {
                 resolved
             } else {
                 // SSRF blocked - check if href itself is an unsafe absolute URL
                 // If href is an absolute URL pointing to dangerous target, return empty
                 // Otherwise return original relative href (safe since it requires base to resolve)
-                let href_is_unsafe_absolute = Url::parse(href)
-                    .ok()
-                    .is_some_and(|u| matches!(u.scheme(), "http" | "https") && !is_safe_url(href));
+                let href_is_unsafe_absolute = Url::parse(href).is_ok_and(|parsed_href| {
+                    let is_http_scheme = matches!(parsed_href.scheme(), "http" | "https");
+                    is_http_scheme && !is_safe_url(href)
+                });
 
                 if href_is_unsafe_absolute {
                     String::new()
