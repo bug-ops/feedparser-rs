@@ -1907,6 +1907,32 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_rss_xml_lang_empty() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel xml:lang="">
+                <title>Empty Lang Channel</title>
+                <description>Test with empty xml:lang</description>
+                <item xml:lang="">
+                    <title>Empty Lang Item</title>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+
+        // Empty xml:lang should be treated as empty string (converted to None or empty)
+        if let Some(ref title_detail) = feed.feed.title_detail {
+            assert_eq!(title_detail.language.as_deref(), Some(""));
+        }
+
+        assert_eq!(feed.entries.len(), 1);
+        if let Some(ref title_detail) = feed.entries[0].title_detail {
+            assert_eq!(title_detail.language.as_deref(), Some(""));
+        }
+    }
+
+    #[test]
     fn test_parse_rss_license_channel() {
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:creativeCommons="http://backend.userland.com/creativeCommonsRssModule">
