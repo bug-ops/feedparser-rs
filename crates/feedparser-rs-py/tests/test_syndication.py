@@ -111,3 +111,56 @@ def test_dublin_core_fields():
     assert d.feed.dc_creator == "John Doe"
     assert d.feed.dc_publisher == "ACME Corp"
     assert d.feed.dc_rights == "Copyright 2024"
+
+
+def test_invalid_update_period():
+    """Test invalid updatePeriod is handled gracefully (bozo pattern)"""
+    feed_xml = b"""<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+      <channel>
+        <title>Test</title>
+        <link>https://example.com</link>
+        <syn:updatePeriod>invalid</syn:updatePeriod>
+      </channel>
+    </rdf:RDF>"""
+    d = feedparser_rs.parse(feed_xml)
+    # Should not crash, syndication should be None or update_period None
+    assert d.feed.syndication is None or d.feed.syndication.update_period is None
+
+
+def test_case_insensitive_update_period():
+    """Test updatePeriod is case-insensitive"""
+    feed_xml = b"""<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+      <channel>
+        <title>Test</title>
+        <link>https://example.com</link>
+        <syn:updatePeriod>HOURLY</syn:updatePeriod>
+      </channel>
+    </rdf:RDF>"""
+    d = feedparser_rs.parse(feed_xml)
+    assert d.feed.syndication is not None
+    assert d.feed.syndication.update_period == "hourly"
+
+
+def test_partial_syndication():
+    """Test feed with only some syndication fields"""
+    feed_xml = b"""<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+      <channel>
+        <title>Test</title>
+        <link>https://example.com</link>
+        <syn:updatePeriod>weekly</syn:updatePeriod>
+      </channel>
+    </rdf:RDF>"""
+    d = feedparser_rs.parse(feed_xml)
+    assert d.feed.syndication is not None
+    assert d.feed.syndication.update_period == "weekly"
+    assert d.feed.syndication.update_frequency is None
+    assert d.feed.syndication.update_base is None

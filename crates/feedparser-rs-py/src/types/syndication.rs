@@ -18,8 +18,8 @@ impl PySyndicationMeta {
 impl PySyndicationMeta {
     /// Update period (hourly, daily, weekly, monthly, yearly)
     #[getter]
-    fn update_period(&self) -> Option<String> {
-        self.inner.update_period.map(|p| p.as_str().to_string())
+    fn update_period(&self) -> Option<&str> {
+        self.inner.update_period.as_ref().map(|p| p.as_str())
     }
 
     /// Number of times updated per period
@@ -37,9 +37,9 @@ impl PySyndicationMeta {
     fn __repr__(&self) -> String {
         format!(
             "SyndicationMeta(update_period={:?}, update_frequency={:?}, update_base={:?})",
-            self.update_period(),
-            self.update_frequency(),
-            self.update_base()
+            self.inner.update_period.as_ref().map(|p| p.as_str()),
+            self.inner.update_frequency,
+            self.inner.update_base.as_deref()
         )
     }
 }

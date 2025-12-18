@@ -91,4 +91,57 @@ describe('syndication', () => {
     assert.strictEqual(feed.feed.dcPublisher, 'ACME Corp');
     assert.strictEqual(feed.feed.dcRights, 'Copyright 2024');
   });
+
+  it('should handle invalid updatePeriod gracefully (bozo pattern)', () => {
+    const xml = `<?xml version="1.0"?>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+               xmlns="http://purl.org/rss/1.0/"
+               xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+        <channel>
+          <title>Test</title>
+          <link>https://example.com</link>
+          <syn:updatePeriod>invalid</syn:updatePeriod>
+        </channel>
+      </rdf:RDF>`;
+
+    const feed = parse(xml);
+    // Should not crash, syndication should be undefined or updatePeriod undefined
+    assert.ok(!feed.feed.syndication || !feed.feed.syndication.updatePeriod);
+  });
+
+  it('should handle case-insensitive updatePeriod', () => {
+    const xml = `<?xml version="1.0"?>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+               xmlns="http://purl.org/rss/1.0/"
+               xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+        <channel>
+          <title>Test</title>
+          <link>https://example.com</link>
+          <syn:updatePeriod>HOURLY</syn:updatePeriod>
+        </channel>
+      </rdf:RDF>`;
+
+    const feed = parse(xml);
+    assert.ok(feed.feed.syndication);
+    assert.strictEqual(feed.feed.syndication.updatePeriod, 'hourly');
+  });
+
+  it('should parse feed with partial syndication fields', () => {
+    const xml = `<?xml version="1.0"?>
+      <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+               xmlns="http://purl.org/rss/1.0/"
+               xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+        <channel>
+          <title>Test</title>
+          <link>https://example.com</link>
+          <syn:updatePeriod>weekly</syn:updatePeriod>
+        </channel>
+      </rdf:RDF>`;
+
+    const feed = parse(xml);
+    assert.ok(feed.feed.syndication);
+    assert.strictEqual(feed.feed.syndication.updatePeriod, 'weekly');
+    assert.strictEqual(feed.feed.syndication.updateFrequency, undefined);
+    assert.strictEqual(feed.feed.syndication.updateBase, undefined);
+  });
 });
