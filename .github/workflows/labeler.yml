@@ -29,7 +29,7 @@ jobs:
           sync-labels: false  # Don't remove labels
 
       - name: Add size label
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
