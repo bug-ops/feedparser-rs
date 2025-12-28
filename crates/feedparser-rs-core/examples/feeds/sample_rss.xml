@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Example Tech Blog</title>
+    <link>https://example.com/blog</link>
+    <description>Latest articles about technology and programming</description>
+    <language>en-us</language>
+    <pubDate>Sat, 28 Dec 2024 12:00:00 GMT</pubDate>
+    <lastBuildDate>Sat, 28 Dec 2024 12:00:00 GMT</lastBuildDate>
+    <atom:link href="https://example.com/blog/feed.xml" rel="self" type="application/rss+xml"/>
+
+    <item>
+      <title>Getting Started with Rust</title>
+      <link>https://example.com/blog/rust-intro</link>
+      <guid isPermaLink="true">https://example.com/blog/rust-intro</guid>
+      <description>Learn the basics of Rust programming language</description>
+      <pubDate>Sat, 28 Dec 2024 10:00:00 GMT</pubDate>
+      <author>john@example.com (John Doe)</author>
+      <category>Programming</category>
+      <category>Rust</category>
+    </item>
+
+    <item>
+      <title>Web Performance Optimization</title>
+      <link>https://example.com/blog/web-perf</link>
+      <guid isPermaLink="true">https://example.com/blog/web-perf</guid>
+      <description>Tips for making your website faster</description>
+      <pubDate>Fri, 27 Dec 2024 14:30:00 GMT</pubDate>
+      <author>jane@example.com (Jane Smith)</author>
+      <category>Web Development</category>
+      <enclosure url="https://example.com/media/web-perf.mp3" length="8459954" type="audio/mpeg"/>
+    </item>
+
+    <item>
+      <title>Database Design Patterns</title>
+      <link>https://example.com/blog/db-patterns</link>
+      <guid isPermaLink="false">db-patterns-2024</guid>
+      <description>Common patterns for designing scalable databases</description>
+      <pubDate>Thu, 26 Dec 2024 09:15:00 GMT</pubDate>
+      <author>bob@example.com (Bob Wilson)</author>
+      <category>Databases</category>
+    </item>
+  </channel>
+</rss>

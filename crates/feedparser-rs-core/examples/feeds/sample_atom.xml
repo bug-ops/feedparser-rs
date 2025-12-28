@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Science Feed</title>
+  <link href="https://example.com/science"/>
+  <link rel="self" href="https://example.com/science/atom.xml"/>
+  <updated>2024-12-28T12:00:00Z</updated>
+  <id>https://example.com/science</id>
+  <author>
+    <name>Dr. Alice Cooper</name>
+    <email>alice@example.com</email>
+    <uri>https://example.com/authors/alice</uri>
+  </author>
+  <subtitle>Latest discoveries in science and technology</subtitle>
+
+  <entry>
+    <title>Quantum Computing Breakthrough</title>
+    <link href="https://example.com/science/quantum-2024"/>
+    <id>https://example.com/science/quantum-2024</id>
+    <updated>2024-12-28T10:00:00Z</updated>
+    <published>2024-12-28T10:00:00Z</published>
+    <author>
+      <name>Dr. Alice Cooper</name>
+      <email>alice@example.com</email>
+    </author>
+    <summary>New advances in quantum error correction</summary>
+    <content type="html">
+      &lt;p&gt;Researchers have made significant progress in quantum error correction,
+      bringing us closer to practical quantum computers.&lt;/p&gt;
+    </content>
+    <category term="Quantum Physics"/>
+    <category term="Computing"/>
+  </entry>
+
+  <entry>
+    <title>Climate Change Impact Study</title>
+    <link href="https://example.com/science/climate-study"/>
+    <id>https://example.com/science/climate-study</id>
+    <updated>2024-12-27T15:30:00Z</updated>
+    <published>2024-12-27T15:30:00Z</published>
+    <author>
+      <name>Dr. Bob Zhang</name>
+      <email>bob@example.com</email>
+    </author>
+    <summary>Long-term effects on coastal ecosystems</summary>
+    <content type="text">
+      New research shows accelerating changes in coastal ecosystems due to rising temperatures.
+    </content>
+    <category term="Climate Science"/>
+    <category term="Ecology"/>
+  </entry>
+</feed>

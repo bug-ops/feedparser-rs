@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"
+     xmlns:podcast="https://podcastindex.org/namespace/1.0"
+     xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Tech Talk Podcast</title>
+    <link>https://example.com/podcast</link>
+    <description>Weekly discussions about technology and programming</description>
+    <language>en</language>
+    <atom:link href="https://example.com/podcast/feed.xml" rel="self" type="application/rss+xml"/>
+
+    <itunes:author>Alex Johnson</itunes:author>
+    <itunes:summary>Weekly discussions about technology and programming</itunes:summary>
+    <itunes:owner>
+      <itunes:name>Alex Johnson</itunes:name>
+      <itunes:email>alex@example.com</itunes:email>
+    </itunes:owner>
+    <itunes:explicit>no</itunes:explicit>
+    <itunes:image href="https://example.com/podcast/artwork.jpg"/>
+    <itunes:category text="Technology">
+      <itunes:category text="Software How-To"/>
+    </itunes:category>
+
+    <podcast:funding url="https://example.com/support">Support the show</podcast:funding>
+    <podcast:person role="host" img="https://example.com/alex.jpg">Alex Johnson</podcast:person>
+
+    <item>
+      <title>Episode 42: The Future of Rust</title>
+      <link>https://example.com/podcast/ep42</link>
+      <guid isPermaLink="true">https://example.com/podcast/ep42</guid>
+      <description>Discussing the upcoming features in Rust 2024 edition</description>
+      <pubDate>Sat, 28 Dec 2024 08:00:00 GMT</pubDate>
+      <enclosure url="https://example.com/podcast/ep42.mp3" length="45678912" type="audio/mpeg"/>
+
+      <itunes:author>Alex Johnson</itunes:author>
+      <itunes:subtitle>Rust 2024 edition preview</itunes:subtitle>
+      <itunes:summary>Discussing the upcoming features in Rust 2024 edition</itunes:summary>
+      <itunes:duration>3600</itunes:duration>
+      <itunes:explicit>no</itunes:explicit>
+      <itunes:episode>42</itunes:episode>
+      <itunes:episodeType>full</itunes:episodeType>
+
+      <podcast:transcript url="https://example.com/podcast/ep42.vtt" type="application/x-subrip"/>
+      <podcast:chapters url="https://example.com/podcast/ep42.json" type="application/json+chapters"/>
+      <podcast:soundbite startTime="120.5" duration="45.0">Best quote from the episode</podcast:soundbite>
+      <podcast:person role="guest" img="https://example.com/guest.jpg">Jane Developer</podcast:person>
+    </item>
+
+    <item>
+      <title>Episode 41: Web Assembly Deep Dive</title>
+      <link>https://example.com/podcast/ep41</link>
+      <guid isPermaLink="true">https://example.com/podcast/ep41</guid>
+      <description>Everything you need to know about WebAssembly</description>
+      <pubDate>Sat, 21 Dec 2024 08:00:00 GMT</pubDate>
+      <enclosure url="https://example.com/podcast/ep41.mp3" length="38945612" type="audio/mpeg"/>
+
+      <itunes:author>Alex Johnson</itunes:author>
+      <itunes:subtitle>Understanding WebAssembly</itunes:subtitle>
+      <itunes:summary>Everything you need to know about WebAssembly</itunes:summary>
+      <itunes:duration>2700</itunes:duration>
+      <itunes:explicit>no</itunes:explicit>
+      <itunes:episode>41</itunes:episode>
+      <itunes:episodeType>full</itunes:episodeType>
+    </item>
+  </channel>
+</rss>
