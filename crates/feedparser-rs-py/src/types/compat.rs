@@ -1,3 +1,4 @@
+use once_cell::sync::Lazy;
 /// Python feedparser backward compatibility field mappings.
 ///
 /// This module provides field alias mappings for deprecated Python feedparser field names.
@@ -6,7 +7,6 @@
 /// Example: `feed.description` → `feed.subtitle`
 ///          `entry.guid` → `entry.id`
 use std::collections::HashMap;
-use once_cell::sync::Lazy;
 
 /// Feed-level field mappings: old name → list of new names (tried in order).
 ///
@@ -17,7 +17,10 @@ pub static FEED_FIELD_MAP: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy
 
     // Description aliases
     map.insert("description", vec!["subtitle", "summary"]);
-    map.insert("description_detail", vec!["subtitle_detail", "summary_detail"]);
+    map.insert(
+        "description_detail",
+        vec!["subtitle_detail", "summary_detail"],
+    );
 
     // Tagline aliases (old Atom 0.3 field)
     map.insert("tagline", vec!["subtitle"]);

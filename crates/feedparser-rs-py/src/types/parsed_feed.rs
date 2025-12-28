@@ -1,6 +1,6 @@
 use feedparser_rs::ParsedFeed as CoreParsedFeed;
+use pyo3::exceptions::{PyAttributeError, PyKeyError};
 use pyo3::prelude::*;
-use pyo3::exceptions::PyAttributeError;
 use pyo3::types::PyDict;
 
 use super::compat::CONTAINER_FIELD_MAP;
@@ -158,7 +158,7 @@ impl PyParsedFeed {
                 "feed" => {
                     // Convert Py<PyFeedMeta> to Py<PyAny>
                     Ok(self.feed.clone_ref(py).into())
-                },
+                }
                 "entries" => {
                     // Convert Vec<Py<PyEntry>> to Py<PyAny> (as Python list)
                     let entries: Vec<_> = self.entries.iter().map(|e| e.clone_ref(py)).collect();
@@ -166,7 +166,7 @@ impl PyParsedFeed {
                         Ok(list) => Ok(list.unbind()),
                         Err(e) => Err(e),
                     }
-                },
+                }
                 _ => Err(PyAttributeError::new_err(format!(
                     "'FeedParserDict' object has no attribute '{}'",
                     name
@@ -178,6 +178,79 @@ impl PyParsedFeed {
                 "'FeedParserDict' object has no attribute '{}'",
                 name
             )))
+        }
+    }
+
+    /// Provides dict-style access to fields for Python feedparser compatibility.
+    ///
+    /// Supports both modern field names and deprecated aliases:
+    /// - `d['feed']` → feed metadata
+    /// - `d['entries']` → list of entries
+    /// - `d['channel']` → feed (deprecated alias)
+    /// - `d['items']` → entries (deprecated alias)
+    /// - `d['version']`, `d['bozo']`, etc. → top-level fields
+    ///
+    /// This method is called by Python when using dict-style access: `d[key]`.
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
+        // Check for known fields first
+        match key {
+            "feed" => Ok(self.feed.clone_ref(py).into()),
+            "entries" => {
+                let entries: Vec<_> = self.entries.iter().map(|e| e.clone_ref(py)).collect();
+                Ok(entries.into_pyobject(py)?.into_any().unbind())
+            }
+            "bozo" => {
+                let pybozo = self.bozo.into_pyobject(py)?.to_owned();
+                Ok(pybozo.into_any().unbind())
+            }
+            "bozo_exception" => Ok(self
+                .bozo_exception
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "encoding" => Ok(self
+                .encoding
+                .as_str()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "version" => Ok(self.version.as_str().into_pyobject(py)?.into_any().unbind()),
+            "namespaces" => Ok(self.namespaces.clone_ref(py).into()),
+            "status" => Ok(self.status.into_pyobject(py)?.into_any().unbind()),
+            "href" => Ok(self.href.as_deref().into_pyobject(py)?.into_any().unbind()),
+            "etag" => Ok(self.etag.as_deref().into_pyobject(py)?.into_any().unbind()),
+            "modified" => Ok(self
+                .modified
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            #[cfg(feature = "http")]
+            "headers" => {
+                if let Some(ref headers) = self.headers {
+                    Ok(headers.clone_ref(py).into())
+                } else {
+                    Ok(py.None().into_pyobject(py)?.into_any().unbind())
+                }
+            }
+            // Check for deprecated container name aliases
+            _ => {
+                if let Some(new_name) = CONTAINER_FIELD_MAP.get(key) {
+                    match *new_name {
+                        "feed" => Ok(self.feed.clone_ref(py).into()),
+                        "entries" => {
+                            let entries: Vec<_> =
+                                self.entries.iter().map(|e| e.clone_ref(py)).collect();
+                            Ok(entries.into_pyobject(py)?.into_any().unbind())
+                        }
+                        _ => Err(PyKeyError::new_err(format!("'{}'", key))),
+                    }
+                } else {
+                    // Field not found - raise KeyError
+                    Err(PyKeyError::new_err(format!("'{}'", key)))
+                }
+            }
         }
     }
 }
