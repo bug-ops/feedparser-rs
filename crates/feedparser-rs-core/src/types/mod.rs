@@ -15,6 +15,6 @@ pub use generics::{FromAttributes, LimitedCollectionExt, ParseFrom};
 pub use podcast::{
     ItunesCategory, ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, PodcastChapters,
     PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
-    PodcastTranscript, parse_duration, parse_explicit,
+    PodcastTranscript, PodcastValue, PodcastValueRecipient, parse_duration, parse_explicit,
 };
 pub use version::FeedVersion;

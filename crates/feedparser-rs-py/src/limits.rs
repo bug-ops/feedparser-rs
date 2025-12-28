@@ -129,6 +129,7 @@ impl PyParserLimits {
             max_podcast_transcripts: 20,       // Use default
             max_podcast_funding: 20,           // Use default
             max_podcast_persons: 50,           // Use default
+            max_value_recipients: 20,          // Use default
         }
     }
 }

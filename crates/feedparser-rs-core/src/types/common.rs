@@ -284,6 +284,11 @@ pub struct Source {
 #[derive(Debug, Clone)]
 pub struct MediaThumbnail {
     /// Thumbnail URL
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub url: String,
     /// Thumbnail width in pixels
     pub width: Option<u32>,
@@ -295,6 +300,11 @@ pub struct MediaThumbnail {
 #[derive(Debug, Clone)]
 pub struct MediaContent {
     /// Media URL
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub url: String,
     /// MIME type
     pub content_type: Option<String>,
