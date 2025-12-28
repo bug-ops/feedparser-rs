@@ -6,9 +6,9 @@ use crate::{
     namespace::{content, dublin_core, media_rss},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
-        ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastFunding, PodcastMeta,
-        PodcastPerson, PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration,
-        parse_explicit,
+        ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastChapters,
+        PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
+        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
@@ -405,6 +405,18 @@ fn parse_channel_itunes(
         let itunes = feed.feed.itunes.get_or_insert_with(ItunesFeedMeta::default);
         itunes.podcast_type = Some(text);
         Ok(true)
+    } else if is_itunes_tag(tag, b"complete") {
+        let text = read_text(reader, buf, limits)?;
+        let itunes = feed.feed.itunes.get_or_insert_with(ItunesFeedMeta::default);
+        itunes.complete = Some(text.trim().eq_ignore_ascii_case("Yes"));
+        Ok(true)
+    } else if is_itunes_tag(tag, b"new-feed-url") {
+        let text = read_text(reader, buf, limits)?;
+        if !text.is_empty() {
+            let itunes = feed.feed.itunes.get_or_insert_with(ItunesFeedMeta::default);
+            itunes.new_feed_url = Some(text.trim().to_string());
+        }
+        Ok(true)
     } else {
         Ok(false)
     }
@@ -505,7 +517,9 @@ fn parse_channel_podcast(
             Some(message_text)
         };
         let podcast = feed.feed.podcast.get_or_insert_with(PodcastMeta::default);
-        podcast.funding.push(PodcastFunding { url, message });
+        podcast
+            .funding
+            .try_push_limited(PodcastFunding { url, message }, limits.max_podcast_funding);
         Ok(true)
     } else {
         Ok(false)
@@ -787,6 +801,12 @@ fn parse_item_podcast(
     } else if tag.starts_with(b"podcast:person") {
         parse_podcast_person(reader, buf, attrs, entry, limits)?;
         Ok(true)
+    } else if tag.starts_with(b"podcast:chapters") {
+        parse_podcast_chapters(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:soundbite") {
+        parse_podcast_soundbite(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        Ok(true)
     } else {
         Ok(false)
     }
@@ -816,12 +836,15 @@ fn parse_podcast_transcript(
         find_attribute(attrs, b"rel").map(|v| truncate_to_length(v, limits.max_attribute_length));
 
     if !url.is_empty() {
-        entry.podcast_transcripts.push(PodcastTranscript {
-            url,
-            transcript_type,
-            language,
-            rel,
-        });
+        entry.podcast_transcripts.try_push_limited(
+            PodcastTranscript {
+                url,
+                transcript_type,
+                language,
+                rel,
+            },
+            limits.max_podcast_transcripts,
+        );
     }
 
     if !is_empty {
@@ -850,13 +873,82 @@ fn parse_podcast_person(
 
     let name = read_text(reader, buf, limits)?;
     if !name.is_empty() {
-        entry.podcast_persons.push(PodcastPerson {
-            name,
-            role,
-            group,
-            img,
-            href,
-        });
+        entry.podcast_persons.try_push_limited(
+            PodcastPerson {
+                name,
+                role,
+                group,
+                img,
+                href,
+            },
+            limits.max_podcast_persons,
+        );
+    }
+
+    Ok(())
+}
+
+/// Parse Podcast 2.0 chapters element
+fn parse_podcast_chapters(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    is_empty: bool,
+    depth: usize,
+) -> Result<()> {
+    let url = find_attribute(attrs, b"url")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    let type_ = find_attribute(attrs, b"type")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+
+    if !url.is_empty() {
+        let podcast = entry.podcast.get_or_insert_with(PodcastEntryMeta::default);
+        podcast.chapters = Some(PodcastChapters { url, type_ });
+    }
+
+    if !is_empty {
+        skip_element(reader, buf, limits, depth)?;
+    }
+
+    Ok(())
+}
+
+/// Parse Podcast 2.0 soundbite element
+fn parse_podcast_soundbite(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    is_empty: bool,
+    depth: usize,
+) -> Result<()> {
+    let start_time = find_attribute(attrs, b"startTime").and_then(|v| v.parse::<f64>().ok());
+    let duration = find_attribute(attrs, b"duration").and_then(|v| v.parse::<f64>().ok());
+
+    if let (Some(start_time), Some(duration)) = (start_time, duration) {
+        let title = if is_empty {
+            None
+        } else {
+            let text = read_text(reader, buf, limits)?;
+            if text.is_empty() { None } else { Some(text) }
+        };
+
+        let podcast = entry.podcast.get_or_insert_with(PodcastEntryMeta::default);
+        podcast.soundbite.try_push_limited(
+            PodcastSoundbite {
+                start_time,
+                duration,
+                title,
+            },
+            limits.max_podcast_soundbites,
+        );
+    } else if !is_empty {
+        skip_element(reader, buf, limits, depth)?;
     }
 
     Ok(())

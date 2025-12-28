@@ -107,6 +107,34 @@ pub struct ParserLimits {
     ///
     /// Default: 64 KB
     pub max_attribute_length: usize,
+
+    /// Maximum number of podcast soundbites per entry
+    ///
+    /// Podcast 2.0 soundbite elements for shareable clips.
+    ///
+    /// Default: 10 soundbites
+    pub max_podcast_soundbites: usize,
+
+    /// Maximum number of podcast transcripts per entry
+    ///
+    /// Podcast 2.0 transcript elements.
+    ///
+    /// Default: 20 transcripts
+    pub max_podcast_transcripts: usize,
+
+    /// Maximum number of podcast funding elements per feed
+    ///
+    /// Podcast 2.0 funding elements for donation links.
+    ///
+    /// Default: 20 funding elements
+    pub max_podcast_funding: usize,
+
+    /// Maximum number of podcast person elements per entry
+    ///
+    /// Podcast 2.0 person elements for hosts, guests, etc.
+    ///
+    /// Default: 50 persons
+    pub max_podcast_persons: usize,
 }
 
 impl Default for ParserLimits {
@@ -129,6 +157,10 @@ impl Default for ParserLimits {
             max_text_length: 10 * 1024 * 1024,      // 10 MB
             max_feed_size_bytes: 100 * 1024 * 1024, // 100 MB
             max_attribute_length: 64 * 1024,        // 64 KB
+            max_podcast_soundbites: 10,
+            max_podcast_transcripts: 20,
+            max_podcast_funding: 20,
+            max_podcast_persons: 50,
         }
     }
 }
@@ -163,6 +195,10 @@ impl ParserLimits {
             max_text_length: 1024 * 1024,          // 1 MB
             max_feed_size_bytes: 10 * 1024 * 1024, // 10 MB
             max_attribute_length: 8 * 1024,        // 8 KB
+            max_podcast_soundbites: 5,
+            max_podcast_transcripts: 5,
+            max_podcast_funding: 5,
+            max_podcast_persons: 10,
         }
     }
 
@@ -195,6 +231,10 @@ impl ParserLimits {
             max_text_length: 50 * 1024 * 1024,      // 50 MB
             max_feed_size_bytes: 500 * 1024 * 1024, // 500 MB
             max_attribute_length: 256 * 1024,       // 256 KB
+            max_podcast_soundbites: 50,
+            max_podcast_transcripts: 100,
+            max_podcast_funding: 50,
+            max_podcast_persons: 200,
         }
     }
 

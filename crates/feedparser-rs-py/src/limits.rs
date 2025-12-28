@@ -125,6 +125,10 @@ impl PyParserLimits {
             max_nesting_depth: 100,            // Use default
             max_text_length: 10 * 1024 * 1024, // 10 MB
             max_attribute_length: 64 * 1024,   // 64 KB
+            max_podcast_soundbites: 10,        // Use default
+            max_podcast_transcripts: 20,       // Use default
+            max_podcast_funding: 20,           // Use default
+            max_podcast_persons: 50,           // Use default
         }
     }
 }

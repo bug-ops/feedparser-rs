@@ -31,6 +31,20 @@ pub struct ItunesFeedMeta {
     pub keywords: Vec<String>,
     /// Podcast type: "episodic" or "serial"
     pub podcast_type: Option<String>,
+    /// Podcast completion status (itunes:complete)
+    ///
+    /// Set to true if podcast is complete and no new episodes will be published.
+    /// Value is "Yes" in the feed for true.
+    pub complete: Option<bool>,
+    /// New feed URL for migrated podcasts (itunes:new-feed-url)
+    ///
+    /// Indicates the podcast has moved to a new feed location.
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
+    pub new_feed_url: Option<String>,
 }
 
 /// iTunes podcast metadata for episodes
@@ -164,9 +178,14 @@ pub struct PodcastMeta {
 ///
 /// assert_eq!(transcript.url, "https://example.com/transcript.txt");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PodcastTranscript {
     /// Transcript URL (url attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub url: String,
     /// MIME type (type attribute): "text/plain", "text/html", "application/json", etc.
     pub transcript_type: Option<String>,
@@ -195,6 +214,11 @@ pub struct PodcastTranscript {
 #[derive(Debug, Clone)]
 pub struct PodcastFunding {
     /// Funding URL (url attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub url: String,
     /// Optional message/call-to-action (text content)
     pub message: Option<String>,
@@ -220,7 +244,7 @@ pub struct PodcastFunding {
 /// assert_eq!(host.name, "John Doe");
 /// assert_eq!(host.role.as_deref(), Some("host"));
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PodcastPerson {
     /// Person's name (text content)
     pub name: String,
@@ -229,9 +253,105 @@ pub struct PodcastPerson {
     /// Group name (group attribute)
     pub group: Option<String>,
     /// Image URL (img attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub img: Option<String>,
     /// Personal URL/homepage (href attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub href: Option<String>,
+}
+
+/// Podcast 2.0 chapters information
+///
+/// Links to chapter markers for time-based navigation within an episode.
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::PodcastChapters;
+///
+/// let chapters = PodcastChapters {
+///     url: "https://example.com/chapters.json".to_string(),
+///     type_: "application/json+chapters".to_string(),
+/// };
+///
+/// assert_eq!(chapters.url, "https://example.com/chapters.json");
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastChapters {
+    /// Chapters file URL (url attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
+    pub url: String,
+    /// MIME type (type attribute): "application/json+chapters" or "application/xml+chapters"
+    pub type_: String,
+}
+
+/// Podcast 2.0 soundbite (shareable clip)
+///
+/// Marks a portion of the audio for social sharing or highlights.
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::PodcastSoundbite;
+///
+/// let soundbite = PodcastSoundbite {
+///     start_time: 120.5,
+///     duration: 30.0,
+///     title: Some("Great quote".to_string()),
+/// };
+///
+/// assert_eq!(soundbite.start_time, 120.5);
+/// assert_eq!(soundbite.duration, 30.0);
+/// ```
+#[derive(Debug, Clone, Default, PartialEq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+pub struct PodcastSoundbite {
+    /// Start time in seconds (startTime attribute)
+    pub start_time: f64,
+    /// Duration in seconds (duration attribute)
+    pub duration: f64,
+    /// Optional title/description (text content)
+    pub title: Option<String>,
+}
+
+/// Podcast 2.0 metadata for episodes
+///
+/// Container for entry-level podcast metadata.
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::PodcastEntryMeta;
+///
+/// let mut podcast = PodcastEntryMeta::default();
+/// assert!(podcast.transcript.is_empty());
+/// assert!(podcast.chapters.is_none());
+/// assert!(podcast.soundbite.is_empty());
+/// ```
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PodcastEntryMeta {
+    /// Transcript URLs (podcast:transcript)
+    pub transcript: Vec<PodcastTranscript>,
+    /// Chapter markers (podcast:chapters)
+    pub chapters: Option<PodcastChapters>,
+    /// Shareable soundbites (podcast:soundbite)
+    pub soundbite: Vec<PodcastSoundbite>,
+    /// People associated with this episode (podcast:person)
+    pub person: Vec<PodcastPerson>,
 }
 
 /// Parse duration from various iTunes duration formats
@@ -264,21 +384,21 @@ pub fn parse_duration(s: &str) -> Option<u32> {
         return Some(secs);
     }
 
-    // Parse HH:MM:SS or MM:SS format
-    let parts: Vec<&str> = s.split(':').collect();
-    match parts.len() {
-        1 => s.parse().ok(),
-        2 => {
+    // Parse HH:MM:SS or MM:SS format using iterator pattern matching
+    let mut parts = s.split(':');
+    match (parts.next(), parts.next(), parts.next(), parts.next()) {
+        (Some(first), None, None, None) => first.parse().ok(),
+        (Some(min), Some(sec), None, None) => {
             // MM:SS
-            let min = parts[0].parse::<u32>().ok()?;
-            let sec = parts[1].parse::<u32>().ok()?;
+            let min = min.parse::<u32>().ok()?;
+            let sec = sec.parse::<u32>().ok()?;
             Some(min * 60 + sec)
         }
-        3 => {
+        (Some(hr), Some(min), Some(sec), None) => {
             // HH:MM:SS
-            let hr = parts[0].parse::<u32>().ok()?;
-            let min = parts[1].parse::<u32>().ok()?;
-            let sec = parts[2].parse::<u32>().ok()?;
+            let hr = hr.parse::<u32>().ok()?;
+            let min = min.parse::<u32>().ok()?;
+            let sec = sec.parse::<u32>().ok()?;
             Some(hr * 3600 + min * 60 + sec)
         }
         _ => None,
@@ -315,10 +435,19 @@ pub fn parse_duration(s: &str) -> Option<u32> {
 /// assert_eq!(parse_explicit("unknown"), None);
 /// ```
 pub fn parse_explicit(s: &str) -> Option<bool> {
-    match s.trim().to_lowercase().as_str() {
-        "yes" | "true" | "explicit" => Some(true),
-        "no" | "false" | "clean" => Some(false),
-        _ => None,
+    let s = s.trim();
+    if s.eq_ignore_ascii_case("yes")
+        || s.eq_ignore_ascii_case("true")
+        || s.eq_ignore_ascii_case("explicit")
+    {
+        Some(true)
+    } else if s.eq_ignore_ascii_case("no")
+        || s.eq_ignore_ascii_case("false")
+        || s.eq_ignore_ascii_case("clean")
+    {
+        Some(false)
+    } else {
+        None
     }
 }
 
@@ -409,6 +538,8 @@ mod tests {
         assert!(meta.image.is_none());
         assert!(meta.keywords.is_empty());
         assert!(meta.podcast_type.is_none());
+        assert!(meta.complete.is_none());
+        assert!(meta.new_feed_url.is_none());
     }
 
     #[test]
@@ -491,5 +622,68 @@ mod tests {
         let cloned = person.clone();
         assert_eq!(cloned.name, "John Doe");
         assert_eq!(cloned.role.as_deref(), Some("host"));
+    }
+
+    #[test]
+    fn test_podcast_chapters_default() {
+        let chapters = PodcastChapters::default();
+        assert!(chapters.url.is_empty());
+        assert!(chapters.type_.is_empty());
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_podcast_chapters_clone() {
+        let chapters = PodcastChapters {
+            url: "https://example.com/chapters.json".to_string(),
+            type_: "application/json+chapters".to_string(),
+        };
+        let cloned = chapters.clone();
+        assert_eq!(cloned.url, "https://example.com/chapters.json");
+        assert_eq!(cloned.type_, "application/json+chapters");
+    }
+
+    #[test]
+    fn test_podcast_soundbite_default() {
+        let soundbite = PodcastSoundbite::default();
+        assert_eq!(soundbite.start_time, 0.0);
+        assert_eq!(soundbite.duration, 0.0);
+        assert!(soundbite.title.is_none());
+    }
+
+    #[test]
+    #[allow(clippy::redundant_clone)]
+    fn test_podcast_soundbite_clone() {
+        let soundbite = PodcastSoundbite {
+            start_time: 120.5,
+            duration: 30.0,
+            title: Some("Great quote".to_string()),
+        };
+        let cloned = soundbite.clone();
+        assert_eq!(cloned.start_time, 120.5);
+        assert_eq!(cloned.duration, 30.0);
+        assert_eq!(cloned.title.as_deref(), Some("Great quote"));
+    }
+
+    #[test]
+    fn test_podcast_entry_meta_default() {
+        let meta = PodcastEntryMeta::default();
+        assert!(meta.transcript.is_empty());
+        assert!(meta.chapters.is_none());
+        assert!(meta.soundbite.is_empty());
+        assert!(meta.person.is_empty());
+    }
+
+    #[test]
+    fn test_itunes_feed_meta_new_fields() {
+        let mut meta = ItunesFeedMeta::default();
+        meta.complete = Some(true);
+        meta.new_feed_url = Some("https://example.com/new-feed.xml".to_string());
+
+        assert_eq!(meta.complete, Some(true));
+        assert_eq!(
+            meta.new_feed_url.as_deref(),
+            Some("https://example.com/new-feed.xml")
+        );
     }
 }

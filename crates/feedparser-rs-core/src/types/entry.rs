@@ -3,7 +3,7 @@ use super::{
         Content, Enclosure, Link, MediaContent, MediaThumbnail, Person, Source, Tag, TextConstruct,
     },
     generics::LimitedCollectionExt,
-    podcast::{ItunesEntryMeta, PodcastPerson, PodcastTranscript},
+    podcast::{ItunesEntryMeta, PodcastEntryMeta, PodcastPerson, PodcastTranscript},
 };
 use chrono::{DateTime, Utc};
 
@@ -72,6 +72,8 @@ pub struct Entry {
     pub podcast_transcripts: Vec<PodcastTranscript>,
     /// Podcast 2.0 persons for this episode (hosts, guests, etc.)
     pub podcast_persons: Vec<PodcastPerson>,
+    /// Podcast 2.0 episode metadata
+    pub podcast: Option<PodcastEntryMeta>,
     /// `GeoRSS` location data
     pub geo: Option<crate::namespace::georss::GeoLocation>,
     /// License URL (Creative Commons, etc.)
