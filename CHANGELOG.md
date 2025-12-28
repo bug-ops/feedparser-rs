@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Python feedparser compatibility improvements**:
+  - Field alias mappings for deprecated field names (`description` → `subtitle`, `guid` → `id`, etc.)
+  - Dict-style access on feed objects (`d['feed']['title']`, `d['entries'][0]['link']`)
+  - Container aliases (`channel` → `feed`, `items` → `entries`)
+  - Auto-URL detection in `parse()` function (URLs are automatically fetched when http feature enabled)
+  - Optional HTTP parameters (`etag`, `modified`, `user_agent`) for `parse()` and `parse_with_limits()`
+
+### Changed
+- `parse_with_limits()` now uses keyword-only `limits` parameter for consistency
+
 ## [0.3.0] - 2025-12-18
 
 ### Added

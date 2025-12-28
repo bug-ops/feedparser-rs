@@ -18,7 +18,7 @@ High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node
 - **Conditional GET** — ETag/Last-Modified support for bandwidth-efficient polling
 - **Podcast support** — iTunes and Podcast 2.0 namespace extensions
 - **Multi-language bindings** — Native Python (PyO3) and Node.js (napi-rs) bindings
-- **Familiar API** — Inspired by Python's feedparser, easy to migrate existing code
+- **feedparser drop-in** — Dict-style access, field aliases, same API patterns as Python feedparser
 
 ## Supported Formats
 
@@ -146,18 +146,28 @@ See [Node.js API documentation](crates/feedparser-rs-node/README.md) for complet
 ### Python
 
 ```python
-import feedparser_rs
+import feedparser_rs as feedparser  # Drop-in replacement
 
-# Parse from bytes or string
-d = feedparser_rs.parse(b'<rss>...</rss>')
+# Parse from bytes, string, or URL (auto-detected)
+d = feedparser.parse(b'<rss>...</rss>')
+d = feedparser.parse('https://example.com/feed.xml')  # URL auto-detected
+
+# Attribute-style access
 print(d.version)       # 'rss20'
 print(d.feed.title)
 print(d.bozo)          # True if parsing had issues
-print(d.entries[0].published_parsed)  # time.struct_time
+
+# Dict-style access (feedparser-compatible)
+print(d['feed']['title'])
+print(d['entries'][0]['link'])
+
+# Deprecated field aliases work
+print(d.feed.description)  # → d.feed.subtitle
+print(d.channel.title)     # → d.feed.title
 ```
 
 > [!NOTE]
-> Python bindings provide `time.struct_time` for date fields, matching feedparser's API for easy migration.
+> Python bindings provide full feedparser compatibility: dict-style access, field aliases, and `time.struct_time` for date fields.
 
 ## Cargo Features
 
