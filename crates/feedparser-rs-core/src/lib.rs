@@ -68,10 +68,10 @@ pub use options::ParseOptions;
 pub use parser::{detect_format, parse, parse_with_limits};
 pub use types::{
     Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
-    ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link, ParsedFeed, Person,
-    PodcastChapters, PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson,
-    PodcastSoundbite, PodcastTranscript, PodcastValue, PodcastValueRecipient, Source, Tag,
-    TextConstruct, TextType, parse_duration, parse_explicit,
+    ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link, MediaContent,
+    MediaThumbnail, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta, PodcastFunding,
+    PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, PodcastValue,
+    PodcastValueRecipient, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
 };
 
 pub use namespace::syndication::{SyndicationMeta, UpdatePeriod};

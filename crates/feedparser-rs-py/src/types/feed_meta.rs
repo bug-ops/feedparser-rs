@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 
 use super::common::{PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct};
 use super::datetime::optional_datetime_to_struct_time;
+use super::geo::PyGeoLocation;
 use super::podcast::{PyItunesFeedMeta, PyPodcastMeta};
 use super::syndication::PySyndicationMeta;
 
@@ -234,6 +235,14 @@ impl PyFeedMeta {
     #[getter]
     fn dc_rights(&self) -> Option<&str> {
         self.inner.dc_rights.as_deref()
+    }
+
+    #[getter]
+    fn geo(&self) -> Option<PyGeoLocation> {
+        self.inner
+            .geo
+            .as_ref()
+            .map(|g| PyGeoLocation::from_core(g.clone()))
     }
 
     fn __repr__(&self) -> String {

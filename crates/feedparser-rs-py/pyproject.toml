@@ -34,3 +34,8 @@ Repository = "https://github.com/bug-ops/feedparser-rs"
 features = ["pyo3/extension-module"]
 python-source = "python"
 module-name = "feedparser_rs._feedparser_rs"
+
+[dependency-groups]
+dev = [
+    "pytest<9",
+]

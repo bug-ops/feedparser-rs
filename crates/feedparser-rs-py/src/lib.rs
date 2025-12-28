@@ -22,6 +22,20 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(detect_format, m)?)?;
     m.add_class::<PyParsedFeed>()?;
     m.add_class::<PyParserLimits>()?;
+    m.add_class::<types::geo::PyGeoLocation>()?;
+    m.add_class::<types::media::PyMediaThumbnail>()?;
+    m.add_class::<types::media::PyMediaContent>()?;
+    m.add_class::<types::podcast::PyItunesFeedMeta>()?;
+    m.add_class::<types::podcast::PyItunesEntryMeta>()?;
+    m.add_class::<types::podcast::PyItunesOwner>()?;
+    m.add_class::<types::podcast::PyItunesCategory>()?;
+    m.add_class::<types::podcast::PyPodcastMeta>()?;
+    m.add_class::<types::podcast::PyPodcastTranscript>()?;
+    m.add_class::<types::podcast::PyPodcastFunding>()?;
+    m.add_class::<types::podcast::PyPodcastPerson>()?;
+    m.add_class::<types::podcast::PyPodcastChapters>()?;
+    m.add_class::<types::podcast::PyPodcastSoundbite>()?;
+    m.add_class::<types::podcast::PyPodcastEntryMeta>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

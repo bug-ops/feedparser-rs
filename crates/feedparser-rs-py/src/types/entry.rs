@@ -3,7 +3,9 @@ use pyo3::prelude::*;
 
 use super::common::{PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct};
 use super::datetime::optional_datetime_to_struct_time;
-use super::podcast::{PyItunesEntryMeta, PyPodcastPerson, PyPodcastTranscript};
+use super::geo::PyGeoLocation;
+use super::media::{PyMediaContent, PyMediaThumbnail};
+use super::podcast::{PyItunesEntryMeta, PyPodcastEntryMeta, PyPodcastPerson, PyPodcastTranscript};
 
 #[pyclass(name = "Entry", module = "feedparser_rs")]
 #[derive(Clone)]
@@ -196,6 +198,13 @@ impl PyEntry {
             .map(|i| PyItunesEntryMeta::from_core(i.clone()))
     }
 
+    /// Returns podcast transcripts for this entry.
+    ///
+    /// Dual access pattern for feedparser compatibility:
+    /// - `entry.podcast_transcripts` - Direct access (this method)
+    /// - `entry.podcast.transcript` - Nested access via PodcastEntryMeta
+    ///
+    /// Both provide the same data. Use whichever pattern matches your code style.
     #[getter]
     fn podcast_transcripts(&self) -> Vec<PyPodcastTranscript> {
         self.inner
@@ -205,6 +214,13 @@ impl PyEntry {
             .collect()
     }
 
+    /// Returns podcast persons for this entry.
+    ///
+    /// Dual access pattern for feedparser compatibility:
+    /// - `entry.podcast_persons` - Direct access (this method)
+    /// - `entry.podcast.person` - Nested access via PodcastEntryMeta
+    ///
+    /// Both provide the same data. Use whichever pattern matches your code style.
     #[getter]
     fn podcast_persons(&self) -> Vec<PyPodcastPerson> {
         self.inner
@@ -217,6 +233,65 @@ impl PyEntry {
     #[getter]
     fn license(&self) -> Option<&str> {
         self.inner.license.as_deref()
+    }
+
+    #[getter]
+    fn geo(&self) -> Option<PyGeoLocation> {
+        self.inner
+            .geo
+            .as_ref()
+            .map(|g| PyGeoLocation::from_core(g.clone()))
+    }
+
+    #[getter]
+    fn dc_creator(&self) -> Option<&str> {
+        self.inner.dc_creator.as_deref()
+    }
+
+    #[getter]
+    fn dc_date(&self) -> Option<String> {
+        self.inner.dc_date.map(|dt| dt.to_rfc3339())
+    }
+
+    #[getter]
+    fn dc_date_parsed(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        optional_datetime_to_struct_time(py, &self.inner.dc_date)
+    }
+
+    #[getter]
+    fn dc_rights(&self) -> Option<&str> {
+        self.inner.dc_rights.as_deref()
+    }
+
+    #[getter]
+    fn dc_subject(&self) -> Vec<String> {
+        self.inner.dc_subject.clone()
+    }
+
+    #[getter]
+    fn media_thumbnails(&self) -> Vec<PyMediaThumbnail> {
+        self.inner
+            .media_thumbnails
+            .iter()
+            .map(|t| PyMediaThumbnail::from_core(t.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn media_content(&self) -> Vec<PyMediaContent> {
+        self.inner
+            .media_content
+            .iter()
+            .map(|c| PyMediaContent::from_core(c.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn podcast(&self) -> Option<PyPodcastEntryMeta> {
+        self.inner
+            .podcast
+            .as_ref()
+            .map(|p| PyPodcastEntryMeta::from_core(p.clone()))
     }
 
     fn __repr__(&self) -> String {

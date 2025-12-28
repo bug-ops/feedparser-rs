@@ -1,8 +1,10 @@
 use feedparser_rs::{
     ItunesCategory as CoreItunesCategory, ItunesEntryMeta as CoreItunesEntryMeta,
     ItunesFeedMeta as CoreItunesFeedMeta, ItunesOwner as CoreItunesOwner,
+    PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
     PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
-    PodcastPerson as CorePodcastPerson, PodcastTranscript as CorePodcastTranscript,
+    PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
+    PodcastTranscript as CorePodcastTranscript,
 };
 use pyo3::prelude::*;
 
@@ -217,6 +219,11 @@ impl PyPodcastMeta {
 
 #[pymethods]
 impl PyPodcastMeta {
+    /// Returns podcast transcripts at feed level.
+    ///
+    /// Note: Field is named `transcripts` (plural) at feed level,
+    /// but `transcript` (singular) at entry level in PodcastEntryMeta.
+    /// This follows the core Rust types and Podcast 2.0 namespace conventions.
     #[getter]
     fn transcripts(&self) -> Vec<PyPodcastTranscript> {
         self.inner
@@ -375,6 +382,145 @@ impl PyPodcastPerson {
             "PodcastPerson(name='{}', role='{}')",
             &self.inner.name,
             self.inner.role.as_deref().unwrap_or("unknown")
+        )
+    }
+}
+
+#[pyclass(name = "PodcastChapters", module = "feedparser_rs")]
+#[derive(Clone)]
+pub struct PyPodcastChapters {
+    inner: CorePodcastChapters,
+}
+
+impl PyPodcastChapters {
+    pub fn from_core(core: CorePodcastChapters) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastChapters {
+    #[getter]
+    fn url(&self) -> &str {
+        &self.inner.url
+    }
+
+    #[getter]
+    #[pyo3(name = "type")]
+    fn chapters_type(&self) -> &str {
+        &self.inner.type_
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastChapters(url='{}', type='{}')",
+            &self.inner.url, &self.inner.type_
+        )
+    }
+}
+
+#[pyclass(name = "PodcastSoundbite", module = "feedparser_rs")]
+#[derive(Clone)]
+pub struct PyPodcastSoundbite {
+    inner: CorePodcastSoundbite,
+}
+
+impl PyPodcastSoundbite {
+    pub fn from_core(core: CorePodcastSoundbite) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastSoundbite {
+    #[getter]
+    fn start_time(&self) -> f64 {
+        self.inner.start_time
+    }
+
+    #[getter]
+    fn duration(&self) -> f64 {
+        self.inner.duration
+    }
+
+    #[getter]
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastSoundbite(start_time={}, duration={})",
+            self.inner.start_time, self.inner.duration
+        )
+    }
+}
+
+#[pyclass(name = "PodcastEntryMeta", module = "feedparser_rs")]
+#[derive(Clone)]
+pub struct PyPodcastEntryMeta {
+    inner: CorePodcastEntryMeta,
+}
+
+impl PyPodcastEntryMeta {
+    pub fn from_core(core: CorePodcastEntryMeta) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastEntryMeta {
+    /// Returns podcast transcripts at entry level.
+    ///
+    /// Note: Field is named `transcript` (singular) at entry level,
+    /// but `transcripts` (plural) at feed level in PodcastMeta.
+    /// This follows the core Rust types and Podcast 2.0 namespace conventions.
+    #[getter]
+    fn transcript(&self) -> Vec<PyPodcastTranscript> {
+        self.inner
+            .transcript
+            .iter()
+            .map(|t| PyPodcastTranscript::from_core(t.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn chapters(&self) -> Option<PyPodcastChapters> {
+        self.inner
+            .chapters
+            .as_ref()
+            .map(|c| PyPodcastChapters::from_core(c.clone()))
+    }
+
+    #[getter]
+    fn soundbite(&self) -> Vec<PyPodcastSoundbite> {
+        self.inner
+            .soundbite
+            .iter()
+            .map(|s| PyPodcastSoundbite::from_core(s.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn person(&self) -> Vec<PyPodcastPerson> {
+        self.inner
+            .person
+            .iter()
+            .map(|p| PyPodcastPerson::from_core(p.clone()))
+            .collect()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastEntryMeta(transcripts={}, chapters={}, soundbites={}, persons={})",
+            self.inner.transcript.len(),
+            if self.inner.chapters.is_some() {
+                "present"
+            } else {
+                "none"
+            },
+            self.inner.soundbite.len(),
+            self.inner.person.len()
         )
     }
 }
