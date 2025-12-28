@@ -17,7 +17,7 @@
 //! cargo run --example error_handling
 //! ```
 
-use feedparser_rs::{parse, parse_with_limits, ParserLimits};
+use feedparser_rs::{ParserLimits, parse, parse_with_limits};
 use std::fs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -29,17 +29,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n{}\n", "=".repeat(60));
 
     // Example 2: Resource limits
-    resource_limits_example()?;
+    resource_limits_example();
 
     println!("\n{}\n", "=".repeat(60));
 
     // Example 3: Invalid XML recovery
-    invalid_xml_example()?;
+    invalid_xml_example();
 
     println!("\n{}\n", "=".repeat(60));
 
     // Example 4: Network error handling
-    network_error_example()?;
+    network_error_example();
 
     Ok(())
 }
@@ -63,7 +63,7 @@ fn malformed_feed_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("Feed has parsing issues!");
 
         if let Some(exception) = &feed.bozo_exception {
-            println!("Exception details: {}", exception);
+            println!("Exception details: {exception}");
         }
 
         println!("\nDespite errors, we can still extract data:");
@@ -71,29 +71,29 @@ fn malformed_feed_example() -> Result<(), Box<dyn std::error::Error>> {
 
     // Even with errors, we can extract available data
     if let Some(title) = &feed.feed.title {
-        println!("  Feed title: {}", title);
+        println!("  Feed title: {title}");
     }
 
     if let Some(link) = &feed.feed.link {
-        println!("  Feed link: {}", link);
+        println!("  Feed link: {link}");
     }
 
     println!("\nEntries found: {}", feed.entries.len());
     for (i, entry) in feed.entries.iter().enumerate() {
         println!("\n  Entry {}:", i + 1);
         if let Some(title) = &entry.title {
-            println!("    Title: {}", title);
+            println!("    Title: {title}");
         }
         if let Some(link) = &entry.link {
-            println!("    Link: {}", link);
+            println!("    Link: {link}");
         }
         if let Some(summary) = &entry.summary {
-            println!("    Summary: {}", summary);
+            println!("    Summary: {summary}");
         }
 
         // Some entries may have unparseable dates
-        if entry.published.is_some() {
-            println!("    Published: {}", entry.published.as_ref().unwrap());
+        if let Some(published) = &entry.published {
+            println!("    Published: {published}");
         } else {
             println!("    Published: (unable to parse date)");
         }
@@ -105,7 +105,7 @@ fn malformed_feed_example() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn resource_limits_example() -> Result<(), Box<dyn std::error::Error>> {
+fn resource_limits_example() {
     println!("Example 2: Resource Limits Protection");
     println!("{}", "-".repeat(40));
 
@@ -134,7 +134,7 @@ fn resource_limits_example() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => {
-            println!("\nLimits exceeded: {}", e);
+            println!("\nLimits exceeded: {e}");
             println!("This protects against DoS attacks and resource exhaustion.");
         }
     }
@@ -152,17 +152,15 @@ fn resource_limits_example() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => {
-            println!("Error: {}", e);
+            println!("Error: {e}");
         }
     }
 
     println!("\nUse strict limits for untrusted input!");
     println!("Use default limits for known/trusted feeds.");
-
-    Ok(())
 }
 
-fn invalid_xml_example() -> Result<(), Box<dyn std::error::Error>> {
+fn invalid_xml_example() {
     println!("Example 3: Invalid XML Recovery");
     println!("{}", "-".repeat(40));
 
@@ -183,7 +181,7 @@ fn invalid_xml_example() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     for (name, xml) in test_cases {
-        println!("\nTest case: {}", name);
+        println!("\nTest case: {name}");
         print!("  ");
 
         match parse(xml) {
@@ -191,7 +189,7 @@ fn invalid_xml_example() -> Result<(), Box<dyn std::error::Error>> {
                 if feed.bozo {
                     println!("Parsed with bozo flag set");
                     if let Some(ex) = &feed.bozo_exception {
-                        println!("  Exception: {}", ex);
+                        println!("  Exception: {ex}");
                     }
                 } else {
                     println!("Parsed successfully");
@@ -204,18 +202,16 @@ fn invalid_xml_example() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 // Some errors are unrecoverable
-                println!("Unrecoverable error: {}", e);
+                println!("Unrecoverable error: {e}");
             }
         }
     }
 
     println!("\n\nThe parser attempts to recover from common XML errors");
     println!("and extract as much information as possible.");
-
-    Ok(())
 }
 
-fn network_error_example() -> Result<(), Box<dyn std::error::Error>> {
+fn network_error_example() {
     println!("Example 4: Network Error Handling");
     println!("{}", "-".repeat(40));
 
@@ -229,21 +225,26 @@ fn network_error_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("1. Invalid URL:");
         match parse_url("not-a-valid-url", None, None, None) {
             Ok(_) => println!("   Unexpected success"),
-            Err(e) => println!("   Error (expected): {}", e),
+            Err(e) => println!("   Error (expected): {e}"),
         }
 
         // Test case 2: Non-existent domain
         println!("\n2. Non-existent domain:");
-        match parse_url("https://this-domain-definitely-does-not-exist-12345.com/feed.xml", None, None, None) {
+        match parse_url(
+            "https://this-domain-definitely-does-not-exist-12345.com/feed.xml",
+            None,
+            None,
+            None,
+        ) {
             Ok(_) => println!("   Unexpected success"),
-            Err(e) => println!("   Error (expected): {}", e),
+            Err(e) => println!("   Error (expected): {e}"),
         }
 
         // Test case 3: 404 Not Found
         println!("\n3. HTTP 404:");
         match parse_url("https://httpbin.org/status/404", None, None, None) {
             Ok(_) => println!("   Unexpected success"),
-            Err(e) => println!("   Error (expected): {}", e),
+            Err(e) => println!("   Error (expected): {e}"),
         }
 
         println!("\n\nProper error handling:");
@@ -259,6 +260,4 @@ fn network_error_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("HTTP feature not enabled.");
         println!("Enable with: cargo run --example error_handling --features http");
     }
-
-    Ok(())
 }

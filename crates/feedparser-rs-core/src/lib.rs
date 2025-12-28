@@ -73,7 +73,7 @@
 //! let email = Email::new("author@example.com");
 //! ```
 //!
-//! These types implement <code>[`Deref`]&lt;Target=str&gt;</code>, so string methods work directly:
+//! These types implement <code>[`Deref`](std::ops::Deref)&lt;Target=str&gt;</code>, so string methods work directly:
 //!
 //! ```
 //! use feedparser_rs::Url;

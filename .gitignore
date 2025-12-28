@@ -13,3 +13,4 @@ venv/
 node_modules/
 *.node
 .local/
+dhat-heap.json

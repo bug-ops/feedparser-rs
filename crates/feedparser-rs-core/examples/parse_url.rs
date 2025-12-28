@@ -37,7 +37,7 @@ fn simple_fetch_example() -> Result<(), Box<dyn std::error::Error>> {
     // BBC News RSS feed is reliable and publicly available
     let url = "https://feeds.bbci.co.uk/news/rss.xml";
 
-    println!("Fetching feed from: {}", url);
+    println!("Fetching feed from: {url}");
     println!("Please wait...\n");
 
     match parse_url(url, None, None, Some("feedparser-rs-example/1.0")) {
@@ -46,19 +46,19 @@ fn simple_fetch_example() -> Result<(), Box<dyn std::error::Error>> {
 
             // HTTP metadata
             if let Some(status) = feed.status {
-                println!("HTTP Status: {}", status);
+                println!("HTTP Status: {status}");
             }
 
             if let Some(href) = &feed.href {
-                println!("Final URL: {}", href);
+                println!("Final URL: {href}");
             }
 
             if let Some(etag) = &feed.etag {
-                println!("ETag: {}", etag);
+                println!("ETag: {etag}");
             }
 
             if let Some(modified) = &feed.modified {
-                println!("Last-Modified: {}", modified);
+                println!("Last-Modified: {modified}");
             }
 
             println!("\nFeed Metadata:");
@@ -66,11 +66,11 @@ fn simple_fetch_example() -> Result<(), Box<dyn std::error::Error>> {
             println!("  Encoding: {}", feed.encoding);
 
             if let Some(title) = &feed.feed.title {
-                println!("  Title: {}", title);
+                println!("  Title: {title}");
             }
 
             if let Some(link) = &feed.feed.link {
-                println!("  Link: {}", link);
+                println!("  Link: {link}");
             }
 
             if let Some(subtitle) = &feed.feed.subtitle {
@@ -79,26 +79,30 @@ fn simple_fetch_example() -> Result<(), Box<dyn std::error::Error>> {
                 } else {
                     subtitle.clone()
                 };
-                println!("  Subtitle: {}", preview);
+                println!("  Subtitle: {preview}");
             }
 
             println!("\nLatest Entries (first 5):");
             for (i, entry) in feed.entries.iter().enumerate().take(5) {
-                println!("\n  {}. {}", i + 1, entry.title.as_deref().unwrap_or("[No title]"));
+                println!(
+                    "\n  {}. {}",
+                    i + 1,
+                    entry.title.as_deref().unwrap_or("[No title]")
+                );
 
                 if let Some(link) = &entry.link {
-                    println!("     {}", link);
+                    println!("     {link}");
                 }
 
                 if let Some(published) = &entry.published {
-                    println!("     Published: {}", published);
+                    println!("     Published: {published}");
                 }
             }
 
             println!("\nTotal entries: {}", feed.entries.len());
         }
         Err(e) => {
-            eprintln!("Error fetching feed: {}", e);
+            eprintln!("Error fetching feed: {e}");
             eprintln!("\nNote: This example requires internet connectivity.");
             eprintln!("If you're offline, try the parse_file example instead.");
             return Err(e.into());
@@ -108,6 +112,7 @@ fn simple_fetch_example() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn conditional_get_example() -> Result<(), Box<dyn std::error::Error>> {
     println!("Example 2: Conditional GET with Caching");
     println!("{}", "-".repeat(40));
@@ -116,12 +121,12 @@ fn conditional_get_example() -> Result<(), Box<dyn std::error::Error>> {
     let url = "https://feeds.npr.org/1001/rss.xml";
 
     println!("First fetch (no cache):");
-    println!("Fetching from: {}", url);
+    println!("Fetching from: {url}");
 
     let first_fetch = match parse_url(url, None, None, Some("feedparser-rs-example/1.0")) {
         Ok(feed) => feed,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("Error: {e}");
             eprintln!("Skipping conditional GET example (requires internet)");
             return Ok(());
         }
@@ -129,19 +134,19 @@ fn conditional_get_example() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Success!");
     if let Some(title) = &first_fetch.feed.title {
-        println!("  Title: {}", title);
+        println!("  Title: {title}");
     }
 
     // Save caching headers
     let etag = first_fetch.etag.clone();
-    let modified = first_fetch.modified.clone();
+    let modified = first_fetch.modified;
 
     println!("\nCaching headers received:");
     if let Some(ref e) = etag {
-        println!("  ETag: {}", e);
+        println!("  ETag: {e}");
     }
     if let Some(ref m) = modified {
-        println!("  Last-Modified: {}", m);
+        println!("  Last-Modified: {m}");
     }
 
     // Second fetch with caching headers
@@ -166,7 +171,7 @@ fn conditional_get_example() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         Err(e) => {
-            eprintln!("Error on second fetch: {}", e);
+            eprintln!("Error on second fetch: {e}");
         }
     }
 

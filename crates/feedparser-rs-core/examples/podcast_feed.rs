@@ -27,26 +27,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{}", "=".repeat(60));
 
     // Display podcast feed-level metadata
-    display_podcast_metadata(&feed)?;
+    display_podcast_metadata(&feed);
 
     println!("\n{}\n", "=".repeat(60));
 
     // Display episode details
-    display_episodes(&feed)?;
+    display_episodes(&feed);
 
     Ok(())
 }
 
-fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std::error::Error>> {
+fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) {
     println!("Podcast Metadata:");
     println!("{}", "-".repeat(40));
 
     if let Some(title) = &feed.feed.title {
-        println!("\nTitle: {}", title);
+        println!("\nTitle: {title}");
     }
 
     if let Some(subtitle) = &feed.feed.subtitle {
-        println!("Subtitle: {}", subtitle);
+        println!("Subtitle: {subtitle}");
     }
 
     // iTunes-specific metadata
@@ -54,17 +54,17 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
         println!("\niTunes Metadata:");
 
         if let Some(author) = &itunes.author {
-            println!("  Author: {}", author);
+            println!("  Author: {author}");
         }
 
         // Owner information
         if let Some(owner) = &itunes.owner {
             println!("  Owner:");
             if let Some(name) = &owner.name {
-                println!("    Name: {}", name);
+                println!("    Name: {name}");
             }
             if let Some(email) = &owner.email {
-                println!("    Email: {}", email);
+                println!("    Email: {email}");
             }
         }
 
@@ -75,7 +75,7 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
 
         // Artwork
         if let Some(image) = &itunes.image {
-            println!("  Artwork: {}", image);
+            println!("  Artwork: {image}");
         }
 
         // Categories (iTunes podcasts can have nested categories)
@@ -84,17 +84,17 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
             for cat in &itunes.categories {
                 print!("    - {}", cat.text);
                 if let Some(subcategory) = &cat.subcategory {
-                    print!(" > {}", subcategory);
+                    print!(" > {subcategory}");
                 }
                 println!();
             }
         }
 
         if let Some(podcast_type) = &itunes.podcast_type {
-            println!("  Type: {}", podcast_type);
+            println!("  Type: {podcast_type}");
         }
 
-        if let Some(true) = itunes.complete {
+        if itunes.complete == Some(true) {
             println!("  Status: Complete (no more episodes will be released)");
         }
     }
@@ -109,7 +109,7 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
             for funding in &podcast.funding {
                 print!("    - {}", funding.url);
                 if let Some(message) = &funding.message {
-                    print!(": {}", message);
+                    print!(": {message}");
                 }
                 println!();
             }
@@ -121,10 +121,10 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
             for person in &podcast.persons {
                 print!("    - {}", person.name);
                 if let Some(role) = &person.role {
-                    print!(" [{}]", role);
+                    print!(" [{role}]");
                 }
                 if let Some(img) = &person.img {
-                    print!(" (photo: {})", img);
+                    print!(" (photo: {img})");
                 }
                 println!();
             }
@@ -139,7 +139,7 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
                 println!("    Recipients:");
                 for recipient in &value.recipients {
                     if let Some(name) = &recipient.name {
-                        print!("      - {}", name);
+                        print!("      - {name}");
                         print!(" ({}%)", recipient.split);
                         println!();
                     }
@@ -147,11 +147,9 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<
             }
         }
     }
-
-    Ok(())
 }
 
-fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std::error::Error>> {
+fn display_episodes(feed: &feedparser_rs::ParsedFeed) {
     println!("Episodes ({} total):", feed.entries.len());
     println!("{}", "-".repeat(40));
 
@@ -159,15 +157,15 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std:
         println!("\nEpisode {}:", i + 1);
 
         if let Some(title) = &entry.title {
-            println!("  Title: {}", title);
+            println!("  Title: {title}");
         }
 
         if let Some(link) = &entry.link {
-            println!("  Link: {}", link);
+            println!("  Link: {link}");
         }
 
         if let Some(published) = &entry.published {
-            println!("  Published: {}", published);
+            println!("  Published: {published}");
         }
 
         // Media enclosure (audio file)
@@ -176,11 +174,12 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std:
             for enc in &entry.enclosures {
                 println!("    URL: {}", enc.url);
                 if let Some(enclosure_type) = &enc.enclosure_type {
-                    println!("    Type: {}", enclosure_type);
+                    println!("    Type: {enclosure_type}");
                 }
                 if let Some(length) = enc.length {
+                    #[allow(clippy::cast_precision_loss)]
                     let mb = length as f64 / 1_048_576.0;
-                    println!("    Size: {:.2} MB ({} bytes)", mb, length);
+                    println!("    Size: {mb:.2} MB ({length} bytes)");
                 }
             }
         }
@@ -190,29 +189,29 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std:
             println!("  iTunes:");
 
             if let Some(duration) = itunes.duration {
-                println!("    Duration: {} seconds", duration);
+                println!("    Duration: {duration} seconds");
 
                 // Convert to human-readable format
                 let hours = duration / 3600;
                 let minutes = (duration % 3600) / 60;
                 let seconds = duration % 60;
                 if hours > 0 {
-                    println!("    ({:02}:{:02}:{:02})", hours, minutes, seconds);
+                    println!("    ({hours:02}:{minutes:02}:{seconds:02})");
                 } else {
-                    println!("    ({}:{:02})", minutes, seconds);
+                    println!("    ({minutes}:{seconds:02})");
                 }
             }
 
             if let Some(episode_num) = itunes.episode {
-                println!("    Episode Number: {}", episode_num);
+                println!("    Episode Number: {episode_num}");
             }
 
             if let Some(season) = itunes.season {
-                println!("    Season: {}", season);
+                println!("    Season: {season}");
             }
 
             if let Some(episode_type) = &itunes.episode_type {
-                println!("    Episode Type: {}", episode_type);
+                println!("    Episode Type: {episode_type}");
             }
 
             if let Some(explicit) = itunes.explicit {
@@ -230,10 +229,10 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std:
                 for transcript in &podcast.transcript {
                     print!("      - {}", transcript.url);
                     if let Some(transcript_type) = &transcript.transcript_type {
-                        print!(" ({})", transcript_type);
+                        print!(" ({transcript_type})");
                     }
                     if let Some(language) = &transcript.language {
-                        print!(" [{}]", language);
+                        print!(" [{language}]");
                     }
                     println!();
                 }
@@ -252,7 +251,7 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std:
                     let duration = soundbite.duration;
                     print!("      - {:.1}s - {:.1}s", start_time, start_time + duration);
                     if let Some(title) = &soundbite.title {
-                        print!(": {}", title);
+                        print!(": {title}");
                     }
                     println!();
                 }
@@ -264,13 +263,11 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) -> Result<(), Box<dyn std:
                 for person in &podcast.person {
                     print!("      - {}", person.name);
                     if let Some(role) = &person.role {
-                        print!(" ({})", role);
+                        print!(" ({role})");
                     }
                     println!();
                 }
             }
         }
     }
-
-    Ok(())
 }

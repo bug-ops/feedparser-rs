@@ -43,7 +43,7 @@ fn parse_rss_example() -> Result<(), Box<dyn std::error::Error>> {
     if feed.bozo {
         println!("Warning: Feed had parsing issues");
         if let Some(exception) = &feed.bozo_exception {
-            println!("Exception: {}", exception);
+            println!("Exception: {exception}");
         }
     }
 
@@ -53,7 +53,7 @@ fn parse_rss_example() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Encoding: {}", feed.encoding);
 
     if let Some(title) = &feed.feed.title {
-        println!("  Title: {}", title);
+        println!("  Title: {title}");
     }
 
     // Demonstrate type-safe Url access
@@ -66,11 +66,11 @@ fn parse_rss_example() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(subtitle) = &feed.feed.subtitle {
-        println!("  Subtitle: {}", subtitle);
+        println!("  Subtitle: {subtitle}");
     }
 
     if let Some(language) = &feed.feed.language {
-        println!("  Language: {}", language);
+        println!("  Language: {language}");
     }
 
     // Display entries
@@ -79,20 +79,20 @@ fn parse_rss_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n  Entry {}:", i + 1);
 
         if let Some(title) = &entry.title {
-            println!("    Title: {}", title);
+            println!("    Title: {title}");
         }
 
         if let Some(link) = &entry.link {
-            println!("    Link: {}", link);
+            println!("    Link: {link}");
         }
 
         // Demonstrate Email type access
         if let Some(author) = &entry.author {
-            println!("    Author: {}", author);
+            println!("    Author: {author}");
         }
 
         if let Some(published) = &entry.published {
-            println!("    Published: {}", published);
+            println!("    Published: {published}");
         }
 
         // Show categories/tags
@@ -107,10 +107,10 @@ fn parse_rss_example() -> Result<(), Box<dyn std::error::Error>> {
             for enc in &entry.enclosures {
                 println!("      - {}", enc.url);
                 if let Some(enclosure_type) = &enc.enclosure_type {
-                    println!("        Type: {}", enclosure_type);
+                    println!("        Type: {enclosure_type}");
                 }
                 if let Some(length) = enc.length {
-                    println!("        Size: {} bytes", length);
+                    println!("        Size: {length} bytes");
                 }
             }
         }
@@ -132,11 +132,11 @@ fn parse_atom_example() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Version: {}", feed.version);
 
     if let Some(title) = &feed.feed.title {
-        println!("  Title: {}", title);
+        println!("  Title: {title}");
     }
 
     if let Some(subtitle) = &feed.feed.subtitle {
-        println!("  Subtitle: {}", subtitle);
+        println!("  Subtitle: {subtitle}");
     }
 
     // Atom feeds often have multiple authors
@@ -144,13 +144,13 @@ fn parse_atom_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n  Authors:");
         for author in &feed.feed.authors {
             if let Some(name) = &author.name {
-                print!("    - {}", name);
+                print!("    - {name}");
             }
             if let Some(email) = &author.email {
-                print!(" <{}>", email);
+                print!(" <{email}>");
             }
             if let Some(uri) = &author.uri {
-                print!(" ({})", uri);
+                print!(" ({uri})");
             }
             println!();
         }
@@ -162,10 +162,10 @@ fn parse_atom_example() -> Result<(), Box<dyn std::error::Error>> {
         for link in &feed.feed.links {
             print!("    - {}", link.href);
             if let Some(rel) = &link.rel {
-                print!(" [rel={}]", rel);
+                print!(" [rel={rel}]");
             }
             if let Some(link_type) = &link.link_type {
-                print!(" ({})", link_type);
+                print!(" ({link_type})");
             }
             println!();
         }
@@ -176,22 +176,22 @@ fn parse_atom_example() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n  Entry {}:", i + 1);
 
         if let Some(title) = &entry.title {
-            println!("    Title: {}", title);
+            println!("    Title: {title}");
         }
 
         if let Some(id) = &entry.id {
-            println!("    ID: {}", id);
+            println!("    ID: {id}");
         }
 
         if let Some(summary) = &entry.summary {
-            println!("    Summary: {}", summary);
+            println!("    Summary: {summary}");
         }
 
         // Atom content can have different types
         if !entry.content.is_empty() {
             let content = &entry.content[0];
             if let Some(content_type) = &content.content_type {
-                println!("    Content type: {}", content_type);
+                println!("    Content type: {content_type}");
             }
             let value = &content.value;
             let preview = if value.len() > 100 {
@@ -199,7 +199,7 @@ fn parse_atom_example() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 value.clone()
             };
-            println!("    Content: {}", preview);
+            println!("    Content: {preview}");
         }
 
         if !entry.tags.is_empty() {

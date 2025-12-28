@@ -36,11 +36,16 @@ http = ["dep:reqwest"]
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["html_reports"] }
+dhat = "0.3.3"
 mockito.workspace = true
 flate2.workspace = true
 
 [[bench]]
 name = "parsing"
+harness = false
+
+[[bench]]
+name = "types"
 harness = false
 
 [lints]
