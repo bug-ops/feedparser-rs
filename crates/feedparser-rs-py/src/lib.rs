@@ -40,39 +40,136 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-/// Parse an RSS/Atom/JSON Feed from bytes or string
+/// Parse an RSS/Atom/JSON Feed from bytes, string, or URL
+///
+/// Automatically detects whether `source` is a URL (http://, https://) or content.
+/// For URLs, fetches and parses the feed. For content, parses directly.
+///
+/// # Arguments
+///
+/// * `source` - URL string, feed content string, or bytes
+/// * `etag` - Optional ETag from previous fetch (for URLs with conditional GET)
+/// * `modified` - Optional Last-Modified timestamp (for URLs with conditional GET)
+/// * `user_agent` - Optional custom User-Agent header (for URLs)
+///
+/// # Examples
+///
+/// ```python
+/// import feedparser_rs
+///
+/// # Parse from URL (auto-detected)
+/// feed = feedparser_rs.parse("https://example.com/feed.xml")
+///
+/// # Parse from content
+/// feed = feedparser_rs.parse("<rss>...</rss>")
+///
+/// # Parse from URL with caching
+/// feed = feedparser_rs.parse(
+///     "https://example.com/feed.xml",
+///     etag=cached_etag,
+///     modified=cached_modified
+/// )
+/// ```
 #[pyfunction]
-#[pyo3(signature = (source, /))]
-fn parse(py: Python<'_>, source: &Bound<'_, PyAny>) -> PyResult<PyParsedFeed> {
-    parse_with_limits(py, source, None)
+#[pyo3(signature = (source, /, etag=None, modified=None, user_agent=None))]
+fn parse(
+    py: Python<'_>,
+    source: &Bound<'_, PyAny>,
+    etag: Option<&str>,
+    modified: Option<&str>,
+    user_agent: Option<&str>,
+) -> PyResult<PyParsedFeed> {
+    parse_internal(py, source, etag, modified, user_agent, None)
 }
 
 /// Parse with custom resource limits for DoS protection
+///
+/// Like `parse()` but allows specifying custom limits for untrusted feeds.
+///
+/// # Arguments
+///
+/// * `source` - URL string, feed content string, or bytes
+/// * `etag` - Optional ETag from previous fetch (for URLs)
+/// * `modified` - Optional Last-Modified timestamp (for URLs)
+/// * `user_agent` - Optional custom User-Agent header (for URLs)
+/// * `limits` - Optional parser limits for DoS protection
+///
+/// # Examples
+///
+/// ```python
+/// import feedparser_rs
+///
+/// limits = feedparser_rs.ParserLimits.strict()
+///
+/// # Parse from URL with limits
+/// feed = feedparser_rs.parse_with_limits(
+///     "https://example.com/feed.xml",
+///     limits=limits
+/// )
+///
+/// # Parse from content with limits
+/// feed = feedparser_rs.parse_with_limits("<rss>...</rss>", limits=limits)
+/// ```
 #[pyfunction]
-#[pyo3(signature = (source, limits=None))]
+#[pyo3(signature = (source, /, etag=None, modified=None, user_agent=None, limits=None))]
 fn parse_with_limits(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
+    etag: Option<&str>,
+    modified: Option<&str>,
+    user_agent: Option<&str>,
     limits: Option<&PyParserLimits>,
 ) -> PyResult<PyParsedFeed> {
-    let bytes: Vec<u8> = if let Ok(s) = source.extract::<String>() {
-        if s.starts_with("http://") || s.starts_with("https://") {
-            return Err(pyo3::exceptions::PyNotImplementedError::new_err(
-                "URL fetching not implemented. Use requests.get(url).content",
-            ));
-        }
-        s.into_bytes()
-    } else if let Ok(b) = source.extract::<Vec<u8>>() {
-        b
-    } else {
-        return Err(pyo3::exceptions::PyTypeError::new_err(
-            "source must be str or bytes",
-        ));
-    };
+    parse_internal(py, source, etag, modified, user_agent, limits)
+}
 
-    let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
-    let parsed = core::parse_with_limits(&bytes, parser_limits).map_err(convert_feed_error)?;
-    PyParsedFeed::from_core(py, parsed)
+/// Internal parse function that handles both URL and content sources
+fn parse_internal(
+    py: Python<'_>,
+    source: &Bound<'_, PyAny>,
+    etag: Option<&str>,
+    modified: Option<&str>,
+    user_agent: Option<&str>,
+    limits: Option<&PyParserLimits>,
+) -> PyResult<PyParsedFeed> {
+    // Try to extract as string first
+    if let Ok(s) = source.extract::<String>() {
+        // Check if it's a URL
+        if s.starts_with("http://") || s.starts_with("https://") {
+            // Handle URL - requires http feature
+            #[cfg(feature = "http")]
+            {
+                let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
+                let parsed =
+                    core::parse_url_with_limits(&s, etag, modified, user_agent, parser_limits)
+                        .map_err(convert_feed_error)?;
+                return PyParsedFeed::from_core(py, parsed);
+            }
+            #[cfg(not(feature = "http"))]
+            {
+                return Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                    "URL fetching requires the 'http' feature. Build with: maturin develop --features http",
+                ));
+            }
+        }
+
+        // Parse as content
+        let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
+        let parsed =
+            core::parse_with_limits(s.as_bytes(), parser_limits).map_err(convert_feed_error)?;
+        return PyParsedFeed::from_core(py, parsed);
+    }
+
+    // Try to extract as bytes
+    if let Ok(b) = source.extract::<Vec<u8>>() {
+        let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
+        let parsed = core::parse_with_limits(&b, parser_limits).map_err(convert_feed_error)?;
+        return PyParsedFeed::from_core(py, parsed);
+    }
+
+    Err(pyo3::exceptions::PyTypeError::new_err(
+        "source must be str, bytes, or URL",
+    ))
 }
 
 /// Detect feed format without full parsing

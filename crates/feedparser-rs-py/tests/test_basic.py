@@ -137,7 +137,7 @@ def test_parse_with_limits():
         max_entries=10,
     )
 
-    d = feedparser_rs.parse_with_limits(xml, limits)
+    d = feedparser_rs.parse_with_limits(xml, limits=limits)
     assert d.version == "rss20"
 
 
@@ -150,7 +150,7 @@ def test_parse_with_limits_exceeded():
     )
 
     with pytest.raises(ValueError, match="exceeds maximum"):
-        feedparser_rs.parse_with_limits(xml, limits)
+        feedparser_rs.parse_with_limits(xml, limits=limits)
 
 
 def test_detect_format_rss20():

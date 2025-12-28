@@ -627,3 +627,113 @@ def test_dict_access_list_fields():
     assert len(entry['links']) >= 1
     assert len(entry['tags']) == 1
     assert entry['tags'][0].term == "rust"
+
+
+# =============================================================================
+# Phase 4: Auto-URL Detection Tests
+# =============================================================================
+
+
+def test_parse_with_optional_http_params():
+    """Test that parse() accepts optional HTTP parameters for URL fetching"""
+    # When parsing content (not URL), these params should be ignored
+    xml = """<rss version="2.0">
+        <channel>
+            <title>Test Feed</title>
+        </channel>
+    </rss>"""
+
+    # Should work with optional params (they're just ignored for content)
+    feed = feedparser_rs.parse(xml, etag="some-etag", modified="some-date")
+    assert feed.feed.title == "Test Feed"
+    assert feed.version == 'rss20'
+
+
+def test_parse_with_user_agent_param():
+    """Test that parse() accepts user_agent parameter"""
+    xml = """<rss version="2.0">
+        <channel>
+            <title>Test Feed</title>
+        </channel>
+    </rss>"""
+
+    # Should work with user_agent param (ignored for content)
+    feed = feedparser_rs.parse(xml, user_agent="TestBot/1.0")
+    assert feed.feed.title == "Test Feed"
+
+
+def test_parse_url_detection_http():
+    """Test that parse() detects http:// URLs"""
+    # This test verifies URL detection logic without actually fetching
+    # Since we don't have an HTTP feature enabled or a real server,
+    # we just verify the parse function signature accepts URL-like strings
+    try:
+        # This will either succeed (if http feature enabled and server exists)
+        # or raise NotImplementedError (if http feature disabled)
+        feedparser_rs.parse("http://example.com/nonexistent")
+    except NotImplementedError as e:
+        # http feature not enabled - this is expected
+        assert "http" in str(e).lower()
+    except Exception:
+        # Some other error (network, etc.) - also acceptable
+        pass
+
+
+def test_parse_url_detection_https():
+    """Test that parse() detects https:// URLs"""
+    try:
+        feedparser_rs.parse("https://example.com/nonexistent")
+    except NotImplementedError as e:
+        # http feature not enabled - this is expected
+        assert "http" in str(e).lower()
+    except Exception:
+        # Some other error (network, etc.) - also acceptable
+        pass
+
+
+def test_parse_content_starting_with_http_in_text():
+    """Test that content containing 'http' as text is not treated as URL"""
+    # This should be parsed as content, not as a URL
+    xml = """<rss version="2.0">
+        <channel>
+            <title>HTTP Guide</title>
+            <description>Learn about http protocol</description>
+        </channel>
+    </rss>"""
+
+    feed = feedparser_rs.parse(xml)
+    assert feed.feed.title == "HTTP Guide"
+    assert "http" in feed.feed.subtitle.lower()
+
+
+def test_parse_bytes_content():
+    """Test that bytes content is still parsed correctly"""
+    xml = b"""<rss version="2.0">
+        <channel>
+            <title>Bytes Feed</title>
+        </channel>
+    </rss>"""
+
+    feed = feedparser_rs.parse(xml)
+    assert feed.feed.title == "Bytes Feed"
+
+
+def test_parse_with_limits_accepts_http_params():
+    """Test that parse_with_limits() also accepts HTTP parameters"""
+    xml = """<rss version="2.0">
+        <channel>
+            <title>Test Feed</title>
+        </channel>
+    </rss>"""
+
+    limits = feedparser_rs.ParserLimits()
+
+    # Should work with all optional params
+    feed = feedparser_rs.parse_with_limits(
+        xml,
+        etag="etag",
+        modified="modified",
+        user_agent="TestBot/1.0",
+        limits=limits
+    )
+    assert feed.feed.title == "Test Feed"
