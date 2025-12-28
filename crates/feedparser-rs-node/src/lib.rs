@@ -407,13 +407,13 @@ impl From<CoreFeedMeta> for FeedMeta {
             id: core.id,
             ttl: core.ttl,
             license: core.license,
-            syndication: core.syndication.map(SyndicationMeta::from),
+            syndication: core.syndication.map(|b| SyndicationMeta::from(*b)),
             dc_creator: core.dc_creator,
             dc_publisher: core.dc_publisher,
             dc_rights: core.dc_rights,
-            geo: core.geo.map(GeoLocation::from),
-            itunes: core.itunes.map(ItunesFeedMeta::from),
-            podcast: core.podcast.map(PodcastMeta::from),
+            geo: core.geo.map(|b| GeoLocation::from(*b)),
+            itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
+            podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
         }
     }
 }
@@ -533,7 +533,7 @@ impl From<CoreEntry> for Entry {
                 .map(PodcastPerson::from)
                 .collect(),
             license: core.license,
-            geo: core.geo.map(GeoLocation::from),
+            geo: core.geo.map(|b| GeoLocation::from(*b)),
             dc_creator: core.dc_creator,
             dc_date: core.dc_date.map(|dt| dt.timestamp_millis()),
             dc_subject: core.dc_subject,
@@ -548,8 +548,8 @@ impl From<CoreEntry> for Entry {
                 .into_iter()
                 .map(MediaContent::from)
                 .collect(),
-            itunes: core.itunes.map(ItunesEntryMeta::from),
-            podcast: core.podcast.map(PodcastEntryMeta::from),
+            itunes: core.itunes.map(|b| ItunesEntryMeta::from(*b)),
+            podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
         }
     }
 }
@@ -604,9 +604,9 @@ pub struct Link {
 impl From<CoreLink> for Link {
     fn from(core: CoreLink) -> Self {
         Self {
-            href: core.href,
+            href: core.href.into_inner(),
             rel: core.rel,
-            link_type: core.link_type,
+            link_type: core.link_type.map(|t| t.to_string()),
             title: core.title,
             length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
             hreflang: core.hreflang,
@@ -629,7 +629,7 @@ impl From<CorePerson> for Person {
     fn from(core: CorePerson) -> Self {
         Self {
             name: core.name,
-            email: core.email,
+            email: core.email.map(|e| e.into_inner()),
             uri: core.uri,
         }
     }
@@ -676,7 +676,7 @@ pub struct Image {
 impl From<CoreImage> for Image {
     fn from(core: CoreImage) -> Self {
         Self {
-            url: core.url,
+            url: core.url.into_inner(),
             title: core.title,
             link: core.link,
             width: core.width,
@@ -701,9 +701,9 @@ pub struct Enclosure {
 impl From<CoreEnclosure> for Enclosure {
     fn from(core: CoreEnclosure) -> Self {
         Self {
-            url: core.url,
+            url: core.url.into_inner(),
             length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
-            enclosure_type: core.enclosure_type,
+            enclosure_type: core.enclosure_type.map(|t| t.to_string()),
         }
     }
 }
@@ -726,7 +726,7 @@ impl From<CoreContent> for Content {
     fn from(core: CoreContent) -> Self {
         Self {
             value: core.value,
-            content_type: core.content_type,
+            content_type: core.content_type.map(|t| t.to_string()),
             language: core.language,
             base: core.base,
         }
@@ -830,7 +830,7 @@ pub struct MediaThumbnail {
 impl From<CoreMediaThumbnail> for MediaThumbnail {
     fn from(core: CoreMediaThumbnail) -> Self {
         Self {
-            url: core.url,
+            url: core.url.into_inner(),
             width: core.width,
             height: core.height,
         }
@@ -860,8 +860,8 @@ pub struct MediaContent {
 impl From<CoreMediaContent> for MediaContent {
     fn from(core: CoreMediaContent) -> Self {
         Self {
-            url: core.url,
-            content_type: core.content_type,
+            url: core.url.into_inner(),
+            content_type: core.content_type.map(|t| t.to_string()),
             filesize: core.filesize.map(|f| i64::try_from(f).unwrap_or(i64::MAX)),
             width: core.width,
             height: core.height,
@@ -910,11 +910,11 @@ impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
                 .map(ItunesCategory::from)
                 .collect(),
             explicit: core.explicit,
-            image: core.image,
+            image: core.image.map(|u| u.into_inner()),
             keywords: core.keywords,
             podcast_type: core.podcast_type,
             complete: core.complete,
-            new_feed_url: core.new_feed_url,
+            new_feed_url: core.new_feed_url.map(|u| u.into_inner()),
         }
     }
 }
@@ -988,7 +988,7 @@ impl From<CoreItunesEntryMeta> for ItunesEntryMeta {
             author: core.author,
             duration: core.duration,
             explicit: core.explicit,
-            image: core.image,
+            image: core.image.map(|u| u.into_inner()),
             episode: core.episode,
             season: core.season,
             episode_type: core.episode_type,
@@ -1098,7 +1098,7 @@ pub struct PodcastFunding {
 impl From<CorePodcastFunding> for PodcastFunding {
     fn from(core: CorePodcastFunding) -> Self {
         Self {
-            url: core.url,
+            url: core.url.into_inner(),
             message: core.message,
         }
     }
@@ -1151,8 +1151,8 @@ pub struct PodcastChapters {
 impl From<CorePodcastChapters> for PodcastChapters {
     fn from(core: CorePodcastChapters) -> Self {
         Self {
-            url: core.url,
-            chapters_type: core.type_,
+            url: core.url.into_inner(),
+            chapters_type: core.type_.to_string(),
         }
     }
 }
@@ -1198,8 +1198,8 @@ pub struct PodcastTranscript {
 impl From<CorePodcastTranscript> for PodcastTranscript {
     fn from(core: CorePodcastTranscript) -> Self {
         Self {
-            url: core.url,
-            transcript_type: core.transcript_type,
+            url: core.url.into_inner(),
+            transcript_type: core.transcript_type.map(|t| t.to_string()),
             language: core.language,
             rel: core.rel,
         }
@@ -1231,8 +1231,8 @@ impl From<CorePodcastPerson> for PodcastPerson {
             name: core.name,
             role: core.role,
             group: core.group,
-            img: core.img,
-            href: core.href,
+            img: core.img.map(|u| u.into_inner()),
+            href: core.href.map(|u| u.into_inner()),
         }
     }
 }

@@ -372,7 +372,7 @@ fn parse_image(
     }
 
     Ok(Image {
-        url,
+        url: url.into(),
         title,
         link,
         width: None,

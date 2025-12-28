@@ -1,16 +1,418 @@
 use super::generics::{FromAttributes, ParseFrom};
 use crate::util::text::bytes_to_string;
 use serde_json::Value;
+use std::ops::Deref;
+use std::sync::Arc;
+
+/// URL newtype for type-safe URL handling
+///
+/// Provides a semantic wrapper around string URLs without validation.
+/// Following the bozo pattern, URLs are not validated during parsing.
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::Url;
+///
+/// let url = Url::new("https://example.com");
+/// assert_eq!(url.as_str(), "https://example.com");
+///
+/// // Deref coercion allows transparent string access
+/// let len: usize = url.len();
+/// assert_eq!(len, 19);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Url(String);
+
+impl Url {
+    /// Creates a new URL from any type that can be converted to a String
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::Url;
+    ///
+    /// let url1 = Url::new("https://example.com");
+    /// let url2 = Url::new(String::from("https://example.com"));
+    /// assert_eq!(url1, url2);
+    /// ```
+    #[inline]
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the URL as a string slice
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::Url;
+    ///
+    /// let url = Url::new("https://example.com");
+    /// assert_eq!(url.as_str(), "https://example.com");
+    /// ```
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes the `Url` and returns the inner `String`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::Url;
+    ///
+    /// let url = Url::new("https://example.com");
+    /// let inner: String = url.into_inner();
+    /// assert_eq!(inner, "https://example.com");
+    /// ```
+    #[inline]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl Deref for Url {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for Url {
+    #[inline]
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for Url {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl AsRef<str> for Url {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Url {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq<str> for Url {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for Url {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<String> for Url {
+    fn eq(&self, other: &String) -> bool {
+        &self.0 == other
+    }
+}
+
+/// MIME type newtype with string interning
+///
+/// Uses `Arc<str>` for efficient cloning of common MIME types.
+/// Multiple references to the same MIME type share the same allocation.
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::MimeType;
+///
+/// let mime = MimeType::new("text/html");
+/// assert_eq!(mime.as_str(), "text/html");
+///
+/// // Cloning is cheap (just increments reference count)
+/// let clone = mime.clone();
+/// assert_eq!(mime, clone);
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MimeType(Arc<str>);
+
+// Custom serde implementation for MimeType since Arc<str> doesn't implement Serialize/Deserialize
+impl serde::Serialize for MimeType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for MimeType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = <String as serde::Deserialize>::deserialize(deserializer)?;
+        Ok(Self::new(s))
+    }
+}
+
+impl MimeType {
+    /// Creates a new MIME type from any string-like type
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::MimeType;
+    ///
+    /// let mime = MimeType::new("application/json");
+    /// assert_eq!(mime.as_str(), "application/json");
+    /// ```
+    #[inline]
+    pub fn new(s: impl AsRef<str>) -> Self {
+        Self(Arc::from(s.as_ref()))
+    }
+
+    /// Returns the MIME type as a string slice
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::MimeType;
+    ///
+    /// let mime = MimeType::new("text/plain");
+    /// assert_eq!(mime.as_str(), "text/plain");
+    /// ```
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Common MIME type constants for convenience.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::MimeType;
+    ///
+    /// let html = MimeType::new(MimeType::TEXT_HTML);
+    /// assert_eq!(html.as_str(), "text/html");
+    /// ```
+    pub const TEXT_HTML: &'static str = "text/html";
+
+    /// `text/plain` MIME type constant
+    pub const TEXT_PLAIN: &'static str = "text/plain";
+
+    /// `application/xml` MIME type constant
+    pub const APPLICATION_XML: &'static str = "application/xml";
+
+    /// `application/json` MIME type constant
+    pub const APPLICATION_JSON: &'static str = "application/json";
+}
+
+impl Default for MimeType {
+    #[inline]
+    fn default() -> Self {
+        Self(Arc::from(""))
+    }
+}
+
+impl Deref for MimeType {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for MimeType {
+    #[inline]
+    fn from(s: String) -> Self {
+        Self(Arc::from(s.as_str()))
+    }
+}
+
+impl From<&str> for MimeType {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self(Arc::from(s))
+    }
+}
+
+impl AsRef<str> for MimeType {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for MimeType {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq<str> for MimeType {
+    fn eq(&self, other: &str) -> bool {
+        &*self.0 == other
+    }
+}
+
+impl PartialEq<&str> for MimeType {
+    fn eq(&self, other: &&str) -> bool {
+        &*self.0 == *other
+    }
+}
+
+impl PartialEq<String> for MimeType {
+    fn eq(&self, other: &String) -> bool {
+        &*self.0 == other
+    }
+}
+
+/// Email newtype for type-safe email handling
+///
+/// Provides a semantic wrapper around email addresses without validation.
+/// Following the bozo pattern, emails are not validated during parsing.
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::Email;
+///
+/// let email = Email::new("user@example.com");
+/// assert_eq!(email.as_str(), "user@example.com");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Email(String);
+
+impl Email {
+    /// Creates a new email from any type that can be converted to a String
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::Email;
+    ///
+    /// let email = Email::new("user@example.com");
+    /// assert_eq!(email.as_str(), "user@example.com");
+    /// ```
+    #[inline]
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the email as a string slice
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::Email;
+    ///
+    /// let email = Email::new("user@example.com");
+    /// assert_eq!(email.as_str(), "user@example.com");
+    /// ```
+    #[inline]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Consumes the `Email` and returns the inner `String`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::Email;
+    ///
+    /// let email = Email::new("user@example.com");
+    /// let inner: String = email.into_inner();
+    /// assert_eq!(inner, "user@example.com");
+    /// ```
+    #[inline]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl Deref for Email {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<String> for Email {
+    #[inline]
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for Email {
+    #[inline]
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl AsRef<str> for Email {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for Email {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl PartialEq<str> for Email {
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
+}
+
+impl PartialEq<&str> for Email {
+    fn eq(&self, other: &&str) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<String> for Email {
+    fn eq(&self, other: &String) -> bool {
+        &self.0 == other
+    }
+}
 
 /// Link in feed or entry
 #[derive(Debug, Clone, Default)]
 pub struct Link {
     /// Link URL
-    pub href: String,
+    pub href: Url,
     /// Link relationship type (e.g., "alternate", "enclosure", "self")
     pub rel: Option<String>,
     /// MIME type of the linked resource
-    pub link_type: Option<String>,
+    pub link_type: Option<MimeType>,
     /// Human-readable link title
     pub title: Option<String>,
     /// Length of the linked resource in bytes
@@ -22,7 +424,7 @@ pub struct Link {
 impl Link {
     /// Create a new link with just URL and relation type
     #[inline]
-    pub fn new(href: impl Into<String>, rel: impl Into<String>) -> Self {
+    pub fn new(href: impl Into<Url>, rel: impl Into<String>) -> Self {
         Self {
             href: href.into(),
             rel: Some(rel.into()),
@@ -35,13 +437,13 @@ impl Link {
 
     /// Create an alternate link (common for entry URLs)
     #[inline]
-    pub fn alternate(href: impl Into<String>) -> Self {
+    pub fn alternate(href: impl Into<Url>) -> Self {
         Self::new(href, "alternate")
     }
 
     /// Create a self link (for feed URLs)
     #[inline]
-    pub fn self_link(href: impl Into<String>, mime_type: impl Into<String>) -> Self {
+    pub fn self_link(href: impl Into<Url>, mime_type: impl Into<MimeType>) -> Self {
         Self {
             href: href.into(),
             rel: Some("self".to_string()),
@@ -54,7 +456,7 @@ impl Link {
 
     /// Create an enclosure link (for media)
     #[inline]
-    pub fn enclosure(href: impl Into<String>, mime_type: Option<String>) -> Self {
+    pub fn enclosure(href: impl Into<Url>, mime_type: Option<MimeType>) -> Self {
         Self {
             href: href.into(),
             rel: Some("enclosure".to_string()),
@@ -67,14 +469,14 @@ impl Link {
 
     /// Create a related link
     #[inline]
-    pub fn related(href: impl Into<String>) -> Self {
+    pub fn related(href: impl Into<Url>) -> Self {
         Self::new(href, "related")
     }
 
     /// Set MIME type (builder pattern)
     #[inline]
     #[must_use]
-    pub fn with_type(mut self, mime_type: impl Into<String>) -> Self {
+    pub fn with_type(mut self, mime_type: impl Into<MimeType>) -> Self {
         self.link_type = Some(mime_type.into());
         self
     }
@@ -86,7 +488,7 @@ pub struct Person {
     /// Person's name
     pub name: Option<String>,
     /// Person's email address
-    pub email: Option<String>,
+    pub email: Option<Email>,
     /// Person's URI/website
     pub uri: Option<String>,
 }
@@ -141,7 +543,7 @@ impl Tag {
 #[derive(Debug, Clone)]
 pub struct Image {
     /// Image URL
-    pub url: String,
+    pub url: Url,
     /// Image title
     pub title: Option<String>,
     /// Link associated with the image
@@ -158,11 +560,11 @@ pub struct Image {
 #[derive(Debug, Clone)]
 pub struct Enclosure {
     /// Enclosure URL
-    pub url: String,
+    pub url: Url,
     /// File size in bytes
     pub length: Option<u64>,
     /// MIME type
-    pub enclosure_type: Option<String>,
+    pub enclosure_type: Option<MimeType>,
 }
 
 /// Content block
@@ -171,7 +573,7 @@ pub struct Content {
     /// Content body
     pub value: String,
     /// Content MIME type
-    pub content_type: Option<String>,
+    pub content_type: Option<MimeType>,
     /// Content language
     pub language: Option<String>,
     /// Base URL for relative links
@@ -184,7 +586,7 @@ impl Content {
     pub fn html(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
-            content_type: Some("text/html".to_string()),
+            content_type: Some(MimeType::new(MimeType::TEXT_HTML)),
             language: None,
             base: None,
         }
@@ -195,7 +597,7 @@ impl Content {
     pub fn plain(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
-            content_type: Some("text/plain".to_string()),
+            content_type: Some(MimeType::new(MimeType::TEXT_PLAIN)),
             language: None,
             base: None,
         }
@@ -289,7 +691,7 @@ pub struct MediaThumbnail {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub url: String,
+    pub url: Url,
     /// Thumbnail width in pixels
     pub width: Option<u32>,
     /// Thumbnail height in pixels
@@ -305,9 +707,9 @@ pub struct MediaContent {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub url: String,
+    pub url: Url,
     /// MIME type
-    pub content_type: Option<String>,
+    pub content_type: Option<MimeType>,
     /// File size in bytes
     pub filesize: Option<u64>,
     /// Media width in pixels
@@ -346,9 +748,9 @@ impl FromAttributes for Link {
         }
 
         href.map(|href| Self {
-            href,
+            href: Url::new(href),
             rel: rel.or_else(|| Some("alternate".to_string())),
-            link_type,
+            link_type: link_type.map(MimeType::new),
             title,
             length,
             hreflang,
@@ -409,9 +811,9 @@ impl FromAttributes for Enclosure {
         }
 
         url.map(|url| Self {
-            url,
+            url: Url::new(url),
             length,
-            enclosure_type,
+            enclosure_type: enclosure_type.map(MimeType::new),
         })
     }
 }
@@ -438,7 +840,11 @@ impl FromAttributes for MediaThumbnail {
             }
         }
 
-        url.map(|url| Self { url, width, height })
+        url.map(|url| Self {
+            url: Url::new(url),
+            width,
+            height,
+        })
     }
 }
 
@@ -471,8 +877,8 @@ impl FromAttributes for MediaContent {
         }
 
         url.map(|url| Self {
-            url,
-            content_type,
+            url: Url::new(url),
+            content_type: content_type.map(MimeType::new),
             filesize,
             width,
             height,
@@ -504,12 +910,12 @@ impl ParseFrom<&Value> for Enclosure {
         let obj = json.as_object()?;
         let url = obj.get("url").and_then(Value::as_str)?;
         Some(Self {
-            url: url.to_string(),
+            url: Url::new(url),
             length: obj.get("size_in_bytes").and_then(Value::as_u64),
             enclosure_type: obj
                 .get("mime_type")
                 .and_then(Value::as_str)
-                .map(String::from),
+                .map(MimeType::new),
         })
     }
 }
@@ -536,10 +942,7 @@ mod tests {
         assert_eq!(link.rel.as_deref(), Some("self"));
         assert_eq!(link.link_type.as_deref(), Some("application/feed+json"));
 
-        let link = Link::enclosure(
-            "https://example.com/audio.mp3",
-            Some("audio/mpeg".to_string()),
-        );
+        let link = Link::enclosure("https://example.com/audio.mp3", Some("audio/mpeg".into()));
         assert_eq!(link.rel.as_deref(), Some("enclosure"));
         assert_eq!(link.link_type.as_deref(), Some("audio/mpeg"));
 
@@ -623,5 +1026,145 @@ mod tests {
     fn test_text_type_equality() {
         assert_eq!(TextType::Text, TextType::Text);
         assert_ne!(TextType::Text, TextType::Html);
+    }
+
+    // Newtype tests
+
+    #[test]
+    fn test_url_new() {
+        let url = Url::new("https://example.com");
+        assert_eq!(url.as_str(), "https://example.com");
+    }
+
+    #[test]
+    fn test_url_from_string() {
+        let url: Url = String::from("https://example.com").into();
+        assert_eq!(url.as_str(), "https://example.com");
+    }
+
+    #[test]
+    fn test_url_from_str() {
+        let url: Url = "https://example.com".into();
+        assert_eq!(url.as_str(), "https://example.com");
+    }
+
+    #[test]
+    fn test_url_deref() {
+        let url = Url::new("https://example.com");
+        // Deref allows calling str methods directly
+        assert_eq!(url.len(), 19);
+        assert!(url.starts_with("https://"));
+    }
+
+    #[test]
+    fn test_url_into_inner() {
+        let url = Url::new("https://example.com");
+        let inner = url.into_inner();
+        assert_eq!(inner, "https://example.com");
+    }
+
+    #[test]
+    fn test_url_default() {
+        let url = Url::default();
+        assert_eq!(url.as_str(), "");
+    }
+
+    #[test]
+    fn test_url_clone() {
+        let url1 = Url::new("https://example.com");
+        let url2 = url1.clone();
+        assert_eq!(url1, url2);
+    }
+
+    #[test]
+    fn test_mime_type_new() {
+        let mime = MimeType::new("text/html");
+        assert_eq!(mime.as_str(), "text/html");
+    }
+
+    #[test]
+    fn test_mime_type_from_string() {
+        let mime: MimeType = String::from("application/json").into();
+        assert_eq!(mime.as_str(), "application/json");
+    }
+
+    #[test]
+    fn test_mime_type_from_str() {
+        let mime: MimeType = "text/plain".into();
+        assert_eq!(mime.as_str(), "text/plain");
+    }
+
+    #[test]
+    fn test_mime_type_deref() {
+        let mime = MimeType::new("text/html");
+        assert_eq!(mime.len(), 9);
+        assert!(mime.starts_with("text/"));
+    }
+
+    #[test]
+    fn test_mime_type_default() {
+        let mime = MimeType::default();
+        assert_eq!(mime.as_str(), "");
+    }
+
+    #[test]
+    fn test_mime_type_clone() {
+        let mime1 = MimeType::new("application/xml");
+        let mime2 = mime1.clone();
+        assert_eq!(mime1, mime2);
+        // Arc cloning is cheap - just increments refcount
+    }
+
+    #[test]
+    fn test_mime_type_constants() {
+        assert_eq!(MimeType::TEXT_HTML, "text/html");
+        assert_eq!(MimeType::TEXT_PLAIN, "text/plain");
+        assert_eq!(MimeType::APPLICATION_XML, "application/xml");
+        assert_eq!(MimeType::APPLICATION_JSON, "application/json");
+    }
+
+    #[test]
+    fn test_email_new() {
+        let email = Email::new("user@example.com");
+        assert_eq!(email.as_str(), "user@example.com");
+    }
+
+    #[test]
+    fn test_email_from_string() {
+        let email: Email = String::from("user@example.com").into();
+        assert_eq!(email.as_str(), "user@example.com");
+    }
+
+    #[test]
+    fn test_email_from_str() {
+        let email: Email = "user@example.com".into();
+        assert_eq!(email.as_str(), "user@example.com");
+    }
+
+    #[test]
+    fn test_email_deref() {
+        let email = Email::new("user@example.com");
+        assert_eq!(email.len(), 16);
+        assert!(email.contains('@'));
+    }
+
+    #[test]
+    fn test_email_into_inner() {
+        let email = Email::new("user@example.com");
+        let inner = email.into_inner();
+        assert_eq!(inner, "user@example.com");
+    }
+
+    #[test]
+    fn test_email_default() {
+        let email = Email::default();
+        assert_eq!(email.as_str(), "");
+    }
+
+    #[test]
+    fn test_email_clone() {
+        let email1 = Email::new("user@example.com");
+        let email2 = email1.clone();
+        assert_eq!(email1, email2);
     }
 }

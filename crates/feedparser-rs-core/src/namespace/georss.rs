@@ -178,25 +178,25 @@ pub fn handle_entry_element(
     match tag {
         b"point" => {
             if let Some(loc) = parse_point(text) {
-                entry.geo = Some(loc);
+                entry.geo = Some(Box::new(loc));
             }
             true
         }
         b"line" => {
             if let Some(loc) = parse_line(text) {
-                entry.geo = Some(loc);
+                entry.geo = Some(Box::new(loc));
             }
             true
         }
         b"polygon" => {
             if let Some(loc) = parse_polygon(text) {
-                entry.geo = Some(loc);
+                entry.geo = Some(Box::new(loc));
             }
             true
         }
         b"box" => {
             if let Some(loc) = parse_box(text) {
-                entry.geo = Some(loc);
+                entry.geo = Some(Box::new(loc));
             }
             true
         }
@@ -225,25 +225,25 @@ pub fn handle_feed_element(
     match tag {
         b"point" => {
             if let Some(loc) = parse_point(text) {
-                feed.geo = Some(loc);
+                feed.geo = Some(Box::new(loc));
             }
             true
         }
         b"line" => {
             if let Some(loc) = parse_line(text) {
-                feed.geo = Some(loc);
+                feed.geo = Some(Box::new(loc));
             }
             true
         }
         b"polygon" => {
             if let Some(loc) = parse_polygon(text) {
-                feed.geo = Some(loc);
+                feed.geo = Some(Box::new(loc));
             }
             true
         }
         b"box" => {
             if let Some(loc) = parse_box(text) {
-                feed.geo = Some(loc);
+                feed.geo = Some(Box::new(loc));
             }
             true
         }

@@ -82,7 +82,7 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
         "updatePeriod" => {
             if let Some(period) = UpdatePeriod::parse(text) {
                 if feed.syndication.is_none() {
-                    feed.syndication = Some(SyndicationMeta::default());
+                    feed.syndication = Some(Box::new(SyndicationMeta::default()));
                 }
                 if let Some(syn) = &mut feed.syndication {
                     syn.update_period = Some(period);
@@ -92,7 +92,7 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
         "updateFrequency" => {
             if let Ok(freq) = text.parse::<u32>() {
                 if feed.syndication.is_none() {
-                    feed.syndication = Some(SyndicationMeta::default());
+                    feed.syndication = Some(Box::new(SyndicationMeta::default()));
                 }
                 if let Some(syn) = &mut feed.syndication {
                     syn.update_frequency = Some(freq);
@@ -101,7 +101,7 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
         }
         "updateBase" => {
             if feed.syndication.is_none() {
-                feed.syndication = Some(SyndicationMeta::default());
+                feed.syndication = Some(Box::new(SyndicationMeta::default()));
             }
             if let Some(syn) = &mut feed.syndication {
                 syn.update_base = Some(text.to_string());

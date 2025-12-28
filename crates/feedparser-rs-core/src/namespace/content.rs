@@ -26,7 +26,7 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
         // content:encoded → add to entry.content as HTML
         entry.content.push(Content {
             value: text.to_string(),
-            content_type: Some("text/html".to_string()),
+            content_type: Some("text/html".into()),
             language: None,
             base: None,
         });

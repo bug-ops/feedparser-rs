@@ -65,9 +65,9 @@ pub struct FeedMeta {
     /// Time-to-live (update frequency hint) in minutes
     pub ttl: Option<u32>,
     /// iTunes podcast metadata (if present)
-    pub itunes: Option<ItunesFeedMeta>,
+    pub itunes: Option<Box<ItunesFeedMeta>>,
     /// Podcast 2.0 namespace metadata (if present)
-    pub podcast: Option<PodcastMeta>,
+    pub podcast: Option<Box<PodcastMeta>>,
     /// Dublin Core creator (author fallback)
     pub dc_creator: Option<String>,
     /// Dublin Core publisher
@@ -77,9 +77,9 @@ pub struct FeedMeta {
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
     /// Syndication module metadata (RSS 1.0)
-    pub syndication: Option<SyndicationMeta>,
+    pub syndication: Option<Box<SyndicationMeta>>,
     /// Geographic location from `GeoRSS` namespace (feed level)
-    pub geo: Option<crate::namespace::georss::GeoLocation>,
+    pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
 }
 
 /// Parsed feed result
@@ -395,7 +395,7 @@ impl FeedMeta {
         }
         self.links.try_push_limited(
             Link {
-                href,
+                href: href.into(),
                 rel: Some("alternate".to_string()),
                 ..Default::default()
             },

@@ -194,7 +194,7 @@ impl PyEntry {
     fn itunes(&self) -> Option<PyItunesEntryMeta> {
         self.inner
             .itunes
-            .as_ref()
+            .as_deref()
             .map(|i| PyItunesEntryMeta::from_core(i.clone()))
     }
 
@@ -239,7 +239,7 @@ impl PyEntry {
     fn geo(&self) -> Option<PyGeoLocation> {
         self.inner
             .geo
-            .as_ref()
+            .as_deref()
             .map(|g| PyGeoLocation::from_core(g.clone()))
     }
 
@@ -290,7 +290,7 @@ impl PyEntry {
     fn podcast(&self) -> Option<PyPodcastEntryMeta> {
         self.inner
             .podcast
-            .as_ref()
+            .as_deref()
             .map(|p| PyPodcastEntryMeta::from_core(p.clone()))
     }
 

@@ -109,7 +109,7 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
         && favicon.len() <= limits.max_text_length
     {
         feed.image = Some(Image {
-            url: favicon.to_string(),
+            url: favicon.to_string().into(),
             title: None,
             link: None,
             width: None,
@@ -185,7 +185,7 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
 
     if let Some(image) = json.get("image").and_then(|v| v.as_str()) {
         let _ = entry.links.try_push_limited(
-            Link::enclosure(image, Some("image/*".to_string())),
+            Link::enclosure(image, Some("image/*".into())),
             limits.max_entries,
         );
     }

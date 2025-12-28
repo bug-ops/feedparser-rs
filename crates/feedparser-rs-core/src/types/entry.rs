@@ -55,7 +55,7 @@ pub struct Entry {
     /// Source feed reference
     pub source: Option<Source>,
     /// iTunes episode metadata (if present)
-    pub itunes: Option<ItunesEntryMeta>,
+    pub itunes: Option<Box<ItunesEntryMeta>>,
     /// Dublin Core creator (author fallback)
     pub dc_creator: Option<String>,
     /// Dublin Core date (publication date fallback)
@@ -73,9 +73,9 @@ pub struct Entry {
     /// Podcast 2.0 persons for this episode (hosts, guests, etc.)
     pub podcast_persons: Vec<PodcastPerson>,
     /// Podcast 2.0 episode metadata
-    pub podcast: Option<PodcastEntryMeta>,
+    pub podcast: Option<Box<PodcastEntryMeta>>,
     /// `GeoRSS` location data
-    pub geo: Option<crate::namespace::georss::GeoLocation>,
+    pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
 }
@@ -209,7 +209,7 @@ impl Entry {
         }
         self.links.try_push_limited(
             Link {
-                href,
+                href: href.into(),
                 rel: Some("alternate".to_string()),
                 ..Default::default()
             },

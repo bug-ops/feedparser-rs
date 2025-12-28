@@ -1,3 +1,5 @@
+use super::common::{MimeType, Url};
+
 /// iTunes podcast metadata for feeds
 ///
 /// Contains podcast-level iTunes namespace metadata from the `itunes:` prefix.
@@ -26,7 +28,7 @@ pub struct ItunesFeedMeta {
     /// Explicit content flag (itunes:explicit)
     pub explicit: Option<bool>,
     /// Podcast artwork URL (itunes:image href attribute)
-    pub image: Option<String>,
+    pub image: Option<Url>,
     /// Search keywords (itunes:keywords)
     pub keywords: Vec<String>,
     /// Podcast type: "episodic" or "serial"
@@ -44,7 +46,7 @@ pub struct ItunesFeedMeta {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub new_feed_url: Option<String>,
+    pub new_feed_url: Option<Url>,
 }
 
 /// iTunes podcast metadata for episodes
@@ -77,7 +79,7 @@ pub struct ItunesEntryMeta {
     /// Explicit content flag for this episode
     pub explicit: Option<bool>,
     /// Episode-specific artwork URL (itunes:image href)
-    pub image: Option<String>,
+    pub image: Option<Url>,
     /// Episode number (itunes:episode)
     pub episode: Option<u32>,
     /// Season number (itunes:season)
@@ -271,8 +273,8 @@ pub struct PodcastValueRecipient {
 /// use feedparser_rs::PodcastTranscript;
 ///
 /// let transcript = PodcastTranscript {
-///     url: "https://example.com/transcript.txt".to_string(),
-///     transcript_type: Some("text/plain".to_string()),
+///     url: "https://example.com/transcript.txt".into(),
+///     transcript_type: Some("text/plain".into()),
 ///     language: Some("en".to_string()),
 ///     rel: None,
 /// };
@@ -287,9 +289,9 @@ pub struct PodcastTranscript {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub url: String,
+    pub url: Url,
     /// MIME type (type attribute): "text/plain", "text/html", "application/json", etc.
-    pub transcript_type: Option<String>,
+    pub transcript_type: Option<MimeType>,
     /// Language code (language attribute): "en", "es", etc.
     pub language: Option<String>,
     /// Relationship (rel attribute): "captions" or empty
@@ -306,7 +308,7 @@ pub struct PodcastTranscript {
 /// use feedparser_rs::PodcastFunding;
 ///
 /// let funding = PodcastFunding {
-///     url: "https://example.com/donate".to_string(),
+///     url: "https://example.com/donate".into(),
 ///     message: Some("Support our show!".to_string()),
 /// };
 ///
@@ -320,7 +322,7 @@ pub struct PodcastFunding {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub url: String,
+    pub url: Url,
     /// Optional message/call-to-action (text content)
     pub message: Option<String>,
 }
@@ -338,8 +340,8 @@ pub struct PodcastFunding {
 ///     name: "John Doe".to_string(),
 ///     role: Some("host".to_string()),
 ///     group: None,
-///     img: Some("https://example.com/john.jpg".to_string()),
-///     href: Some("https://example.com/john".to_string()),
+///     img: Some("https://example.com/john.jpg".into()),
+///     href: Some("https://example.com/john".into()),
 /// };
 ///
 /// assert_eq!(host.name, "John Doe");
@@ -359,14 +361,14 @@ pub struct PodcastPerson {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub img: Option<String>,
+    pub img: Option<Url>,
     /// Personal URL/homepage (href attribute)
     ///
     /// # Security Warning
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub href: Option<String>,
+    pub href: Option<Url>,
 }
 
 /// Podcast 2.0 chapters information
@@ -380,8 +382,8 @@ pub struct PodcastPerson {
 /// use feedparser_rs::PodcastChapters;
 ///
 /// let chapters = PodcastChapters {
-///     url: "https://example.com/chapters.json".to_string(),
-///     type_: "application/json+chapters".to_string(),
+///     url: "https://example.com/chapters.json".into(),
+///     type_: "application/json+chapters".into(),
 /// };
 ///
 /// assert_eq!(chapters.url, "https://example.com/chapters.json");
@@ -394,9 +396,9 @@ pub struct PodcastChapters {
     ///
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
-    pub url: String,
+    pub url: Url,
     /// MIME type (type attribute): "application/json+chapters" or "application/xml+chapters"
-    pub type_: String,
+    pub type_: MimeType,
 }
 
 /// Podcast 2.0 soundbite (shareable clip)
@@ -688,8 +690,8 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_podcast_transcript_clone() {
         let transcript = PodcastTranscript {
-            url: "https://example.com/transcript.txt".to_string(),
-            transcript_type: Some("text/plain".to_string()),
+            url: "https://example.com/transcript.txt".to_string().into(),
+            transcript_type: Some("text/plain".to_string().into()),
             language: Some("en".to_string()),
             rel: None,
         };
@@ -702,7 +704,7 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_podcast_funding_clone() {
         let funding = PodcastFunding {
-            url: "https://example.com/donate".to_string(),
+            url: "https://example.com/donate".to_string().into(),
             message: Some("Support us!".to_string()),
         };
         let cloned = funding.clone();
@@ -717,8 +719,8 @@ mod tests {
             name: "John Doe".to_string(),
             role: Some("host".to_string()),
             group: None,
-            img: Some("https://example.com/john.jpg".to_string()),
-            href: Some("https://example.com".to_string()),
+            img: Some("https://example.com/john.jpg".to_string().into()),
+            href: Some("https://example.com".to_string().into()),
         };
         let cloned = person.clone();
         assert_eq!(cloned.name, "John Doe");
@@ -736,8 +738,8 @@ mod tests {
     #[allow(clippy::redundant_clone)]
     fn test_podcast_chapters_clone() {
         let chapters = PodcastChapters {
-            url: "https://example.com/chapters.json".to_string(),
-            type_: "application/json+chapters".to_string(),
+            url: "https://example.com/chapters.json".to_string().into(),
+            type_: "application/json+chapters".to_string().into(),
         };
         let cloned = chapters.clone();
         assert_eq!(cloned.url, "https://example.com/chapters.json");
@@ -779,7 +781,7 @@ mod tests {
     fn test_itunes_feed_meta_new_fields() {
         let meta = ItunesFeedMeta {
             complete: Some(true),
-            new_feed_url: Some("https://example.com/new-feed.xml".to_string()),
+            new_feed_url: Some("https://example.com/new-feed.xml".to_string().into()),
             ..Default::default()
         };
 

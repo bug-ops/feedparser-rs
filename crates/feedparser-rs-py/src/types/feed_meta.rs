@@ -197,7 +197,7 @@ impl PyFeedMeta {
     fn itunes(&self) -> Option<PyItunesFeedMeta> {
         self.inner
             .itunes
-            .as_ref()
+            .as_deref()
             .map(|i| PyItunesFeedMeta::from_core(i.clone()))
     }
 
@@ -205,7 +205,7 @@ impl PyFeedMeta {
     fn podcast(&self) -> Option<PyPodcastMeta> {
         self.inner
             .podcast
-            .as_ref()
+            .as_deref()
             .map(|p| PyPodcastMeta::from_core(p.clone()))
     }
 
@@ -218,7 +218,7 @@ impl PyFeedMeta {
     fn syndication(&self) -> Option<PySyndicationMeta> {
         self.inner
             .syndication
-            .as_ref()
+            .as_deref()
             .map(|s| PySyndicationMeta::from_core(s.clone()))
     }
 
@@ -241,7 +241,7 @@ impl PyFeedMeta {
     fn geo(&self) -> Option<PyGeoLocation> {
         self.inner
             .geo
-            .as_ref()
+            .as_deref()
             .map(|g| PyGeoLocation::from_core(g.clone()))
     }
 

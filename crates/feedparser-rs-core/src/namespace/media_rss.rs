@@ -14,6 +14,17 @@
 /// - `media:keywords` → tags (comma-separated)
 /// - `media:category` → tags
 /// - `media:credit` → contributors
+///
+/// # Type Design Note
+///
+/// The [`MediaContent`] and [`MediaThumbnail`] types in this module use raw `String`
+/// fields instead of the `Url`/`MimeType` newtypes from `types::common`. This is
+/// intentional:
+///
+/// 1. These are internal parsing types with extended attributes (medium, bitrate,
+///    framerate, expression, `is_default`) not present in the public API types.
+/// 2. The `media_content_to_enclosure` function handles conversion to public types.
+/// 3. The public API types in `types::common::MediaContent` use proper newtypes.
 use crate::types::{Enclosure, Entry, Tag};
 
 /// Media RSS namespace URI
@@ -191,8 +202,8 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
 /// ```
 pub fn media_content_to_enclosure(content: &MediaContent) -> Enclosure {
     Enclosure {
-        url: content.url.clone(),
-        enclosure_type: content.type_.clone(),
+        url: content.url.clone().into(),
+        enclosure_type: content.type_.as_ref().map(|t| t.clone().into()),
         length: content.file_size,
     }
 }

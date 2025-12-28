@@ -1,11 +1,12 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
 
-//! feedparser-rs-core: High-performance RSS/Atom/JSON Feed parser
+//! # feedparser-rs: High-performance RSS/Atom/JSON Feed parser
 //!
-//! This crate provides a pure Rust implementation of feed parsing with
-//! compatibility for Python's feedparser library.
+//! A pure Rust implementation of feed parsing with API compatibility for Python's
+//! [feedparser](https://github.com/kurtmckee/feedparser) library. Designed for
+//! 10-100x faster feed parsing with identical behavior.
 //!
-//! # Examples
+//! ## Quick Start
 //!
 //! ```
 //! use feedparser_rs::parse;
@@ -15,29 +16,148 @@
 //!     <rss version="2.0">
 //!         <channel>
 //!             <title>Example Feed</title>
+//!             <link>https://example.com</link>
+//!             <item>
+//!                 <title>First Post</title>
+//!                 <link>https://example.com/post/1</link>
+//!             </item>
 //!         </channel>
 //!     </rss>
 //! "#;
 //!
 //! let feed = parse(xml.as_bytes()).unwrap();
-//! assert!(feed.bozo == false);
+//! assert!(!feed.bozo);
+//! assert_eq!(feed.feed.title.as_deref(), Some("Example Feed"));
+//! assert_eq!(feed.entries.len(), 1);
 //! ```
 //!
-//! # Features
+//! ## Supported Formats
 //!
-//! - Parse RSS 0.9x, 1.0, 2.0
-//! - Parse Atom 0.3, 1.0
-//! - Parse JSON Feed 1.0, 1.1
-//! - Tolerant parsing with bozo flag
-//! - Multi-format date parsing
-//! - HTML sanitization
-//! - Encoding detection
+//! | Format | Versions | Detection |
+//! |--------|----------|-----------|
+//! | RSS | 0.90, 0.91, 0.92, 2.0 | `<rss>` element |
+//! | RSS 1.0 | RDF-based | `<rdf:RDF>` with RSS namespace |
+//! | Atom | 0.3, 1.0 | `<feed>` with Atom namespace |
+//! | JSON Feed | 1.0, 1.1 | `version` field starting with `https://jsonfeed.org` |
 //!
-//! # Architecture
+//! ## Namespace Extensions
 //!
-//! The library provides core data structures like [`ParsedFeed`], [`Entry`], and [`FeedMeta`]
-//! for representing parsed feed data. The main entry point is the [`parse`] function which
-//! automatically detects feed format and returns parsed results.
+//! The parser supports common feed extensions:
+//!
+//! - **iTunes/Podcast** (`itunes:`) - Podcast metadata, categories, explicit flags
+//! - **Podcast 2.0** (`podcast:`) - Transcripts, chapters, funding, persons
+//! - **Dublin Core** (`dc:`) - Creator, date, rights, subject
+//! - **Media RSS** (`media:`) - Thumbnails, content, descriptions
+//! - **Content** (`content:encoded`) - Full HTML content
+//! - **Syndication** (`sy:`) - Update frequency hints
+//! - **`GeoRSS`** (`georss:`) - Geographic coordinates
+//! - **Creative Commons** (`cc:`, `creativeCommons:`) - License information
+//!
+//! ## Type-Safe URL and MIME Handling
+//!
+//! The library uses semantic newtypes for improved type safety:
+//!
+//! ```
+//! use feedparser_rs::{Url, MimeType, Email};
+//!
+//! // Url - wraps URL strings without validation (bozo-compatible)
+//! let url = Url::new("https://example.com/feed.xml");
+//! assert_eq!(url.as_str(), "https://example.com/feed.xml");
+//! assert!(url.starts_with("https://")); // Deref to str
+//!
+//! // MimeType - uses Arc<str> for efficient cloning
+//! let mime = MimeType::new("application/rss+xml");
+//! let clone = mime.clone(); // Cheap: just increments refcount
+//!
+//! // Email - wraps email addresses
+//! let email = Email::new("author@example.com");
+//! ```
+//!
+//! These types implement <code>[`Deref`]&lt;Target=str&gt;</code>, so string methods work directly:
+//!
+//! ```
+//! use feedparser_rs::Url;
+//!
+//! let url = Url::new("https://example.com/path?query=1");
+//! assert!(url.contains("example.com"));
+//! assert_eq!(url.len(), 32);
+//! ```
+//!
+//! ## The Bozo Pattern
+//!
+//! Following Python feedparser's philosophy, this library **never panics** on
+//! malformed input. Instead, it sets the `bozo` flag and continues parsing:
+//!
+//! ```
+//! use feedparser_rs::parse;
+//!
+//! // XML with undefined entity - triggers bozo
+//! let xml_with_entity = b"<rss version='2.0'><channel><title>Test &#xFFFF;</title></channel></rss>";
+//!
+//! let feed = parse(xml_with_entity).unwrap();
+//! // Parser handles invalid characters gracefully
+//! assert!(feed.feed.title.is_some());
+//! ```
+//!
+//! The bozo flag indicates the feed had issues but was still parseable.
+//!
+//! ## Resource Limits
+//!
+//! Protect against malicious feeds with [`ParserLimits`]:
+//!
+//! ```
+//! use feedparser_rs::{parse_with_limits, ParserLimits};
+//!
+//! // Customize limits for untrusted input
+//! let limits = ParserLimits {
+//!     max_entries: 100,
+//!     max_text_length: 50_000,
+//!     ..Default::default()
+//! };
+//!
+//! let xml = b"<rss version='2.0'><channel><title>Safe</title></channel></rss>";
+//! let feed = parse_with_limits(xml, limits).unwrap();
+//! ```
+//!
+//! ## HTTP Fetching
+//!
+//! With the `http` feature (enabled by default), fetch feeds from URLs:
+//!
+//! ```no_run
+//! use feedparser_rs::parse_url;
+//!
+//! // Simple fetch
+//! let feed = parse_url("https://example.com/feed.xml", None, None, None)?;
+//!
+//! // With conditional GET for caching
+//! let feed2 = parse_url(
+//!     "https://example.com/feed.xml",
+//!     feed.etag.as_deref(),      // ETag from previous fetch
+//!     feed.modified.as_deref(),  // Last-Modified from previous fetch
+//!     Some("MyApp/1.0"),         // Custom User-Agent
+//! )?;
+//!
+//! if feed2.status == Some(304) {
+//!     println!("Feed not modified since last fetch");
+//! }
+//! # Ok::<(), feedparser_rs::FeedError>(())
+//! ```
+//!
+//! ## Core Types
+//!
+//! - [`ParsedFeed`] - Complete parsed feed with metadata and entries
+//! - [`FeedMeta`] - Feed-level metadata (title, link, author, etc.)
+//! - [`Entry`] - Individual feed entry/item
+//! - [`Link`], [`Person`], [`Tag`] - Common feed elements
+//! - [`Url`], [`MimeType`], [`Email`] - Type-safe string wrappers
+//!
+//! ## Module Structure
+//!
+//! - [`types`] - All data structures for parsed feeds
+//! - [`namespace`] - Handlers for namespace extensions (iTunes, Podcast 2.0, etc.)
+//! - [`util`] - Helper functions for dates, HTML sanitization, encoding
+//! - [`compat`] - Python feedparser API compatibility layer
+//! - [`http`] - HTTP client for fetching feeds (requires `http` feature)
 
 /// Compatibility utilities for Python feedparser API
 pub mod compat;
@@ -68,11 +188,12 @@ pub use limits::{LimitError, ParserLimits};
 pub use options::ParseOptions;
 pub use parser::{detect_format, parse, parse_with_limits};
 pub use types::{
-    Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
+    Content, Email, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
     ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link, MediaContent,
-    MediaThumbnail, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta, PodcastFunding,
-    PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, PodcastValue,
-    PodcastValueRecipient, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
+    MediaThumbnail, MimeType, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta,
+    PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, PodcastValue,
+    PodcastValueRecipient, Source, Tag, TextConstruct, TextType, Url, parse_duration,
+    parse_explicit,
 };
 
 pub use namespace::syndication::{SyndicationMeta, UpdatePeriod};

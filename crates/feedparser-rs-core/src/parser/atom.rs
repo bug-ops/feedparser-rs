@@ -130,15 +130,15 @@ fn parse_feed_element(
                             element.attributes().flatten(),
                             limits.max_attribute_length,
                         ) {
-                            link.href = base_ctx.resolve_safe(&link.href);
+                            link.href = base_ctx.resolve_safe(&link.href).into();
 
                             if feed.feed.link.is_none() && link.rel.as_deref() == Some("alternate")
                             {
-                                feed.feed.link = Some(link.href.clone());
+                                feed.feed.link = Some(link.href.to_string());
                             }
                             if feed.feed.license.is_none() && link.rel.as_deref() == Some("license")
                             {
-                                feed.feed.license = Some(link.href.clone());
+                                feed.feed.license = Some(link.href.to_string());
                             }
                             feed.feed
                                 .links
@@ -304,13 +304,13 @@ fn parse_entry(
                             element.attributes().flatten(),
                             limits.max_attribute_length,
                         ) {
-                            link.href = base_ctx.resolve_safe(&link.href);
+                            link.href = base_ctx.resolve_safe(&link.href).into();
 
                             if entry.link.is_none() && link.rel.as_deref() == Some("alternate") {
-                                entry.link = Some(link.href.clone());
+                                entry.link = Some(link.href.to_string());
                             }
                             if entry.license.is_none() && link.rel.as_deref() == Some("license") {
-                                entry.license = Some(link.href.clone());
+                                entry.license = Some(link.href.to_string());
                             }
                             entry
                                 .links
@@ -496,7 +496,7 @@ fn parse_person(
 
                 match e.local_name().as_ref() {
                     b"name" => name = Some(read_text(reader, buf, limits)?),
-                    b"email" => email = Some(read_text(reader, buf, limits)?),
+                    b"email" => email = Some(read_text(reader, buf, limits)?.into()),
                     b"uri" => uri = Some(read_text(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
@@ -560,7 +560,7 @@ fn parse_content(
             continue;
         }
         if attr.key.as_ref() == b"type" {
-            content_type = Some(bytes_to_string(&attr.value));
+            content_type = Some(bytes_to_string(&attr.value).into());
         }
     }
 
@@ -599,7 +599,7 @@ fn parse_atom_source(
                             limits.max_attribute_length,
                         ) && link.is_none()
                         {
-                            link = Some(l.href);
+                            link = Some(l.href.to_string());
                         }
                         skip_to_end(reader, buf, b"link")?;
                     }

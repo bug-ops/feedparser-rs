@@ -53,7 +53,7 @@ pub fn handle_feed_element(
             if let Some(license_url) = extract_license_url(attrs, text) {
                 feed.links.try_push_limited(
                     Link {
-                        href: license_url,
+                        href: license_url.into(),
                         rel: Some("license".to_string()),
                         ..Default::default()
                     },
@@ -94,7 +94,7 @@ pub fn handle_entry_element(
             if let Some(license_url) = extract_license_url(attrs, text) {
                 entry.links.try_push_limited(
                     Link {
-                        href: license_url,
+                        href: license_url.into(),
                         rel: Some("license".to_string()),
                         ..Default::default()
                     },
