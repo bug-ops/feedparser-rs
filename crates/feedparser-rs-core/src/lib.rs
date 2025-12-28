@@ -38,7 +38,8 @@
 //! for representing parsed feed data. The main entry point is the [`parse`] function which
 //! automatically detects feed format and returns parsed results.
 
-mod compat;
+/// Compatibility utilities for Python feedparser API
+pub mod compat;
 mod error;
 #[cfg(feature = "http")]
 /// HTTP client module for fetching feeds from URLs

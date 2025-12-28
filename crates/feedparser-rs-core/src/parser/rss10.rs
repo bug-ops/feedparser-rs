@@ -10,14 +10,14 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, syndication},
+    namespace::{content, dublin_core, georss, syndication},
     types::{Entry, FeedVersion, Image, ParsedFeed, TextConstruct, TextType},
 };
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
-    is_syn_tag, read_text, skip_element,
+    is_georss_tag, is_syn_tag, read_text, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -218,7 +218,7 @@ fn parse_channel(
                         skip_element(reader, &mut buf, limits, *depth)?;
                     }
                     _ => {
-                        // Check for Dublin Core namespace tags
+                        // Check for Dublin Core and other namespace tags
                         if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
                             let dc_elem = dc_element.to_string();
                             let text = read_text(reader, &mut buf, limits)?;
@@ -227,6 +227,10 @@ fn parse_channel(
                             let syn_elem = syn_element.to_string();
                             let text = read_text(reader, &mut buf, limits)?;
                             syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
+                        } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
+                            let georss_elem = georss_element.to_string();
+                            let text = read_text(reader, &mut buf, limits)?;
+                            georss::handle_feed_element(georss_elem.as_bytes(), &text, &mut feed.feed, limits);
                         } else {
                             skip_element(reader, &mut buf, limits, *depth)?;
                         }
@@ -286,7 +290,7 @@ fn parse_item(
                         });
                     }
                     _ => {
-                        // Check for Dublin Core namespace tags
+                        // Check for Dublin Core and other namespace tags
                         if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
                             let dc_elem = dc_element.to_string();
                             let text = read_text(reader, buf, limits)?;
@@ -296,6 +300,10 @@ fn parse_item(
                             let content_elem = content_element.to_string();
                             let text = read_text(reader, buf, limits)?;
                             content::handle_entry_element(&content_elem, &text, &mut entry);
+                        } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
+                            let georss_elem = georss_element.to_string();
+                            let text = read_text(reader, buf, limits)?;
+                            georss::handle_entry_element(georss_elem.as_bytes(), &text, &mut entry, limits);
                         } else {
                             skip_element(reader, buf, limits, *depth)?;
                         }

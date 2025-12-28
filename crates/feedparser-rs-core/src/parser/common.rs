@@ -237,6 +237,20 @@ pub fn is_media_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"media:")
 }
 
+/// Check if element is a `GeoRSS` namespaced tag
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_georss_tag(b"georss:point"), Some("point"));
+/// assert_eq!(is_georss_tag(b"georss:line"), Some("line"));
+/// assert_eq!(is_georss_tag(b"dc:creator"), None);
+/// ```
+#[inline]
+pub fn is_georss_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"georss:")
+}
+
 /// Check if element matches an iTunes namespace tag
 ///
 /// Supports both prefixed (itunes:author) and unprefixed (author) forms

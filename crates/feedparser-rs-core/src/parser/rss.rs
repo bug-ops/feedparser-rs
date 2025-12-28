@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, media_rss},
+    namespace::{content, dublin_core, georss, media_rss},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastChapters,
@@ -16,7 +16,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_itunes_tag, is_media_tag, read_text, skip_element,
+    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text,
+    skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -529,7 +530,7 @@ fn parse_channel_podcast(
     }
 }
 
-/// Parse Dublin Core, Content, and Media RSS namespace tags at channel level
+/// Parse Dublin Core, Content, `GeoRSS`, and Media RSS namespace tags at channel level
 #[inline]
 fn parse_channel_namespace(
     reader: &mut Reader<&[u8]>,
@@ -549,6 +550,10 @@ fn parse_channel_namespace(
         Ok(true)
     } else if let Some(_media_element) = is_media_tag(tag) {
         skip_element(reader, buf, limits, depth)?;
+        Ok(true)
+    } else if let Some(georss_element) = is_georss_tag(tag) {
+        let text = read_text(reader, buf, limits)?;
+        georss::handle_feed_element(georss_element.as_bytes(), &text, &mut feed.feed, limits);
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
         feed.feed.license = Some(read_text(reader, buf, limits)?);
@@ -984,6 +989,10 @@ fn parse_item_namespace(
         let content_elem = content_element.to_string();
         let text = read_text(reader, buf, limits)?;
         content::handle_entry_element(&content_elem, &text, entry);
+        Ok(true)
+    } else if let Some(georss_element) = is_georss_tag(tag) {
+        let text = read_text(reader, buf, limits)?;
+        georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag) {
         parse_item_media(

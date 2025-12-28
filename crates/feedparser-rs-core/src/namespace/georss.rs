@@ -16,7 +16,7 @@
 //! GeoRSS Simple: <http://www.georss.org/simple>
 
 use crate::limits::ParserLimits;
-use crate::types::Entry;
+use crate::types::{Entry, FeedMeta};
 
 /// `GeoRSS` namespace URI
 pub const GEORSS: &str = "http://www.georss.org/georss";
@@ -197,6 +197,53 @@ pub fn handle_entry_element(
         b"box" => {
             if let Some(loc) = parse_box(text) {
                 entry.geo = Some(loc);
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Parse `GeoRSS` element and update feed metadata
+///
+/// # Arguments
+///
+/// * `tag` - Element local name (e.g., "point", "line", "polygon", "box")
+/// * `text` - Element text content
+/// * `feed` - Feed metadata to update
+/// * `_limits` - Parser limits (unused but kept for API consistency)
+///
+/// # Returns
+///
+/// `true` if element was recognized and handled, `false` otherwise
+pub fn handle_feed_element(
+    tag: &[u8],
+    text: &str,
+    feed: &mut FeedMeta,
+    _limits: &ParserLimits,
+) -> bool {
+    match tag {
+        b"point" => {
+            if let Some(loc) = parse_point(text) {
+                feed.geo = Some(loc);
+            }
+            true
+        }
+        b"line" => {
+            if let Some(loc) = parse_line(text) {
+                feed.geo = Some(loc);
+            }
+            true
+        }
+        b"polygon" => {
+            if let Some(loc) = parse_polygon(text) {
+                feed.geo = Some(loc);
+            }
+            true
+        }
+        b"box" => {
+            if let Some(loc) = parse_box(text) {
+                feed.geo = Some(loc);
             }
             true
         }
@@ -431,5 +478,78 @@ mod tests {
     fn test_whitespace_handling() {
         let loc = parse_point("  45.256   -71.92  ").unwrap();
         assert_eq!(loc.coordinates[0], (45.256, -71.92));
+    }
+
+    #[test]
+    fn test_handle_feed_element_point() {
+        let mut feed = FeedMeta::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_feed_element(b"point", "45.256 -71.92", &mut feed, &limits);
+        assert!(handled);
+        assert!(feed.geo.is_some());
+
+        let geo = feed.geo.as_ref().unwrap();
+        assert_eq!(geo.geo_type, GeoType::Point);
+        assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    }
+
+    #[test]
+    fn test_handle_feed_element_line() {
+        let mut feed = FeedMeta::default();
+        let limits = ParserLimits::default();
+
+        let handled =
+            handle_feed_element(b"line", "45.256 -71.92 46.0 -72.0", &mut feed, &limits);
+        assert!(handled);
+        assert!(feed.geo.is_some());
+        assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Line);
+    }
+
+    #[test]
+    fn test_handle_feed_element_polygon() {
+        let mut feed = FeedMeta::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_feed_element(
+            b"polygon",
+            "45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0",
+            &mut feed,
+            &limits,
+        );
+        assert!(handled);
+        assert!(feed.geo.is_some());
+        assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Polygon);
+    }
+
+    #[test]
+    fn test_handle_feed_element_box() {
+        let mut feed = FeedMeta::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_feed_element(b"box", "45.0 -72.0 46.0 -71.0", &mut feed, &limits);
+        assert!(handled);
+        assert!(feed.geo.is_some());
+        assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Box);
+    }
+
+    #[test]
+    fn test_handle_feed_element_unknown() {
+        let mut feed = FeedMeta::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_feed_element(b"unknown", "data", &mut feed, &limits);
+        assert!(!handled);
+        assert!(feed.geo.is_none());
+    }
+
+    #[test]
+    fn test_handle_feed_element_invalid_data() {
+        let mut feed = FeedMeta::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_feed_element(b"point", "invalid data", &mut feed, &limits);
+        assert!(handled);
+        assert!(feed.geo.is_none());
     }
 }

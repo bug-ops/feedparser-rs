@@ -78,6 +78,8 @@ pub struct FeedMeta {
     pub license: Option<String>,
     /// Syndication module metadata (RSS 1.0)
     pub syndication: Option<SyndicationMeta>,
+    /// Geographic location from `GeoRSS` namespace (feed level)
+    pub geo: Option<crate::namespace::georss::GeoLocation>,
 }
 
 /// Parsed feed result
