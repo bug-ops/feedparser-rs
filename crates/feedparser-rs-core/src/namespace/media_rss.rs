@@ -270,7 +270,7 @@ mod tests {
             type_: Some("video/mp4".to_string()),
             medium: Some("video".to_string()),
             file_size: Some(10_485_760), // 10 MB
-            bitrate: Some(1500),          // 1500 kbps
+            bitrate: Some(1500),         // 1500 kbps
             framerate: Some(30.0),
             width: Some(1920),
             height: Some(1080),
@@ -299,8 +299,8 @@ mod tests {
             type_: Some("audio/mpeg".to_string()),
             medium: Some("audio".to_string()),
             file_size: Some(5_242_880), // 5 MB
-            bitrate: Some(128),          // 128 kbps
-            duration: Some(180),         // 3 minutes
+            bitrate: Some(128),         // 128 kbps
+            duration: Some(180),        // 3 minutes
             ..Default::default()
         };
 

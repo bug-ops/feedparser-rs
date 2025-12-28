@@ -895,10 +895,7 @@ mod tests {
         }
 
         assert_eq!(value.recipients.len(), 5);
-        assert_eq!(
-            value.recipients.iter().map(|r| r.split).sum::<u32>(),
-            100
-        );
+        assert_eq!(value.recipients.iter().map(|r| r.split).sum::<u32>(), 100);
     }
 
     #[test]

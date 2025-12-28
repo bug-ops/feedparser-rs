@@ -470,17 +470,22 @@ mod tests {
         let limits = ParserLimits::default();
 
         // Within limit
-        assert!(limits
-            .check_collection_size(19, limits.max_value_recipients, "value_recipients")
-            .is_ok());
+        assert!(
+            limits
+                .check_collection_size(19, limits.max_value_recipients, "value_recipients")
+                .is_ok()
+        );
 
         // At limit
-        assert!(limits
-            .check_collection_size(20, limits.max_value_recipients, "value_recipients")
-            .is_err());
+        assert!(
+            limits
+                .check_collection_size(20, limits.max_value_recipients, "value_recipients")
+                .is_err()
+        );
 
         // Exceeds limit
-        let result = limits.check_collection_size(21, limits.max_value_recipients, "value_recipients");
+        let result =
+            limits.check_collection_size(21, limits.max_value_recipients, "value_recipients");
         assert!(result.is_err());
         assert!(matches!(result, Err(LimitError::CollectionTooLarge { .. })));
     }

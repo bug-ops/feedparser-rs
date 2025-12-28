@@ -499,8 +499,7 @@ mod tests {
         let mut feed = FeedMeta::default();
         let limits = ParserLimits::default();
 
-        let handled =
-            handle_feed_element(b"line", "45.256 -71.92 46.0 -72.0", &mut feed, &limits);
+        let handled = handle_feed_element(b"line", "45.256 -71.92 46.0 -72.0", &mut feed, &limits);
         assert!(handled);
         assert!(feed.geo.is_some());
         assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Line);

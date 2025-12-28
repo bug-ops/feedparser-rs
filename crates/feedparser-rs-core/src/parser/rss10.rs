@@ -230,7 +230,12 @@ fn parse_channel(
                         } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
                             let georss_elem = georss_element.to_string();
                             let text = read_text(reader, &mut buf, limits)?;
-                            georss::handle_feed_element(georss_elem.as_bytes(), &text, &mut feed.feed, limits);
+                            georss::handle_feed_element(
+                                georss_elem.as_bytes(),
+                                &text,
+                                &mut feed.feed,
+                                limits,
+                            );
                         } else {
                             skip_element(reader, &mut buf, limits, *depth)?;
                         }
@@ -303,7 +308,12 @@ fn parse_item(
                         } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
                             let georss_elem = georss_element.to_string();
                             let text = read_text(reader, buf, limits)?;
-                            georss::handle_entry_element(georss_elem.as_bytes(), &text, &mut entry, limits);
+                            georss::handle_entry_element(
+                                georss_elem.as_bytes(),
+                                &text,
+                                &mut entry,
+                                limits,
+                            );
                         } else {
                             skip_element(reader, buf, limits, *depth)?;
                         }

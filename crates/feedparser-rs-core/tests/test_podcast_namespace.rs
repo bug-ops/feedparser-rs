@@ -1,4 +1,12 @@
+#![allow(missing_docs)]
+
 use feedparser_rs::{PodcastChapters, PodcastEntryMeta, PodcastSoundbite, parse};
+use std::fmt::Write;
+
+/// Helper for comparing f64 values in tests
+fn approx_eq(a: f64, b: f64) -> bool {
+    (a - b).abs() < f64::EPSILON || (a == b)
+}
 
 #[test]
 fn test_podcast_chapters_parsing() {
@@ -58,8 +66,8 @@ fn test_podcast_soundbite_parsing() {
     assert_eq!(podcast.soundbite.len(), 1, "Should have one soundbite");
 
     let soundbite = &podcast.soundbite[0];
-    assert_eq!(soundbite.start_time, 120.5);
-    assert_eq!(soundbite.duration, 30.0);
+    assert!(approx_eq(soundbite.start_time, 120.5));
+    assert!(approx_eq(soundbite.duration, 30.0));
     assert_eq!(
         soundbite.title.as_deref(),
         Some("Great quote from the show")
@@ -84,8 +92,8 @@ fn test_podcast_soundbite_without_title() {
     let podcast = entry.podcast.as_ref().unwrap();
     let soundbite = &podcast.soundbite[0];
 
-    assert_eq!(soundbite.start_time, 60.0);
-    assert_eq!(soundbite.duration, 15.0);
+    assert!(approx_eq(soundbite.start_time, 60.0));
+    assert!(approx_eq(soundbite.duration, 15.0));
     assert!(soundbite.title.is_none(), "Soundbite should have no title");
 }
 
@@ -248,8 +256,8 @@ fn test_podcast_chapters_default() {
 #[test]
 fn test_podcast_soundbite_default() {
     let soundbite = PodcastSoundbite::default();
-    assert_eq!(soundbite.start_time, 0.0);
-    assert_eq!(soundbite.duration, 0.0);
+    assert!(approx_eq(soundbite.start_time, 0.0));
+    assert!(approx_eq(soundbite.duration, 0.0));
     assert!(soundbite.title.is_none());
 }
 
@@ -264,19 +272,20 @@ fn test_soundbite_limit_exceeded() {
         .to_string();
 
     for i in 1..=15 {
-        xml.push_str(&format!(
+        write!(
+            xml,
             r#"
-            <podcast:soundbite startTime="{}" duration="5">Clip {}</podcast:soundbite>"#,
-            i * 10,
-            i
-        ));
+            <podcast:soundbite startTime="{}" duration="5">Clip {i}</podcast:soundbite>"#,
+            i * 10
+        )
+        .unwrap();
     }
 
     xml.push_str(
-        r#"
+        r"
         </item>
     </channel>
-</rss>"#,
+</rss>",
     );
 
     let feed = parse(xml.as_bytes()).expect("Failed to parse feed");
@@ -325,9 +334,8 @@ fn test_podcast_chapters_missing_url() {
             podcast.chapters.is_none(),
             "Chapters should not be created without URL"
         );
-    } else {
-        assert!(true, "No podcast metadata is also acceptable");
     }
+    // No podcast metadata is also acceptable - no assertion needed
 }
 
 #[test]
@@ -349,18 +357,16 @@ fn test_itunes_complete_case_insensitive() {
 <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
     <channel>
         <title>Test Podcast</title>
-        <itunes:complete>{}</itunes:complete>
+        <itunes:complete>{value}</itunes:complete>
     </channel>
-</rss>"#,
-            value
+</rss>"#
         );
 
         let feed = parse(xml.as_bytes()).expect("Failed to parse feed");
         let itunes = feed.feed.itunes.as_ref().unwrap();
         assert_eq!(
             itunes.complete, expected,
-            "complete='{}' should parse as {:?}",
-            value, expected
+            "complete='{value}' should parse as {expected:?}"
         );
     }
 }
@@ -428,8 +434,8 @@ fn test_soundbite_negative_values() {
             2,
             "Negative values should still parse (f64 supports negatives)"
         );
-        assert_eq!(podcast.soundbite[0].start_time, -10.5);
-        assert_eq!(podcast.soundbite[1].duration, -5.0);
+        assert!(approx_eq(podcast.soundbite[0].start_time, -10.5));
+        assert!(approx_eq(podcast.soundbite[1].duration, -5.0));
     }
 }
 
@@ -458,10 +464,10 @@ fn test_soundbite_zero_duration() {
         2,
         "Zero duration soundbites should be accepted"
     );
-    assert_eq!(podcast.soundbite[0].start_time, 0.0);
-    assert_eq!(podcast.soundbite[0].duration, 0.0);
-    assert_eq!(podcast.soundbite[1].start_time, 100.0);
-    assert_eq!(podcast.soundbite[1].duration, 0.0);
+    assert!(approx_eq(podcast.soundbite[0].start_time, 0.0));
+    assert!(approx_eq(podcast.soundbite[0].duration, 0.0));
+    assert!(approx_eq(podcast.soundbite[1].start_time, 100.0));
+    assert!(approx_eq(podcast.soundbite[1].duration, 0.0));
 }
 
 #[test]

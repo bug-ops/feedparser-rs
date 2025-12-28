@@ -93,7 +93,14 @@ pub fn format_duration(seconds: u32) -> String {
 pub fn is_valid_version(version: &str) -> bool {
     matches!(
         version,
-        "rss090" | "rss091" | "rss092" | "rss10" | "rss20" | "atom03" | "atom10" | "json10"
+        "rss090"
+            | "rss091"
+            | "rss092"
+            | "rss10"
+            | "rss20"
+            | "atom03"
+            | "atom10"
+            | "json10"
             | "json11"
     )
 }

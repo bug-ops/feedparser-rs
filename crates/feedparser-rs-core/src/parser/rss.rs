@@ -16,8 +16,7 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text,
-    skip_element,
+    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
