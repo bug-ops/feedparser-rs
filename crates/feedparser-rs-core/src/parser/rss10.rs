@@ -91,7 +91,7 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                             || attr.key.local_name().as_ref() == b"about")
                             && let Ok(value) = attr.unescape_value()
                         {
-                            feed.feed.id = Some(value.to_string());
+                            feed.feed.id = Some(value.as_ref().into());
                         }
                     }
                     if let Err(e) = parse_channel(&mut reader, &mut feed, &limits, &mut depth) {
@@ -265,7 +265,7 @@ fn parse_item(
     item_id: Option<String>,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
-    entry.id = item_id;
+    entry.id = item_id.map(std::convert::Into::into);
 
     loop {
         match reader.read_event_into(buf) {

@@ -10,8 +10,8 @@ use chrono::{DateTime, Utc};
 /// Feed entry/item
 #[derive(Debug, Clone, Default)]
 pub struct Entry {
-    /// Unique entry identifier
-    pub id: Option<String>,
+    /// Unique entry identifier (stored inline for IDs ≤24 bytes)
+    pub id: Option<super::common::SmallString>,
     /// Entry title
     pub title: Option<String>,
     /// Detailed title with metadata
@@ -34,16 +34,16 @@ pub struct Entry {
     pub created: Option<DateTime<Utc>>,
     /// Expiration date
     pub expired: Option<DateTime<Utc>>,
-    /// Primary author name
-    pub author: Option<String>,
+    /// Primary author name (stored inline for names ≤24 bytes)
+    pub author: Option<super::common::SmallString>,
     /// Detailed author information
     pub author_detail: Option<Person>,
     /// All authors
     pub authors: Vec<Person>,
     /// Contributors
     pub contributors: Vec<Person>,
-    /// Publisher name
-    pub publisher: Option<String>,
+    /// Publisher name (stored inline for names ≤24 bytes)
+    pub publisher: Option<super::common::SmallString>,
     /// Detailed publisher information
     pub publisher_detail: Option<Person>,
     /// Tags/categories
@@ -56,8 +56,8 @@ pub struct Entry {
     pub source: Option<Source>,
     /// iTunes episode metadata (if present)
     pub itunes: Option<Box<ItunesEntryMeta>>,
-    /// Dublin Core creator (author fallback)
-    pub dc_creator: Option<String>,
+    /// Dublin Core creator (author fallback) - stored inline for names ≤24 bytes
+    pub dc_creator: Option<super::common::SmallString>,
     /// Dublin Core date (publication date fallback)
     pub dc_date: Option<DateTime<Utc>>,
     /// Dublin Core subjects (tags)
@@ -210,7 +210,7 @@ impl Entry {
         self.links.try_push_limited(
             Link {
                 href: href.into(),
-                rel: Some("alternate".to_string()),
+                rel: Some("alternate".into()),
                 ..Default::default()
             },
             max_links,

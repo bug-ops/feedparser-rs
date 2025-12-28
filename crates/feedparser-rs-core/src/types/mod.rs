@@ -7,7 +7,7 @@ mod version;
 
 pub use common::{
     Content, Email, Enclosure, Generator, Image, Link, MediaContent, MediaThumbnail, MimeType,
-    Person, Source, Tag, TextConstruct, TextType, Url,
+    Person, SmallString, Source, Tag, TextConstruct, TextType, Url,
 };
 pub use entry::Entry;
 pub use feed::{FeedMeta, ParsedFeed};

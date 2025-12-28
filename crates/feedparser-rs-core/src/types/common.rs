@@ -1,8 +1,28 @@
 use super::generics::{FromAttributes, ParseFrom};
 use crate::util::text::bytes_to_string;
+use compact_str::CompactString;
 use serde_json::Value;
 use std::ops::Deref;
 use std::sync::Arc;
+
+/// Optimized string type for small strings (≤24 bytes stored inline)
+///
+/// Uses `CompactString` which stores strings up to 24 bytes inline without heap allocation.
+/// This significantly reduces allocations for common short strings like language codes,
+/// author names, category terms, and other metadata fields.
+///
+/// `CompactString` implements `Deref<Target=str>`, so it can be used transparently as a string.
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::types::common::SmallString;
+///
+/// let s: SmallString = "en-US".into();
+/// assert_eq!(s.as_str(), "en-US");
+/// assert_eq!(s.len(), 5); // Stored inline, no heap allocation
+/// ```
+pub type SmallString = CompactString;
 
 /// URL newtype for type-safe URL handling
 ///
@@ -410,24 +430,25 @@ pub struct Link {
     /// Link URL
     pub href: Url,
     /// Link relationship type (e.g., "alternate", "enclosure", "self")
-    pub rel: Option<String>,
+    /// Stored inline as these are typically short (≤24 bytes)
+    pub rel: Option<SmallString>,
     /// MIME type of the linked resource
     pub link_type: Option<MimeType>,
     /// Human-readable link title
     pub title: Option<String>,
     /// Length of the linked resource in bytes
     pub length: Option<u64>,
-    /// Language of the linked resource
-    pub hreflang: Option<String>,
+    /// Language of the linked resource (stored inline for lang codes ≤24 bytes)
+    pub hreflang: Option<SmallString>,
 }
 
 impl Link {
     /// Create a new link with just URL and relation type
     #[inline]
-    pub fn new(href: impl Into<Url>, rel: impl Into<String>) -> Self {
+    pub fn new(href: impl Into<Url>, rel: impl AsRef<str>) -> Self {
         Self {
             href: href.into(),
-            rel: Some(rel.into()),
+            rel: Some(rel.as_ref().into()),
             link_type: None,
             title: None,
             length: None,
@@ -446,7 +467,7 @@ impl Link {
     pub fn self_link(href: impl Into<Url>, mime_type: impl Into<MimeType>) -> Self {
         Self {
             href: href.into(),
-            rel: Some("self".to_string()),
+            rel: Some("self".into()),
             link_type: Some(mime_type.into()),
             title: None,
             length: None,
@@ -459,7 +480,7 @@ impl Link {
     pub fn enclosure(href: impl Into<Url>, mime_type: Option<MimeType>) -> Self {
         Self {
             href: href.into(),
-            rel: Some("enclosure".to_string()),
+            rel: Some("enclosure".into()),
             link_type: mime_type,
             title: None,
             length: None,
@@ -485,8 +506,8 @@ impl Link {
 /// Person (author, contributor, etc.)
 #[derive(Debug, Clone, Default)]
 pub struct Person {
-    /// Person's name
-    pub name: Option<String>,
+    /// Person's name (stored inline for names ≤24 bytes)
+    pub name: Option<SmallString>,
     /// Person's email address
     pub email: Option<Email>,
     /// Person's URI/website
@@ -507,9 +528,9 @@ impl Person {
     /// assert!(person.uri.is_none());
     /// ```
     #[inline]
-    pub fn from_name(name: impl Into<String>) -> Self {
+    pub fn from_name(name: impl AsRef<str>) -> Self {
         Self {
-            name: Some(name.into()),
+            name: Some(name.as_ref().into()),
             email: None,
             uri: None,
         }
@@ -519,20 +540,20 @@ impl Person {
 /// Tag/category
 #[derive(Debug, Clone)]
 pub struct Tag {
-    /// Tag term/label
-    pub term: String,
-    /// Tag scheme/domain
-    pub scheme: Option<String>,
-    /// Human-readable tag label
-    pub label: Option<String>,
+    /// Tag term/label (stored inline for terms ≤24 bytes)
+    pub term: SmallString,
+    /// Tag scheme/domain (stored inline for schemes ≤24 bytes)
+    pub scheme: Option<SmallString>,
+    /// Human-readable tag label (stored inline for labels ≤24 bytes)
+    pub label: Option<SmallString>,
 }
 
 impl Tag {
     /// Create a simple tag with just term
     #[inline]
-    pub fn new(term: impl Into<String>) -> Self {
+    pub fn new(term: impl AsRef<str>) -> Self {
         Self {
-            term: term.into(),
+            term: term.as_ref().into(),
             scheme: None,
             label: None,
         }
@@ -574,8 +595,8 @@ pub struct Content {
     pub value: String,
     /// Content MIME type
     pub content_type: Option<MimeType>,
-    /// Content language
-    pub language: Option<String>,
+    /// Content language (stored inline for lang codes ≤24 bytes)
+    pub language: Option<SmallString>,
     /// Base URL for relative links
     pub base: Option<String>,
 }
@@ -622,8 +643,8 @@ pub struct TextConstruct {
     pub value: String,
     /// Content type
     pub content_type: TextType,
-    /// Content language
-    pub language: Option<String>,
+    /// Content language (stored inline for lang codes ≤24 bytes)
+    pub language: Option<SmallString>,
     /// Base URL for relative links
     pub base: Option<String>,
 }
@@ -654,8 +675,8 @@ impl TextConstruct {
     /// Set language (builder pattern)
     #[inline]
     #[must_use]
-    pub fn with_language(mut self, language: impl Into<String>) -> Self {
-        self.language = Some(language.into());
+    pub fn with_language(mut self, language: impl AsRef<str>) -> Self {
+        self.language = Some(language.as_ref().into());
         self
     }
 }
@@ -667,8 +688,8 @@ pub struct Generator {
     pub value: String,
     /// Generator URI
     pub uri: Option<String>,
-    /// Generator version
-    pub version: Option<String>,
+    /// Generator version (stored inline for versions ≤24 bytes)
+    pub version: Option<SmallString>,
 }
 
 /// Source reference (for entries)
@@ -749,11 +770,13 @@ impl FromAttributes for Link {
 
         href.map(|href| Self {
             href: Url::new(href),
-            rel: rel.or_else(|| Some("alternate".to_string())),
+            rel: rel
+                .map(std::convert::Into::into)
+                .or_else(|| Some("alternate".into())),
             link_type: link_type.map(MimeType::new),
             title,
             length,
-            hreflang,
+            hreflang: hreflang.map(std::convert::Into::into),
         })
     }
 }
@@ -781,9 +804,9 @@ impl FromAttributes for Tag {
         }
 
         term.map(|term| Self {
-            term,
-            scheme,
-            label,
+            term: term.into(),
+            scheme: scheme.map(std::convert::Into::into),
+            label: label.map(std::convert::Into::into),
         })
     }
 }
@@ -895,7 +918,10 @@ impl ParseFrom<&Value> for Person {
     /// JSON Feed format: `{"name": "...", "url": "...", "avatar": "..."}`
     fn parse_from(json: &Value) -> Option<Self> {
         json.as_object().map(|obj| Self {
-            name: obj.get("name").and_then(Value::as_str).map(String::from),
+            name: obj
+                .get("name")
+                .and_then(Value::as_str)
+                .map(std::convert::Into::into),
             email: None, // JSON Feed doesn't have email field
             uri: obj.get("url").and_then(Value::as_str).map(String::from),
         })

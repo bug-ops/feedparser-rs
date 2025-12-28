@@ -29,25 +29,28 @@ const MALFORMED_ATTRIBUTES_ERROR: &str = "Malformed XML attributes";
 /// Note: Keys are cloned to `Vec<u8>` because `quick_xml::Attribute` owns the key
 /// data only for the lifetime of the event, but we need to store attributes across
 /// multiple parsing calls in `parse_enclosure` and other functions.
+///
+/// Pre-allocates space for 4 attributes (typical for enclosures: url, type, length, maybe one more)
 #[inline]
 fn collect_attributes(e: &quick_xml::events::BytesStart) -> (Vec<(Vec<u8>, String)>, bool) {
     let mut has_errors = false;
-    let attrs = e
-        .attributes()
-        .filter_map(|result| {
-            if let Ok(attr) = result {
+    let mut attrs = Vec::with_capacity(4);
+
+    for result in e.attributes() {
+        match result {
+            Ok(attr) => {
                 if let Ok(v) = attr.unescape_value() {
-                    Some((attr.key.as_ref().to_vec(), v.to_string()))
+                    attrs.push((attr.key.as_ref().to_vec(), v.to_string()));
                 } else {
                     has_errors = true;
-                    None
                 }
-            } else {
-                has_errors = true;
-                None
             }
-        })
-        .collect();
+            Err(_) => {
+                has_errors = true;
+            }
+        }
+    }
+
     (attrs, has_errors)
 }
 
@@ -330,7 +333,7 @@ fn parse_channel_standard(
             feed.feed.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Text,
-                language: channel_lang.map(String::from),
+                language: channel_lang.map(std::convert::Into::into),
                 base: base_ctx.base().map(String::from),
             });
         }
@@ -348,12 +351,12 @@ fn parse_channel_standard(
             feed.feed.set_subtitle(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
-                language: channel_lang.map(String::from),
+                language: channel_lang.map(std::convert::Into::into),
                 base: base_ctx.base().map(String::from),
             });
         }
         b"language" => {
-            feed.feed.language = Some(read_text(reader, buf, limits)?);
+            feed.feed.language = Some(read_text(reader, buf, limits)?.into());
         }
         b"pubDate" => {
             let text = read_text(reader, buf, limits)?;
@@ -367,10 +370,10 @@ fn parse_channel_standard(
             }
         }
         b"managingEditor" => {
-            feed.feed.author = Some(read_text(reader, buf, limits)?);
+            feed.feed.author = Some(read_text(reader, buf, limits)?.into());
         }
         b"webMaster" => {
-            feed.feed.publisher = Some(read_text(reader, buf, limits)?);
+            feed.feed.publisher = Some(read_text(reader, buf, limits)?.into());
         }
         b"generator" => {
             feed.feed.generator = Some(read_text(reader, buf, limits)?);
@@ -383,7 +386,7 @@ fn parse_channel_standard(
             let term = read_text(reader, buf, limits)?;
             feed.feed.tags.try_push_limited(
                 Tag {
-                    term,
+                    term: term.into(),
                     scheme: None,
                     label: None,
                 },
@@ -750,7 +753,7 @@ fn parse_item_standard(
             entry.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Text,
-                language: item_lang.map(String::from),
+                language: item_lang.map(std::convert::Into::into),
                 base: base_ctx.base().map(String::from),
             });
         }
@@ -761,7 +764,7 @@ fn parse_item_standard(
             entry.links.try_push_limited(
                 Link {
                     href: resolved_link.into(),
-                    rel: Some("alternate".to_string()),
+                    rel: Some("alternate".into()),
                     ..Default::default()
                 },
                 limits.max_links_per_entry,
@@ -772,25 +775,25 @@ fn parse_item_standard(
             entry.set_summary(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
-                language: item_lang.map(String::from),
+                language: item_lang.map(std::convert::Into::into),
                 base: base_ctx.base().map(String::from),
             });
         }
         b"guid" => {
-            entry.id = Some(read_text(reader, buf, limits)?);
+            entry.id = Some(read_text(reader, buf, limits)?.into());
         }
         b"pubDate" => {
             let text = read_text(reader, buf, limits)?;
             entry.published = parse_date(&text);
         }
         b"author" => {
-            entry.author = Some(read_text(reader, buf, limits)?);
+            entry.author = Some(read_text(reader, buf, limits)?.into());
         }
         b"category" => {
             let term = read_text(reader, buf, limits)?;
             entry.tags.try_push_limited(
                 Tag {
-                    term,
+                    term: term.into(),
                     scheme: None,
                     label: None,
                 },
@@ -1348,7 +1351,7 @@ fn parse_podcast_value(
     let suggested = find_attribute(attrs, b"suggested")
         .map(|v| truncate_to_length(v, limits.max_attribute_length));
 
-    let mut recipients = Vec::new();
+    let mut recipients = Vec::with_capacity(2);
 
     loop {
         match reader.read_event_into(buf) {

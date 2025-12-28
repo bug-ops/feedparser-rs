@@ -34,10 +34,10 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
         "creator" => {
             // dc:creator → author (if not already set)
             if feed.author.is_none() {
-                feed.author = Some(text.to_string());
+                feed.author = Some(text.into());
             }
             // Store in dc_creator field
-            feed.dc_creator = Some(text.to_string());
+            feed.dc_creator = Some(text.into());
             // Also add to authors list
             feed.authors.push(Person::from_name(text));
         }
@@ -62,9 +62,9 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
         "publisher" => {
             // dc:publisher → publisher
             if feed.publisher.is_none() {
-                feed.publisher = Some(text.to_string());
+                feed.publisher = Some(text.into());
             }
-            feed.dc_publisher = Some(text.to_string());
+            feed.dc_publisher = Some(text.into());
         }
         "rights" => {
             // dc:rights → rights (if not already set)
@@ -82,7 +82,7 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
         "language" => {
             // dc:language → language
             if feed.language.is_none() {
-                feed.language = Some(text.to_string());
+                feed.language = Some(text.into());
             }
         }
         "identifier" => {
@@ -112,9 +112,9 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
     match element {
         "creator" => {
             if entry.author.is_none() {
-                entry.author = Some(text.to_string());
+                entry.author = Some(text.into());
             }
-            entry.dc_creator = Some(text.to_string());
+            entry.dc_creator = Some(text.into());
             entry.authors.push(Person::from_name(text));
         }
         "date" => {
@@ -142,7 +142,7 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
         }
         "identifier" => {
             if entry.id.is_none() {
-                entry.id = Some(text.to_string());
+                entry.id = Some(text.into());
             }
         }
         "contributor" => {

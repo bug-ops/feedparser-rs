@@ -29,7 +29,7 @@ pub fn parse_json_feed_with_limits(data: &[u8], limits: ParserLimits) -> Result<
         )));
     }
 
-    let mut feed = ParsedFeed::new();
+    let mut feed = ParsedFeed::with_capacity(limits.max_entries);
 
     let json: Value = match serde_json::from_slice(data) {
         Ok(v) => v,
@@ -129,7 +129,7 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     if let Some(language) = json.get("language").and_then(|v| v.as_str())
         && language.len() <= limits.max_text_length
     {
-        feed.language = Some(language.to_string());
+        feed.language = Some(language.into());
     }
 
     if let Some(expired) = json.get("expired").and_then(Value::as_bool)
@@ -143,7 +143,7 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
     let mut entry = Entry::default();
 
     if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
-        entry.id = Some(id.to_string());
+        entry.id = Some(id.into());
     }
 
     if let Some(url) = json.get("url").and_then(|v| v.as_str()) {
@@ -218,10 +218,10 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
 
     if let Some(language) = json.get("language").and_then(|v| v.as_str()) {
         if let Some(detail) = &mut entry.title_detail {
-            detail.language = Some(language.to_string());
+            detail.language = Some(language.into());
         }
         if let Some(detail) = &mut entry.summary_detail {
-            detail.language = Some(language.to_string());
+            detail.language = Some(language.into());
         }
     }
 
@@ -243,7 +243,7 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
 /// Extracts authors from JSON Feed format (supports both "authors" array and legacy "author" object)
 fn parse_authors(
     json: &Value,
-    author: &mut Option<String>,
+    author: &mut Option<crate::types::SmallString>,
     author_detail: &mut Option<Person>,
     authors: &mut Vec<Person>,
     limits: &ParserLimits,

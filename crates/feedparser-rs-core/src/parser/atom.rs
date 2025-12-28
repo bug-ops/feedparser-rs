@@ -321,7 +321,7 @@ fn parse_entry(
                         }
                     }
                     b"id" if !is_empty => {
-                        entry.id = Some(read_text(reader, buf, limits)?);
+                        entry.id = Some(read_text(reader, buf, limits)?.into());
                     }
                     b"updated" if !is_empty => {
                         let text = read_text(reader, buf, limits)?;
@@ -495,7 +495,7 @@ fn parse_person(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"name" => name = Some(read_text(reader, buf, limits)?),
+                    b"name" => name = Some(read_text(reader, buf, limits)?.into()),
                     b"email" => email = Some(read_text(reader, buf, limits)?.into()),
                     b"uri" => uri = Some(read_text(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
@@ -534,7 +534,7 @@ fn parse_generator(
         }
         match attr.key.as_ref() {
             b"uri" => uri = Some(bytes_to_string(&attr.value)),
-            b"version" => version = Some(bytes_to_string(&attr.value)),
+            b"version" => version = Some(bytes_to_string(&attr.value).into()),
             _ => {}
         }
     }

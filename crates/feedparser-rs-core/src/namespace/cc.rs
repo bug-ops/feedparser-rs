@@ -54,7 +54,7 @@ pub fn handle_feed_element(
                 feed.links.try_push_limited(
                     Link {
                         href: license_url.into(),
-                        rel: Some("license".to_string()),
+                        rel: Some("license".into()),
                         ..Default::default()
                     },
                     limits.max_links_per_feed,
@@ -95,7 +95,7 @@ pub fn handle_entry_element(
                 entry.links.try_push_limited(
                     Link {
                         href: license_url.into(),
-                        rel: Some("license".to_string()),
+                        rel: Some("license".into()),
                         ..Default::default()
                     },
                     limits.max_links_per_entry,

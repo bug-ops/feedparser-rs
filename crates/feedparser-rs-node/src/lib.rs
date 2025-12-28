@@ -389,13 +389,13 @@ impl From<CoreFeedMeta> for FeedMeta {
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
             updated: core.updated.map(|dt| dt.timestamp_millis()),
             published: core.published.map(|dt| dt.timestamp_millis()),
-            author: core.author,
+            author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
             contributors: core.contributors.into_iter().map(Person::from).collect(),
-            publisher: core.publisher,
+            publisher: core.publisher.map(|s| s.to_string()),
             publisher_detail: core.publisher_detail.map(Person::from),
-            language: core.language,
+            language: core.language.map(|s| s.to_string()),
             rights: core.rights,
             rights_detail: core.rights_detail.map(TextConstruct::from),
             generator: core.generator,
@@ -404,12 +404,12 @@ impl From<CoreFeedMeta> for FeedMeta {
             icon: core.icon,
             logo: core.logo,
             tags: core.tags.into_iter().map(Tag::from).collect(),
-            id: core.id,
+            id: core.id.map(|s| s.to_string()),
             ttl: core.ttl,
             license: core.license,
             syndication: core.syndication.map(|b| SyndicationMeta::from(*b)),
-            dc_creator: core.dc_creator,
-            dc_publisher: core.dc_publisher,
+            dc_creator: core.dc_creator.map(|s| s.to_string()),
+            dc_publisher: core.dc_publisher.map(|s| s.to_string()),
             dc_rights: core.dc_rights,
             geo: core.geo.map(|b| GeoLocation::from(*b)),
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
@@ -500,7 +500,7 @@ pub struct Entry {
 impl From<CoreEntry> for Entry {
     fn from(core: CoreEntry) -> Self {
         Self {
-            id: core.id,
+            id: core.id.map(|s| s.to_string()),
             title: core.title,
             title_detail: core.title_detail.map(TextConstruct::from),
             link: core.link,
@@ -512,11 +512,11 @@ impl From<CoreEntry> for Entry {
             updated: core.updated.map(|dt| dt.timestamp_millis()),
             created: core.created.map(|dt| dt.timestamp_millis()),
             expired: core.expired.map(|dt| dt.timestamp_millis()),
-            author: core.author,
+            author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
             contributors: core.contributors.into_iter().map(Person::from).collect(),
-            publisher: core.publisher,
+            publisher: core.publisher.map(|s| s.to_string()),
             publisher_detail: core.publisher_detail.map(Person::from),
             tags: core.tags.into_iter().map(Tag::from).collect(),
             enclosures: core.enclosures.into_iter().map(Enclosure::from).collect(),
@@ -534,7 +534,7 @@ impl From<CoreEntry> for Entry {
                 .collect(),
             license: core.license,
             geo: core.geo.map(|b| GeoLocation::from(*b)),
-            dc_creator: core.dc_creator,
+            dc_creator: core.dc_creator.map(|s| s.to_string()),
             dc_date: core.dc_date.map(|dt| dt.timestamp_millis()),
             dc_subject: core.dc_subject,
             dc_rights: core.dc_rights,
@@ -577,7 +577,7 @@ impl From<CoreTextConstruct> for TextConstruct {
                 TextType::Html => "html".to_string(),
                 TextType::Xhtml => "xhtml".to_string(),
             },
-            language: core.language,
+            language: core.language.map(|s| s.to_string()),
             base: core.base,
         }
     }
@@ -605,11 +605,11 @@ impl From<CoreLink> for Link {
     fn from(core: CoreLink) -> Self {
         Self {
             href: core.href.into_inner(),
-            rel: core.rel,
+            rel: core.rel.map(|s| s.to_string()),
             link_type: core.link_type.map(|t| t.to_string()),
             title: core.title,
             length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
-            hreflang: core.hreflang,
+            hreflang: core.hreflang.map(|s| s.to_string()),
         }
     }
 }
@@ -628,7 +628,7 @@ pub struct Person {
 impl From<CorePerson> for Person {
     fn from(core: CorePerson) -> Self {
         Self {
-            name: core.name,
+            name: core.name.map(|s| s.to_string()),
             email: core.email.map(|e| e.into_inner()),
             uri: core.uri,
         }
@@ -649,9 +649,9 @@ pub struct Tag {
 impl From<CoreTag> for Tag {
     fn from(core: CoreTag) -> Self {
         Self {
-            term: core.term,
-            scheme: core.scheme,
-            label: core.label,
+            term: core.term.to_string(),
+            scheme: core.scheme.map(|s| s.to_string()),
+            label: core.label.map(|s| s.to_string()),
         }
     }
 }
@@ -727,7 +727,7 @@ impl From<CoreContent> for Content {
         Self {
             value: core.value,
             content_type: core.content_type.map(|t| t.to_string()),
-            language: core.language,
+            language: core.language.map(|s| s.to_string()),
             base: core.base,
         }
     }
@@ -749,7 +749,7 @@ impl From<CoreGenerator> for Generator {
         Self {
             value: core.value,
             uri: core.uri,
-            version: core.version,
+            version: core.version.map(|s| s.to_string()),
         }
     }
 }
@@ -770,7 +770,7 @@ impl From<CoreSource> for Source {
         Self {
             title: core.title,
             link: core.link,
-            id: core.id,
+            id: core.id.map(|s| s.to_string()),
         }
     }
 }
@@ -902,7 +902,7 @@ pub struct ItunesFeedMeta {
 impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
     fn from(core: CoreItunesFeedMeta) -> Self {
         Self {
-            author: core.author,
+            author: core.author.map(|s| s.to_string()),
             owner: core.owner.map(ItunesOwner::from),
             categories: core
                 .categories
@@ -931,7 +931,7 @@ pub struct ItunesOwner {
 impl From<CoreItunesOwner> for ItunesOwner {
     fn from(core: CoreItunesOwner) -> Self {
         Self {
-            name: core.name,
+            name: core.name.map(|s| s.to_string()),
             email: core.email,
         }
     }
@@ -985,7 +985,7 @@ impl From<CoreItunesEntryMeta> for ItunesEntryMeta {
     fn from(core: CoreItunesEntryMeta) -> Self {
         Self {
             title: core.title,
-            author: core.author,
+            author: core.author.map(|s| s.to_string()),
             duration: core.duration,
             explicit: core.explicit,
             image: core.image.map(|u| u.into_inner()),
@@ -1075,7 +1075,7 @@ pub struct PodcastValueRecipient {
 impl From<CorePodcastValueRecipient> for PodcastValueRecipient {
     fn from(core: CorePodcastValueRecipient) -> Self {
         Self {
-            name: core.name,
+            name: core.name.map(|s| s.to_string()),
             recipient_type: core.type_,
             address: core.address,
             split: core.split,
@@ -1200,8 +1200,8 @@ impl From<CorePodcastTranscript> for PodcastTranscript {
         Self {
             url: core.url.into_inner(),
             transcript_type: core.transcript_type.map(|t| t.to_string()),
-            language: core.language,
-            rel: core.rel,
+            language: core.language.map(|s| s.to_string()),
+            rel: core.rel.map(|s| s.to_string()),
         }
     }
 }
