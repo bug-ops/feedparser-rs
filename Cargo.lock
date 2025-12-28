@@ -573,6 +573,7 @@ version = "0.3.0"
 dependencies = [
  "chrono",
  "feedparser-rs",
+ "once_cell",
  "pyo3",
 ]
 

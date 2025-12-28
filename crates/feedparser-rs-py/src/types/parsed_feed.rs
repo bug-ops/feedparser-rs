@@ -1,7 +1,9 @@
 use feedparser_rs::ParsedFeed as CoreParsedFeed;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyAttributeError;
 use pyo3::types::PyDict;
 
+use super::compat::CONTAINER_FIELD_MAP;
 use super::entry::PyEntry;
 use super::feed_meta::PyFeedMeta;
 
@@ -140,5 +142,42 @@ impl PyParsedFeed {
 
     fn __str__(&self) -> String {
         self.__repr__()
+    }
+
+    /// Provides backward compatibility for deprecated Python feedparser container names.
+    ///
+    /// Maps old container names to their modern equivalents:
+    /// - `channel` → `feed` (RSS uses <channel>, Atom uses <feed>)
+    /// - `items` → `entries` (RSS uses <item>, Atom uses <entry>)
+    ///
+    /// This method is called by Python when normal attribute lookup fails.
+    fn __getattr__(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
+        // Check if this is a deprecated container name
+        if let Some(new_name) = CONTAINER_FIELD_MAP.get(name) {
+            match *new_name {
+                "feed" => {
+                    // Convert Py<PyFeedMeta> to Py<PyAny>
+                    Ok(self.feed.clone_ref(py).into())
+                },
+                "entries" => {
+                    // Convert Vec<Py<PyEntry>> to Py<PyAny> (as Python list)
+                    let entries: Vec<_> = self.entries.iter().map(|e| e.clone_ref(py)).collect();
+                    match entries.into_pyobject(py) {
+                        Ok(list) => Ok(list.unbind()),
+                        Err(e) => Err(e),
+                    }
+                },
+                _ => Err(PyAttributeError::new_err(format!(
+                    "'FeedParserDict' object has no attribute '{}'",
+                    name
+                ))),
+            }
+        } else {
+            // Field not found - raise AttributeError
+            Err(PyAttributeError::new_err(format!(
+                "'FeedParserDict' object has no attribute '{}'",
+                name
+            )))
+        }
     }
 }

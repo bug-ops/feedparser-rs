@@ -1,6 +1,8 @@
 use feedparser_rs::Entry as CoreEntry;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyAttributeError;
 
+use super::compat::ENTRY_FIELD_MAP;
 use super::common::{PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct};
 use super::datetime::optional_datetime_to_struct_time;
 use super::geo::PyGeoLocation;
@@ -300,5 +302,59 @@ impl PyEntry {
             self.inner.title.as_deref().unwrap_or("untitled"),
             self.inner.id.as_deref().unwrap_or("no-id")
         )
+    }
+
+    /// Provides backward compatibility for deprecated Python feedparser field names.
+    ///
+    /// Maps old field names to their modern equivalents:
+    /// - `guid` → `id`
+    /// - `description` → `summary`
+    /// - `issued` → `published`
+    /// - `modified` → `updated`
+    /// - `date` → `updated` (or `published` as fallback)
+    ///
+    /// This method is called by Python when normal attribute lookup fails.
+    fn __getattr__(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
+        // Check if this is a deprecated field name
+        if let Some(new_names) = ENTRY_FIELD_MAP.get(name) {
+            // Try each new field name in order
+            for new_name in new_names {
+                let value: Option<Py<PyAny>> = match *new_name {
+                    "id" => self.inner.id.as_deref().and_then(|v| {
+                        v.into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "summary" => self.inner.summary.as_deref().and_then(|v| {
+                        v.into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "summary_detail" => self.inner.summary_detail.as_ref().and_then(|tc| {
+                        Py::new(py, PyTextConstruct::from_core(tc.clone())).ok().map(|p: Py<PyTextConstruct>| p.into_any())
+                    }),
+                    "published" => self.inner.published.and_then(|dt| {
+                        dt.to_rfc3339().into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "published_parsed" => {
+                        optional_datetime_to_struct_time(py, &self.inner.published).ok().flatten()
+                    },
+                    "updated" => self.inner.updated.and_then(|dt| {
+                        dt.to_rfc3339().into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "updated_parsed" => {
+                        optional_datetime_to_struct_time(py, &self.inner.updated).ok().flatten()
+                    },
+                    _ => None,
+                };
+
+                // If we found a value, return it
+                if let Some(v) = value {
+                    return Ok(v);
+                }
+            }
+        }
+
+        // Field not found - raise AttributeError
+        Err(PyAttributeError::new_err(format!(
+            "'Entry' object has no attribute '{}'",
+            name
+        )))
     }
 }

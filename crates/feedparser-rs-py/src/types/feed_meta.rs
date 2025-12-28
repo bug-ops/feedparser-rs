@@ -1,6 +1,8 @@
 use feedparser_rs::FeedMeta as CoreFeedMeta;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyAttributeError;
 
+use super::compat::FEED_FIELD_MAP;
 use super::common::{PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct};
 use super::datetime::optional_datetime_to_struct_time;
 use super::geo::PyGeoLocation;
@@ -251,5 +253,72 @@ impl PyFeedMeta {
             self.inner.title.as_deref().unwrap_or("untitled"),
             self.inner.link.as_deref().unwrap_or("no-link")
         )
+    }
+
+    /// Provides backward compatibility for deprecated Python feedparser field names.
+    ///
+    /// Maps old field names to their modern equivalents:
+    /// - `description` → `subtitle` (or `summary` as fallback)
+    /// - `tagline` → `subtitle`
+    /// - `modified` → `updated`
+    /// - `copyright` → `rights`
+    /// - `date` → `updated` (or `published` as fallback)
+    /// - `url` → `link`
+    ///
+    /// This method is called by Python when normal attribute lookup fails.
+    fn __getattr__(&self, py: Python<'_>, name: &str) -> PyResult<Py<PyAny>> {
+        // Check if this is a deprecated field name
+        if let Some(new_names) = FEED_FIELD_MAP.get(name) {
+            // Try each new field name in order
+            for new_name in new_names {
+                let value: Option<Py<PyAny>> = match *new_name {
+                    "subtitle" => self.inner.subtitle.as_deref().and_then(|v| {
+                        v.into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "subtitle_detail" => self.inner.subtitle_detail.as_ref().and_then(|tc| {
+                        Py::new(py, PyTextConstruct::from_core(tc.clone())).ok().map(|p: Py<PyTextConstruct>| p.into_any())
+                    }),
+                    "summary" => self.inner.subtitle.as_deref().and_then(|v| {
+                        v.into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "summary_detail" => self.inner.subtitle_detail.as_ref().and_then(|tc| {
+                        Py::new(py, PyTextConstruct::from_core(tc.clone())).ok().map(|p: Py<PyTextConstruct>| p.into_any())
+                    }),
+                    "rights" => self.inner.rights.as_deref().and_then(|v| {
+                        v.into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "rights_detail" => self.inner.rights_detail.as_ref().and_then(|tc| {
+                        Py::new(py, PyTextConstruct::from_core(tc.clone())).ok().map(|p: Py<PyTextConstruct>| p.into_any())
+                    }),
+                    "updated" => self.inner.updated.and_then(|dt| {
+                        dt.to_rfc3339().into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "updated_parsed" => {
+                        optional_datetime_to_struct_time(py, &self.inner.updated).ok().flatten()
+                    },
+                    "published" => self.inner.published.and_then(|dt| {
+                        dt.to_rfc3339().into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    "published_parsed" => {
+                        optional_datetime_to_struct_time(py, &self.inner.published).ok().flatten()
+                    },
+                    "link" => self.inner.link.as_deref().and_then(|v| {
+                        v.into_pyobject(py).map(|o| o.unbind().into()).ok()
+                    }),
+                    _ => None,
+                };
+
+                // If we found a value, return it
+                if let Some(v) = value {
+                    return Ok(v);
+                }
+            }
+        }
+
+        // Field not found - raise AttributeError
+        Err(PyAttributeError::new_err(format!(
+            "'FeedMeta' object has no attribute '{}'",
+            name
+        )))
     }
 }

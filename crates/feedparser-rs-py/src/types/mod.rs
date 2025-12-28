@@ -1,4 +1,5 @@
 pub mod common;
+pub mod compat;
 pub mod datetime;
 pub mod entry;
 pub mod feed_meta;
