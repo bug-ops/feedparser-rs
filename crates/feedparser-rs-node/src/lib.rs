@@ -904,7 +904,11 @@ impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
         Self {
             author: core.author,
             owner: core.owner.map(ItunesOwner::from),
-            categories: core.categories.into_iter().map(ItunesCategory::from).collect(),
+            categories: core
+                .categories
+                .into_iter()
+                .map(ItunesCategory::from)
+                .collect(),
             explicit: core.explicit,
             image: core.image,
             keywords: core.keywords,
