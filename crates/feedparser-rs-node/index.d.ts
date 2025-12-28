@@ -87,6 +87,24 @@ export interface Entry {
   podcastPersons: Array<PodcastPerson>
   /** License URL (Creative Commons, etc.) */
   license?: string
+  /** Geographic location (GeoRSS) */
+  geo?: GeoLocation
+  /** Dublin Core creator (author) */
+  dcCreator?: string
+  /** Dublin Core date (milliseconds since epoch) */
+  dcDate?: number
+  /** Dublin Core subject tags */
+  dcSubject: Array<string>
+  /** Dublin Core rights (copyright) */
+  dcRights?: string
+  /** Media RSS thumbnails */
+  mediaThumbnails: Array<MediaThumbnail>
+  /** Media RSS content */
+  mediaContent: Array<MediaContent>
+  /** iTunes episode metadata */
+  itunes?: ItunesEntryMeta
+  /** Podcast 2.0 episode metadata */
+  podcast?: PodcastEntryMeta
 }
 
 /** Feed metadata */
@@ -151,6 +169,12 @@ export interface FeedMeta {
   dcPublisher?: string
   /** Dublin Core rights (copyright) */
   dcRights?: string
+  /** Geographic location (GeoRSS) */
+  geo?: GeoLocation
+  /** iTunes podcast metadata */
+  itunes?: ItunesFeedMeta
+  /** Podcast 2.0 metadata */
+  podcast?: PodcastMeta
 }
 
 /** Generator metadata */
@@ -205,6 +229,34 @@ export interface ItunesCategory {
   subcategory?: string
 }
 
+/** iTunes episode metadata */
+export interface ItunesEntryMeta {
+  /** Episode title override */
+  title?: string
+  /** Episode author */
+  author?: string
+  /**
+   * Episode duration in seconds
+   *
+   * Parsed from various formats: "3600", "60:00", "1:00:00"
+   */
+  duration?: number
+  /** Explicit content flag for this episode */
+  explicit?: boolean
+  /**
+   * Episode-specific artwork URL
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
+  image?: string
+  /** Episode number */
+  episode?: number
+  /** Season number */
+  season?: number
+  /** Episode type: "full", "trailer", or "bonus" */
+  episodeType?: string
+}
+
 /** iTunes podcast feed metadata */
 export interface ItunesFeedMeta {
   /** Podcast author */
@@ -215,7 +267,11 @@ export interface ItunesFeedMeta {
   categories: Array<ItunesCategory>
   /** Explicit content flag */
   explicit?: boolean
-  /** Podcast artwork URL */
+  /**
+   * Podcast artwork URL
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
   image?: string
   /** Podcast keywords */
   keywords: Array<string>
@@ -223,7 +279,11 @@ export interface ItunesFeedMeta {
   podcastType?: string
   /** Podcast completion status */
   complete?: boolean
-  /** New feed URL for migrated podcasts */
+  /**
+   * New feed URL for migrated podcasts
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
   newFeedUrl?: string
 }
 
@@ -567,7 +627,13 @@ export interface Source {
 
 /** Syndication module metadata (RSS 1.0) */
 export interface SyndicationMeta {
-  /** Update period (hourly, daily, weekly, monthly, yearly) */
+  /**
+   * Update period (hourly, daily, weekly, monthly, yearly)
+   *
+   * # Example
+   *
+   * "daily" with updateFrequency: 2 means the feed updates twice per day
+   */
   updatePeriod?: string
   /** Number of times updated per period */
   updateFrequency?: number

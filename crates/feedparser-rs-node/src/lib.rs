@@ -7,16 +7,17 @@ use std::collections::HashMap;
 use feedparser_rs::{
     self as core, Content as CoreContent, Enclosure as CoreEnclosure, Entry as CoreEntry,
     FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage,
-    ItunesCategory as CoreItunesCategory, ItunesFeedMeta as CoreItunesFeedMeta,
-    ItunesOwner as CoreItunesOwner, Link as CoreLink, MediaContent as CoreMediaContent,
-    MediaThumbnail as CoreMediaThumbnail, ParsedFeed as CoreParsedFeed, ParserLimits,
-    Person as CorePerson, PodcastChapters as CorePodcastChapters,
-    PodcastEntryMeta as CorePodcastEntryMeta, PodcastFunding as CorePodcastFunding,
-    PodcastMeta as CorePodcastMeta, PodcastPerson as CorePodcastPerson,
-    PodcastSoundbite as CorePodcastSoundbite, PodcastTranscript as CorePodcastTranscript,
-    PodcastValue as CorePodcastValue, PodcastValueRecipient as CorePodcastValueRecipient,
-    Source as CoreSource, SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag,
-    TextConstruct as CoreTextConstruct, TextType,
+    ItunesCategory as CoreItunesCategory, ItunesEntryMeta as CoreItunesEntryMeta,
+    ItunesFeedMeta as CoreItunesFeedMeta, ItunesOwner as CoreItunesOwner, Link as CoreLink,
+    MediaContent as CoreMediaContent, MediaThumbnail as CoreMediaThumbnail,
+    ParsedFeed as CoreParsedFeed, ParserLimits, Person as CorePerson,
+    PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
+    PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
+    PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
+    PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
+    PodcastValueRecipient as CorePodcastValueRecipient, Source as CoreSource,
+    SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag, TextConstruct as CoreTextConstruct,
+    TextType,
 };
 
 /// Default maximum feed size (100 MB) - prevents DoS attacks
@@ -255,7 +256,11 @@ impl From<CoreParsedFeed> for ParsedFeed {
     fn from(core: CoreParsedFeed) -> Self {
         Self {
             feed: FeedMeta::from(core.feed),
-            entries: core.entries.into_iter().map(Entry::from).collect(),
+            entries: {
+                let mut v = Vec::with_capacity(core.entries.len());
+                v.extend(core.entries.into_iter().map(Entry::from));
+                v
+            },
             bozo: core.bozo,
             bozo_exception: core.bozo_exception,
             encoding: core.encoding,
@@ -275,10 +280,17 @@ impl From<CoreParsedFeed> for ParsedFeed {
 #[napi(object)]
 pub struct SyndicationMeta {
     /// Update period (hourly, daily, weekly, monthly, yearly)
+    ///
+    /// # Example
+    ///
+    /// "daily" with updateFrequency: 2 means the feed updates twice per day
+    #[napi(js_name = "updatePeriod")]
     pub update_period: Option<String>,
     /// Number of times updated per period
+    #[napi(js_name = "updateFrequency")]
     pub update_frequency: Option<u32>,
     /// Base date for update schedule (ISO 8601)
+    #[napi(js_name = "updateBase")]
     pub update_base: Option<String>,
 }
 
@@ -350,11 +362,20 @@ pub struct FeedMeta {
     /// Syndication module metadata (RSS 1.0)
     pub syndication: Option<SyndicationMeta>,
     /// Dublin Core creator (author fallback)
+    #[napi(js_name = "dcCreator")]
     pub dc_creator: Option<String>,
     /// Dublin Core publisher
+    #[napi(js_name = "dcPublisher")]
     pub dc_publisher: Option<String>,
     /// Dublin Core rights (copyright)
+    #[napi(js_name = "dcRights")]
     pub dc_rights: Option<String>,
+    /// Geographic location (GeoRSS)
+    pub geo: Option<GeoLocation>,
+    /// iTunes podcast metadata
+    pub itunes: Option<ItunesFeedMeta>,
+    /// Podcast 2.0 metadata
+    pub podcast: Option<PodcastMeta>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -390,6 +411,9 @@ impl From<CoreFeedMeta> for FeedMeta {
             dc_creator: core.dc_creator,
             dc_publisher: core.dc_publisher,
             dc_rights: core.dc_rights,
+            geo: core.geo.map(GeoLocation::from),
+            itunes: core.itunes.map(ItunesFeedMeta::from),
+            podcast: core.podcast.map(PodcastMeta::from),
         }
     }
 }
@@ -447,6 +471,30 @@ pub struct Entry {
     pub podcast_persons: Vec<PodcastPerson>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
+    /// Geographic location (GeoRSS)
+    pub geo: Option<GeoLocation>,
+    /// Dublin Core creator (author)
+    #[napi(js_name = "dcCreator")]
+    pub dc_creator: Option<String>,
+    /// Dublin Core date (milliseconds since epoch)
+    #[napi(js_name = "dcDate")]
+    pub dc_date: Option<i64>,
+    /// Dublin Core subject tags
+    #[napi(js_name = "dcSubject")]
+    pub dc_subject: Vec<String>,
+    /// Dublin Core rights (copyright)
+    #[napi(js_name = "dcRights")]
+    pub dc_rights: Option<String>,
+    /// Media RSS thumbnails
+    #[napi(js_name = "mediaThumbnails")]
+    pub media_thumbnails: Vec<MediaThumbnail>,
+    /// Media RSS content
+    #[napi(js_name = "mediaContent")]
+    pub media_content: Vec<MediaContent>,
+    /// iTunes episode metadata
+    pub itunes: Option<ItunesEntryMeta>,
+    /// Podcast 2.0 episode metadata
+    pub podcast: Option<PodcastEntryMeta>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -485,6 +533,23 @@ impl From<CoreEntry> for Entry {
                 .map(PodcastPerson::from)
                 .collect(),
             license: core.license,
+            geo: core.geo.map(GeoLocation::from),
+            dc_creator: core.dc_creator,
+            dc_date: core.dc_date.map(|dt| dt.timestamp_millis()),
+            dc_subject: core.dc_subject,
+            dc_rights: core.dc_rights,
+            media_thumbnails: core
+                .media_thumbnails
+                .into_iter()
+                .map(MediaThumbnail::from)
+                .collect(),
+            media_content: core
+                .media_content
+                .into_iter()
+                .map(MediaContent::from)
+                .collect(),
+            itunes: core.itunes.map(ItunesEntryMeta::from),
+            podcast: core.podcast.map(PodcastEntryMeta::from),
         }
     }
 }
@@ -817,6 +882,8 @@ pub struct ItunesFeedMeta {
     /// Explicit content flag
     pub explicit: Option<bool>,
     /// Podcast artwork URL
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
     pub image: Option<String>,
     /// Podcast keywords
     pub keywords: Vec<String>,
@@ -826,6 +893,8 @@ pub struct ItunesFeedMeta {
     /// Podcast completion status
     pub complete: Option<bool>,
     /// New feed URL for migrated podcasts
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
     #[napi(js_name = "newFeedUrl")]
     pub new_feed_url: Option<String>,
 }
@@ -878,6 +947,47 @@ impl From<CoreItunesCategory> for ItunesCategory {
         Self {
             text: core.text,
             subcategory: core.subcategory,
+        }
+    }
+}
+
+/// iTunes episode metadata
+#[napi(object)]
+pub struct ItunesEntryMeta {
+    /// Episode title override
+    pub title: Option<String>,
+    /// Episode author
+    pub author: Option<String>,
+    /// Episode duration in seconds
+    ///
+    /// Parsed from various formats: "3600", "60:00", "1:00:00"
+    pub duration: Option<u32>,
+    /// Explicit content flag for this episode
+    pub explicit: Option<bool>,
+    /// Episode-specific artwork URL
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
+    pub image: Option<String>,
+    /// Episode number
+    pub episode: Option<u32>,
+    /// Season number
+    pub season: Option<u32>,
+    /// Episode type: "full", "trailer", or "bonus"
+    #[napi(js_name = "episodeType")]
+    pub episode_type: Option<String>,
+}
+
+impl From<CoreItunesEntryMeta> for ItunesEntryMeta {
+    fn from(core: CoreItunesEntryMeta) -> Self {
+        Self {
+            title: core.title,
+            author: core.author,
+            duration: core.duration,
+            explicit: core.explicit,
+            image: core.image,
+            episode: core.episode,
+            season: core.season,
+            episode_type: core.episode_type,
         }
     }
 }
