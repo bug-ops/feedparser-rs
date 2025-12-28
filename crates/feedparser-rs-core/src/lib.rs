@@ -70,8 +70,8 @@ pub use types::{
     Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
     ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link, ParsedFeed, Person,
     PodcastChapters, PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson,
-    PodcastSoundbite, PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration,
-    parse_explicit,
+    PodcastSoundbite, PodcastTranscript, PodcastValue, PodcastValueRecipient, Source, Tag,
+    TextConstruct, TextType, parse_duration, parse_explicit,
 };
 
 pub use namespace::syndication::{SyndicationMeta, UpdatePeriod};
