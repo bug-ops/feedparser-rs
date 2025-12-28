@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// # Examples
 ///
 /// ```
-/// use feedparser_rs::types::common::SmallString;
+/// use feedparser_rs::types::SmallString;
 ///
 /// let s: SmallString = "en-US".into();
 /// assert_eq!(s.as_str(), "en-US");
