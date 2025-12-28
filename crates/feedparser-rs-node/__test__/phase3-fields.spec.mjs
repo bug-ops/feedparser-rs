@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { parse } from '../index.js';
 
-describe('Phase 3: Field Bindings', () => {
+describe('Field Bindings', () => {
   describe('FeedMeta.geo', () => {
     it('should parse GeoRSS point location in feed', () => {
       const xml = `<?xml version="1.0"?>

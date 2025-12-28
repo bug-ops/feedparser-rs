@@ -166,6 +166,9 @@ fn parse_channel(
                     feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
                 }
 
+                // Extract xml:lang before matching to avoid borrow issues
+                let item_lang = extract_xml_lang(&e, limits.max_attribute_length);
+
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
@@ -186,48 +189,21 @@ fn parse_channel(
                         }
                     }
                     b"item" => {
-                        let item_lang = extract_xml_lang(&e, limits.max_attribute_length);
-
-                        if !feed.check_entry_limit(reader, &mut buf, limits, depth)? {
-                            continue;
-                        }
-
-                        let effective_lang = item_lang.as_deref().or(channel_lang);
-
-                        match parse_item(reader, &mut buf, limits, depth, base_ctx, effective_lang)
-                        {
-                            Ok((entry, has_attr_errors)) => {
-                                if has_attr_errors {
-                                    feed.bozo = true;
-                                    feed.bozo_exception =
-                                        Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
-                                }
-                                feed.entries.push(entry);
-                            }
-                            Err(e) => {
-                                feed.bozo = true;
-                                feed.bozo_exception = Some(e.to_string());
-                            }
-                        }
+                        parse_channel_item(
+                            item_lang.as_deref(),
+                            reader,
+                            &mut buf,
+                            feed,
+                            limits,
+                            depth,
+                            base_ctx,
+                            channel_lang,
+                        )?;
                     }
                     _ => {
-                        let mut handled = parse_channel_itunes(
+                        parse_channel_extension(
                             reader, &mut buf, &tag, &attrs, feed, limits, depth,
                         )?;
-                        if !handled {
-                            handled = parse_channel_podcast(
-                                reader, &mut buf, &tag, &attrs, feed, limits,
-                            )?;
-                        }
-                        if !handled {
-                            handled = parse_channel_namespace(
-                                reader, &mut buf, &tag, feed, limits, *depth,
-                            )?;
-                        }
-
-                        if !handled {
-                            skip_element(reader, &mut buf, limits, *depth)?;
-                        }
                     }
                 }
                 *depth = depth.saturating_sub(1);
@@ -240,6 +216,71 @@ fn parse_channel(
             _ => {}
         }
         buf.clear();
+    }
+
+    Ok(())
+}
+
+/// Parse <item> element within channel
+///
+/// Note: Uses 8 parameters instead of a context struct due to borrow checker constraints
+/// with multiple simultaneous `&mut` references during parsing.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn parse_channel_item(
+    item_lang: Option<&str>,
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    base_ctx: &BaseUrlContext,
+    channel_lang: Option<&str>,
+) -> Result<()> {
+    if !feed.check_entry_limit(reader, buf, limits, depth)? {
+        return Ok(());
+    }
+
+    let effective_lang = item_lang.or(channel_lang);
+
+    match parse_item(reader, buf, limits, depth, base_ctx, effective_lang) {
+        Ok((entry, has_attr_errors)) => {
+            if has_attr_errors {
+                feed.bozo = true;
+                feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
+            }
+            feed.entries.push(entry);
+        }
+        Err(e) => {
+            feed.bozo = true;
+            feed.bozo_exception = Some(e.to_string());
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse channel extension elements (iTunes, Podcast, namespaces)
+#[inline]
+fn parse_channel_extension(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    attrs: &[(Vec<u8>, String)],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+) -> Result<()> {
+    let mut handled = parse_channel_itunes(reader, buf, tag, attrs, feed, limits, depth)?;
+    if !handled {
+        handled = parse_channel_podcast(reader, buf, tag, attrs, feed, limits)?;
+    }
+    if !handled {
+        handled = parse_channel_namespace(reader, buf, tag, feed, limits, *depth)?;
+    }
+
+    if !handled {
+        skip_element(reader, buf, limits, *depth)?;
     }
 
     Ok(())
@@ -621,8 +662,9 @@ fn parse_item(
                         }
                     }
                     _ => {
-                        let mut handled =
-                            parse_item_itunes(reader, buf, &tag, &attrs, &mut entry, limits)?;
+                        let mut handled = parse_item_itunes(
+                            reader, buf, &tag, &attrs, &mut entry, limits, is_empty, *depth,
+                        )?;
                         if !handled {
                             handled = parse_item_podcast(
                                 reader, buf, &tag, &attrs, &mut entry, limits, is_empty, *depth,
@@ -729,7 +771,11 @@ fn parse_item_standard(
 /// Parse iTunes namespace tags at item level
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+///
+/// Note: Uses 8 parameters instead of a context struct due to borrow checker constraints
+/// with multiple simultaneous `&mut` references during parsing.
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn parse_item_itunes(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -737,6 +783,8 @@ fn parse_item_itunes(
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
     limits: &ParserLimits,
+    is_empty: bool,
+    depth: usize,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"title") {
         let text = read_text(reader, buf, limits)?;
@@ -762,6 +810,9 @@ fn parse_item_itunes(
         if let Some(value) = find_attribute(attrs, b"href") {
             let itunes = entry.itunes.get_or_insert_with(ItunesEntryMeta::default);
             itunes.image = Some(truncate_to_length(value, limits.max_attribute_length));
+        }
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"episode") {

@@ -2,7 +2,7 @@
 //!
 //! These tests verify that malicious xml:base attributes cannot be used
 //! to create Server-Side Request Forgery (SSRF) attacks.
-#![allow(missing_docs)]
+#![allow(missing_docs, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use feedparser_rs::parse;
 

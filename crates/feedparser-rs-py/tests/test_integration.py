@@ -1,4 +1,4 @@
-"""Integration tests for Phase 1: published_parsed and URL resolution"""
+"""Integration tests for published_parsed and URL resolution"""
 
 import time
 

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 //! feedparser-rs-core: High-performance RSS/Atom/JSON Feed parser
 //!
 //! This crate provides a pure Rust implementation of feed parsing with
@@ -17,7 +19,6 @@
 //!     </rss>
 //! "#;
 //!
-//! // Parsing will be fully implemented in Phase 2
 //! let feed = parse(xml.as_bytes()).unwrap();
 //! assert!(feed.bozo == false);
 //! ```

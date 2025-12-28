@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 //! Edge case tests for namespace parsing
 //!
 //! This module tests edge cases and error conditions for Dublin Core,
@@ -25,9 +27,6 @@ fn test_namespace_uri_matching() {
     // So this WILL be parsed even with wrong URI version
     assert_eq!(feed.feed.dc_creator.as_deref(), Some("Test Author"));
     assert!(!feed.bozo);
-
-    // TODO: Future enhancement could add strict namespace URI validation
-    // and set bozo flag for incorrect URIs
 }
 
 /// Tests that empty Dublin Core elements are handled gracefully

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 //! Integration tests for namespace parsing (Dublin Core, Content, Media RSS)
 
 use feedparser_rs::parse;

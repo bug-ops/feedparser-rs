@@ -1,4 +1,4 @@
-"""Tests for Phase 1 Python bindings: Media RSS, GeoRSS, Dublin Core, Podcast 2.0"""
+"""Tests for Python bindings: Media RSS, GeoRSS, Dublin Core, Podcast 2.0"""
 
 import feedparser_rs
 

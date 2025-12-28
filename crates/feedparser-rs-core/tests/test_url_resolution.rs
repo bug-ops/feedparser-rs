@@ -1,5 +1,5 @@
 //! URL resolution integration tests for xml:base support.
-#![allow(missing_docs)]
+#![allow(missing_docs, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use chrono::Datelike;
 use feedparser_rs::parse;

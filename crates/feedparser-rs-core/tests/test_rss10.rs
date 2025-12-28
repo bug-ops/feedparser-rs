@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 //! Integration tests for RSS 1.0 (RDF) parser
 //!
 //! Tests comprehensive RSS 1.0 feed parsing including:

@@ -11,8 +11,6 @@ use std::fmt::Debug;
 /// and an optional detailed struct with additional metadata. This generic wrapper
 /// captures that pattern.
 ///
-/// Future use: Planned for Phase 4+ when adding advanced metadata support
-///
 /// # Type Parameters
 ///
 /// * `V` - The simple value type (usually `String`)
