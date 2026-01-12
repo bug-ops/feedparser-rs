@@ -25,6 +25,7 @@ allow = [
     "Unicode-3.0",
     "MPL-2.0",  # Used by ammonia's dependencies (cssparser, etc.)
     "CDLA-Permissive-2.0",  # Used by webpki-roots (root certificate data)
+    "OpenSSL",  # Used by aws-lc-sys (rustls crypto backend)
 ]
 # Confidence threshold for license detection
 confidence-threshold = 0.8

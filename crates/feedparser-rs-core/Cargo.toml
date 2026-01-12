@@ -24,7 +24,7 @@ reqwest = { workspace = true, features = [
     "gzip",
     "deflate",
     "brotli",
-    "rustls-tls",
+    "rustls",
 ], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2025-01-12
+
+### Changed
+- Updated `quick-xml` from 0.38 to 0.39
+- Updated `reqwest` from 0.12 to 0.13 (switched from `rustls-tls` to `rustls` feature)
+- Added OpenSSL license to `deny.toml` for `aws-lc-sys` (rustls crypto backend)
+
 ## [0.4.0] - 2025-12-28
 
 ### Added
@@ -160,7 +167,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.2.0...v0.2.1
