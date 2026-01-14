@@ -155,7 +155,12 @@ fn parse_channel(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
+
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
 
@@ -163,19 +168,21 @@ fn parse_channel(
                 // We need owned tag data to pass &mut buf to helper functions simultaneously.
                 // Potential future optimization: restructure helpers to avoid this allocation.
                 let tag = e.name().as_ref().to_vec();
-                let (attrs, has_attr_errors) = collect_attributes(&e);
+                let (attrs, has_attr_errors) = collect_attributes(e);
                 if has_attr_errors {
                     feed.bozo = true;
                     feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
                 }
 
                 // Extract xml:lang before matching to avoid borrow issues
-                let item_lang = extract_xml_lang(&e, limits.max_attribute_length);
+                let item_lang = extract_xml_lang(e, limits.max_attribute_length);
 
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
-                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"category" => {
+                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"category"
+                        if !is_empty =>
+                    {
                         parse_channel_standard(
                             reader,
                             &mut buf,
@@ -186,12 +193,12 @@ fn parse_channel(
                             channel_lang,
                         )?;
                     }
-                    b"image" => {
+                    b"image" if !is_empty => {
                         if let Ok(image) = parse_image(reader, &mut buf, limits, depth) {
                             feed.feed.image = Some(image);
                         }
                     }
-                    b"item" => {
+                    b"item" if !is_empty => {
                         parse_channel_item(
                             item_lang.as_deref(),
                             reader,
@@ -205,7 +212,7 @@ fn parse_channel(
                     }
                     _ => {
                         parse_channel_extension(
-                            reader, &mut buf, &tag, &attrs, feed, limits, depth,
+                            reader, &mut buf, &tag, &attrs, feed, limits, depth, is_empty,
                         )?;
                     }
                 }
@@ -265,6 +272,7 @@ fn parse_channel_item(
 
 /// Parse channel extension elements (iTunes, Podcast, namespaces)
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn parse_channel_extension(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -273,16 +281,18 @@ fn parse_channel_extension(
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     depth: &mut usize,
+    is_empty: bool,
 ) -> Result<()> {
-    let mut handled = parse_channel_itunes(reader, buf, tag, attrs, feed, limits, depth)?;
+    let mut handled = parse_channel_itunes(reader, buf, tag, attrs, feed, limits, depth, is_empty)?;
     if !handled {
-        handled = parse_channel_podcast(reader, buf, tag, attrs, feed, limits)?;
+        handled = parse_channel_podcast(reader, buf, tag, attrs, feed, limits, is_empty)?;
     }
     if !handled {
-        handled = parse_channel_namespace(reader, buf, tag, feed, limits, *depth)?;
+        handled = parse_channel_namespace(reader, buf, tag, feed, limits, *depth, is_empty)?;
     }
 
-    if !handled {
+    // Only skip element content if this is NOT an empty element
+    if !handled && !is_empty {
         skip_element(reader, buf, limits, *depth)?;
     }
 
@@ -401,6 +411,7 @@ fn parse_channel_standard(
 /// Parse iTunes namespace tags at channel level
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
 fn parse_channel_itunes(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -409,80 +420,107 @@ fn parse_channel_itunes(
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     depth: &mut usize,
+    is_empty: bool,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"author") {
-        let text = read_text(reader, buf, limits)?;
-        let itunes = feed
-            .feed
-            .itunes
-            .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-        itunes.author = Some(text);
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.author = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"owner") {
-        let itunes = feed
-            .feed
-            .itunes
-            .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-        if let Ok(owner) = parse_itunes_owner(reader, buf, limits, depth) {
-            itunes.owner = Some(owner);
+        if !is_empty {
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            if let Ok(owner) = parse_itunes_owner(reader, buf, limits, depth) {
+                itunes.owner = Some(owner);
+            }
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"category") {
-        parse_itunes_category(reader, buf, attrs, feed, limits);
+        parse_itunes_category(reader, buf, attrs, feed, limits, is_empty);
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit") {
-        let text = read_text(reader, buf, limits)?;
-        let itunes = feed
-            .feed
-            .itunes
-            .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-        itunes.explicit = parse_explicit(&text);
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.explicit = parse_explicit(&text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"image") {
         if let Some(value) = find_attribute(attrs, b"href") {
+            let url = truncate_to_length(value, limits.max_attribute_length);
             let itunes = feed
                 .feed
                 .itunes
                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-            itunes.image = Some(truncate_to_length(value, limits.max_attribute_length).into());
+            itunes.image = Some(url.clone().into());
+            // Also set feed.image if not already set (for Python feedparser compatibility)
+            if feed.feed.image.is_none() {
+                feed.feed.image = Some(Image {
+                    url: url.into(),
+                    title: None,
+                    link: None,
+                    width: None,
+                    height: None,
+                    description: None,
+                });
+            }
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"keywords") {
-        let text = read_text(reader, buf, limits)?;
-        let itunes = feed
-            .feed
-            .itunes
-            .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-        itunes.keywords = text
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
-        Ok(true)
-    } else if is_itunes_tag(tag, b"type") {
-        let text = read_text(reader, buf, limits)?;
-        let itunes = feed
-            .feed
-            .itunes
-            .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-        itunes.podcast_type = Some(text);
-        Ok(true)
-    } else if is_itunes_tag(tag, b"complete") {
-        let text = read_text(reader, buf, limits)?;
-        let itunes = feed
-            .feed
-            .itunes
-            .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-        itunes.complete = Some(text.trim().eq_ignore_ascii_case("Yes"));
-        Ok(true)
-    } else if is_itunes_tag(tag, b"new-feed-url") {
-        let text = read_text(reader, buf, limits)?;
-        if !text.is_empty() {
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
             let itunes = feed
                 .feed
                 .itunes
                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-            itunes.new_feed_url = Some(text.trim().to_string().into());
+            itunes.keywords = text
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"type") {
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.podcast_type = Some(text);
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"complete") {
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.complete = Some(text.trim().eq_ignore_ascii_case("Yes"));
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"new-feed-url") {
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            if !text.is_empty() {
+                let itunes = feed
+                    .feed
+                    .itunes
+                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                itunes.new_feed_url = Some(text.trim().to_string().into());
+            }
         }
         Ok(true)
     } else {
@@ -497,20 +535,39 @@ fn parse_itunes_category(
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
+    is_empty: bool,
 ) {
     let category_text = find_attribute(attrs, b"text")
         .map(|v| truncate_to_length(v, limits.max_attribute_length))
         .unwrap_or_default();
 
-    // Parse potential nested subcategory
+    // Parse potential nested subcategory (only if not an empty element)
     let mut subcategory_text = None;
-    let mut nesting = 0;
-    loop {
-        match reader.read_event_into(buf) {
-            Ok(Event::Start(sub_e)) => {
-                if is_itunes_tag(sub_e.name().as_ref(), b"category") {
-                    nesting += 1;
-                    if nesting == 1 {
+    if !is_empty {
+        let mut nesting = 0;
+        loop {
+            match reader.read_event_into(buf) {
+                Ok(Event::Start(sub_e)) => {
+                    if is_itunes_tag(sub_e.name().as_ref(), b"category") {
+                        nesting += 1;
+                        if nesting == 1 {
+                            for attr in sub_e.attributes().flatten() {
+                                if attr.key.as_ref() == b"text"
+                                    && let Ok(value) = attr.unescape_value()
+                                {
+                                    subcategory_text = Some(
+                                        value.chars().take(limits.max_attribute_length).collect(),
+                                    );
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                Ok(Event::Empty(sub_e)) => {
+                    if is_itunes_tag(sub_e.name().as_ref(), b"category")
+                        && subcategory_text.is_none()
+                    {
                         for attr in sub_e.attributes().flatten() {
                             if attr.key.as_ref() == b"text"
                                 && let Ok(value) = attr.unescape_value()
@@ -522,32 +579,19 @@ fn parse_itunes_category(
                         }
                     }
                 }
-            }
-            Ok(Event::Empty(sub_e)) => {
-                if is_itunes_tag(sub_e.name().as_ref(), b"category") && subcategory_text.is_none() {
-                    for attr in sub_e.attributes().flatten() {
-                        if attr.key.as_ref() == b"text"
-                            && let Ok(value) = attr.unescape_value()
-                        {
-                            subcategory_text =
-                                Some(value.chars().take(limits.max_attribute_length).collect());
+                Ok(Event::End(end_e)) => {
+                    if is_itunes_tag(end_e.name().as_ref(), b"category") {
+                        if nesting == 0 {
                             break;
                         }
+                        nesting -= 1;
                     }
                 }
+                Ok(Event::Eof) | Err(_) => break,
+                _ => {}
             }
-            Ok(Event::End(end_e)) => {
-                if is_itunes_tag(end_e.name().as_ref(), b"category") {
-                    if nesting == 0 {
-                        break;
-                    }
-                    nesting -= 1;
-                }
-            }
-            Ok(Event::Eof) | Err(_) => break,
-            _ => {}
+            buf.clear();
         }
-        buf.clear();
     }
 
     let itunes = feed
@@ -571,24 +615,31 @@ fn parse_channel_podcast(
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
+    is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:guid") {
-        let text = read_text(reader, buf, limits)?;
-        let podcast = feed
-            .feed
-            .podcast
-            .get_or_insert_with(|| Box::new(PodcastMeta::default()));
-        podcast.guid = Some(text);
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            let podcast = feed
+                .feed
+                .podcast
+                .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+            podcast.guid = Some(text);
+        }
         Ok(true)
     } else if tag.starts_with(b"podcast:funding") {
         let url = find_attribute(attrs, b"url")
             .map(|v| truncate_to_length(v, limits.max_attribute_length))
             .unwrap_or_default();
-        let message_text = read_text(reader, buf, limits)?;
-        let message = if message_text.is_empty() {
+        let message = if is_empty {
             None
         } else {
-            Some(message_text)
+            let message_text = read_text(reader, buf, limits)?;
+            if message_text.is_empty() {
+                None
+            } else {
+                Some(message_text)
+            }
         };
         let podcast = feed
             .feed
@@ -603,7 +654,9 @@ fn parse_channel_podcast(
         );
         Ok(true)
     } else if tag.starts_with(b"podcast:value") {
-        parse_podcast_value(reader, buf, attrs, feed, limits)?;
+        if !is_empty {
+            parse_podcast_value(reader, buf, attrs, feed, limits)?;
+        }
         Ok(true)
     } else {
         Ok(false)
@@ -619,24 +672,35 @@ fn parse_channel_namespace(
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     depth: usize,
+    is_empty: bool,
 ) -> Result<bool> {
     if let Some(dc_element) = is_dc_tag(tag) {
-        let dc_elem = dc_element.to_string();
-        let text = read_text(reader, buf, limits)?;
-        dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
+        if !is_empty {
+            let dc_elem = dc_element.to_string();
+            let text = read_text(reader, buf, limits)?;
+            dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
+        }
         Ok(true)
     } else if let Some(_content_element) = is_content_tag(tag) {
-        skip_element(reader, buf, limits, depth)?;
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
         Ok(true)
     } else if let Some(_media_element) = is_media_tag(tag) {
-        skip_element(reader, buf, limits, depth)?;
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
-        let text = read_text(reader, buf, limits)?;
-        georss::handle_feed_element(georss_element.as_bytes(), &text, &mut feed.feed, limits);
+        if !is_empty {
+            let text = read_text(reader, buf, limits)?;
+            georss::handle_feed_element(georss_element.as_bytes(), &text, &mut feed.feed, limits);
+        }
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
-        feed.feed.license = Some(read_text(reader, buf, limits)?);
+        if !is_empty {
+            feed.feed.license = Some(read_text(reader, buf, limits)?);
+        }
         Ok(true)
     } else {
         Ok(false)
@@ -694,7 +758,9 @@ fn parse_item(
                                 .enclosures
                                 .try_push_limited(enclosure, limits.max_enclosures);
                         }
-                        skip_element(reader, buf, limits, *depth)?;
+                        if !is_empty {
+                            skip_element(reader, buf, limits, *depth)?;
+                        }
                     }
                     b"source" => {
                         if let Ok(source) = parse_source(reader, buf, limits, depth) {
@@ -716,7 +782,7 @@ fn parse_item(
                             )?;
                         }
 
-                        if !handled {
+                        if !handled && !is_empty {
                             skip_element(reader, buf, limits, *depth)?;
                         }
                     }
