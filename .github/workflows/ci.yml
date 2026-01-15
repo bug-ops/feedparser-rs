@@ -259,7 +259,7 @@ jobs:
   # Python bindings tests
   test-python:
     name: Test Python (${{ matrix.os }} - Py${{ matrix.python }})
-    needs: [changes, lint-stable, lint-nightly]
+    needs: [changes, lint-stable, lint-nightly, lint-python]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     # Run on: Python changes, CI config changes, or full CI mode
@@ -330,7 +330,7 @@ jobs:
   # Node.js bindings tests
   test-node:
     name: Test Node.js (${{ matrix.os }} - Node ${{ matrix.node }})
-    needs: [changes, lint-stable, lint-nightly]
+    needs: [changes, lint-stable, lint-nightly, lint-node]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     # Run on: Node changes, CI config changes, or full CI mode
@@ -435,7 +435,7 @@ jobs:
   # Python code coverage
   coverage-python:
     name: Python Code Coverage
-    needs: [changes, lint-stable, lint-nightly]
+    needs: [changes, lint-stable, lint-nightly, lint-python]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Run on: Python changes, CI config changes, or full CI mode
@@ -484,7 +484,7 @@ jobs:
   # Node.js code coverage
   coverage-node:
     name: Node.js Code Coverage
-    needs: [changes, lint-stable, lint-nightly]
+    needs: [changes, lint-stable, lint-nightly, lint-node]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Run on: Node changes, CI config changes, or full CI mode
