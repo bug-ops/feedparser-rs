@@ -133,43 +133,43 @@ jobs:
       - name: Check formatting
         run: cargo +nightly fmt --all -- --check
 
-  # Bindings lint (ruff + biome)
-  lint-bindings:
-    name: Lint Bindings
+  # Python lint (ruff)
+  lint-python:
+    name: Lint Python (ruff)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
 
-      - name: Setup Python
-        uses: actions/setup-python@v6
+      - name: Run ruff lint
+        uses: astral-sh/ruff-action@v3
         with:
-          python-version: '3.14'
-          allow-prereleases: true
+          src: crates/feedparser-rs-py
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Run ruff (Python)
-        working-directory: crates/feedparser-rs-py
-        run: |
-          uv run ruff check .
-          uv run ruff format --check .
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Run ruff format
+        uses: astral-sh/ruff-action@v3
         with:
-          node-version: '22'
+          src: crates/feedparser-rs-py
+          args: format --check
 
-      - name: Install Node.js dependencies
-        working-directory: crates/feedparser-rs-node
-        run: npm ci
+  # Node.js lint (biome)
+  lint-node:
+    name: Lint Node.js (biome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
 
-      - name: Run biome (Node.js)
+      - name: Setup Biome
+        uses: biomejs/setup-biome@v2
+
+      - name: Run Biome
         working-directory: crates/feedparser-rs-node
-        run: npx biome check .
+        run: biome check .
 
   # Security audit
   security:
@@ -568,7 +568,7 @@ jobs:
   # All checks passed gate
   ci-success:
     name: CI Success
-    needs: [changes, lint-stable, lint-nightly, lint-bindings, security, test-rust, test-python, test-node, coverage-rust, coverage-python, coverage-node, msrv]
+    needs: [changes, lint-stable, lint-nightly, lint-python, lint-node, security, test-rust, test-python, test-node, coverage-rust, coverage-python, coverage-node, msrv]
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -608,11 +608,18 @@ jobs:
             echo "lint-nightly: ${{ needs.lint-nightly.result }} ✓"
           fi
 
-          if [[ "${{ needs.lint-bindings.result }}" != "success" ]]; then
-            echo "lint-bindings: ${{ needs.lint-bindings.result }} ✗ (must succeed)"
+          if [[ "${{ needs.lint-python.result }}" != "success" ]]; then
+            echo "lint-python: ${{ needs.lint-python.result }} ✗ (must succeed)"
             FAILED=1
           else
-            echo "lint-bindings: ${{ needs.lint-bindings.result }} ✓"
+            echo "lint-python: ${{ needs.lint-python.result }} ✓"
+          fi
+
+          if [[ "${{ needs.lint-node.result }}" != "success" ]]; then
+            echo "lint-node: ${{ needs.lint-node.result }} ✗ (must succeed)"
+            FAILED=1
+          else
+            echo "lint-node: ${{ needs.lint-node.result }} ✓"
           fi
 
           # Check all other jobs (success or skipped is OK)
