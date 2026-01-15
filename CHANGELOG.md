@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-01-15
+
+### Changed
+- Drop Python 3.9 support (dependencies require 3.10+)
+- Add Python 3.14 support
+- Build wheels for all supported Python versions (3.10-3.14)
+
 ## [0.4.2] - 2026-01-14
 
 ### Fixed
@@ -175,7 +182,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.3.0...v0.4.0
