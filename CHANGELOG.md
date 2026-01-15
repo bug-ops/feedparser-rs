@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.3] - 2026-01-15
 
+### Added
+- Add `ruff` linter and formatter for Python bindings
+- Add `biome` linter and formatter for Node.js bindings
+- Add `npm audit` to CI security checks (alongside `cargo deny`)
+
 ### Changed
 - Drop Python 3.9 support (dependencies require 3.10+)
 - Add Python 3.14 support

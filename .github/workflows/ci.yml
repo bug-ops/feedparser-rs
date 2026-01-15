@@ -139,9 +139,10 @@ jobs:
     needs: [changes]
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Run on: Rust core changes, CI config changes, or full CI mode
+    # Run on: Rust core changes, Node changes, CI config changes, or full CI mode
     if: |
       needs.changes.outputs.rust-core == 'true' ||
+      needs.changes.outputs.node == 'true' ||
       needs.changes.outputs.ci == 'true' ||
       needs.changes.outputs.full-ci == 'true'
     permissions:
@@ -162,6 +163,15 @@ jobs:
 
       - name: Run cargo-deny
         run: cargo deny check
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Run npm audit
+        working-directory: crates/feedparser-rs-node
+        run: npm audit --audit-level=high
 
   # Cross-platform Rust tests
   test-rust:

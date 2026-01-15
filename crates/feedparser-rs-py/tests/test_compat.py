@@ -7,8 +7,8 @@ Tests that deprecated field names correctly map to their modern equivalents:
 - Container-level: channel, items
 """
 
-import pytest
 import feedparser_rs
+import pytest
 
 
 def test_feed_description_alias():
@@ -389,13 +389,13 @@ def test_dict_access_feed_fields():
     feed = feedparser_rs.parse(xml)
 
     # Dict-style access should work
-    assert feed['feed']['title'] == "Test Feed"
-    assert feed['feed']['link'] == "https://example.com"
-    assert feed['feed']['subtitle'] == "Feed description"
+    assert feed["feed"]["title"] == "Test Feed"
+    assert feed["feed"]["link"] == "https://example.com"
+    assert feed["feed"]["subtitle"] == "Feed description"
 
     # Mixed access should work
-    assert feed['feed'].title == "Test Feed"
-    assert feed.feed['title'] == "Test Feed"
+    assert feed["feed"].title == "Test Feed"
+    assert feed.feed["title"] == "Test Feed"
 
 
 def test_dict_access_entry_fields():
@@ -412,17 +412,17 @@ def test_dict_access_entry_fields():
     </rss>"""
 
     feed = feedparser_rs.parse(xml)
-    entry = feed['entries'][0]
+    entry = feed["entries"][0]
 
     # Dict-style access should work
-    assert entry['title'] == "Entry Title"
-    assert entry['link'] == "https://example.com/entry"
-    assert entry['id'] == "entry-1"
-    assert entry['summary'] == "Entry summary"
+    assert entry["title"] == "Entry Title"
+    assert entry["link"] == "https://example.com/entry"
+    assert entry["id"] == "entry-1"
+    assert entry["summary"] == "Entry summary"
 
     # Mixed access should work
-    assert feed['entries'][0].title == "Entry Title"
-    assert feed.entries[0]['title'] == "Entry Title"
+    assert feed["entries"][0].title == "Entry Title"
+    assert feed.entries[0]["title"] == "Entry Title"
 
 
 def test_dict_access_with_deprecated_aliases():
@@ -443,16 +443,16 @@ def test_dict_access_with_deprecated_aliases():
     feed = feedparser_rs.parse(xml)
 
     # Feed-level deprecated aliases should work with dict access
-    assert feed['feed']['description'] == "Feed description"
-    assert feed['feed']['tagline'] == "Feed description"
-    assert feed['feed']['copyright'] == "Copyright 2024"
-    assert feed['feed']['modified'] is not None
+    assert feed["feed"]["description"] == "Feed description"
+    assert feed["feed"]["tagline"] == "Feed description"
+    assert feed["feed"]["copyright"] == "Copyright 2024"
+    assert feed["feed"]["modified"] is not None
 
     # Entry-level deprecated aliases should work with dict access
-    entry = feed['entries'][0]
-    assert entry['guid'] == "entry-1"
-    assert entry['description'] == "Entry summary"
-    assert entry['issued'] is not None
+    entry = feed["entries"][0]
+    assert entry["guid"] == "entry-1"
+    assert entry["description"] == "Entry summary"
+    assert entry["issued"] is not None
 
 
 def test_dict_access_container_aliases():
@@ -468,14 +468,14 @@ def test_dict_access_container_aliases():
     d = feedparser_rs.parse(xml)
 
     # channel → feed alias should work with dict access
-    assert d['channel']['title'] == "RSS Feed"
-    assert d['feed']['title'] == "RSS Feed"
+    assert d["channel"]["title"] == "RSS Feed"
+    assert d["feed"]["title"] == "RSS Feed"
 
     # items → entries alias should work with dict access
-    assert len(d['items']) == 2
-    assert len(d['entries']) == 2
-    assert d['items'][0]['title'] == "Item 1"
-    assert d['entries'][0]['title'] == "Item 1"
+    assert len(d["items"]) == 2
+    assert len(d["entries"]) == 2
+    assert d["items"][0]["title"] == "Item 1"
+    assert d["entries"][0]["title"] == "Item 1"
 
 
 def test_dict_access_top_level_fields():
@@ -489,9 +489,9 @@ def test_dict_access_top_level_fields():
     feed = feedparser_rs.parse(xml)
 
     # Top-level fields should be accessible via dict-style
-    assert feed['version'] == 'rss20'
-    assert feed['bozo'] is False
-    assert feed['encoding'] is not None
+    assert feed["version"] == "rss20"
+    assert feed["bozo"] is False
+    assert feed["encoding"] is not None
 
 
 def test_dict_access_unknown_key_raises_keyerror():
@@ -509,13 +509,13 @@ def test_dict_access_unknown_key_raises_keyerror():
 
     # Unknown keys should raise KeyError for dict access
     with pytest.raises(KeyError):
-        _ = feed['nonexistent_field']
+        _ = feed["nonexistent_field"]
 
     with pytest.raises(KeyError):
-        _ = feed['feed']['fake_field']
+        _ = feed["feed"]["fake_field"]
 
     with pytest.raises(KeyError):
-        _ = feed['entries'][0]['unknown_key']
+        _ = feed["entries"][0]["unknown_key"]
 
     # But AttributeError should still be raised for attribute access
     with pytest.raises(AttributeError, match="has no attribute"):
@@ -541,22 +541,22 @@ def test_dict_and_attribute_access_equivalence():
     feed = feedparser_rs.parse(xml)
 
     # Feed-level fields should be identical via both access methods
-    assert feed.feed.title == feed['feed']['title']
-    assert feed.feed.subtitle == feed['feed']['subtitle']
-    assert feed.feed.link == feed['feed']['link']
-    assert feed.feed.updated == feed['feed']['updated']
+    assert feed.feed.title == feed["feed"]["title"]
+    assert feed.feed.subtitle == feed["feed"]["subtitle"]
+    assert feed.feed.link == feed["feed"]["link"]
+    assert feed.feed.updated == feed["feed"]["updated"]
 
     # Entry-level fields should be identical via both access methods
     entry = feed.entries[0]
-    assert entry.id == entry['id']
-    assert entry.title == entry['title']
-    assert entry.summary == entry['summary']
-    assert entry.link == entry['link']
-    assert entry.updated == entry['updated']
+    assert entry.id == entry["id"]
+    assert entry.title == entry["title"]
+    assert entry.summary == entry["summary"]
+    assert entry.link == entry["link"]
+    assert entry.updated == entry["updated"]
 
     # Top-level fields should be identical
-    assert feed.version == feed['version']
-    assert feed.bozo == feed['bozo']
+    assert feed.version == feed["version"]
+    assert feed.bozo == feed["bozo"]
 
 
 def test_dict_access_with_none_values():
@@ -570,10 +570,10 @@ def test_dict_access_with_none_values():
     feed = feedparser_rs.parse(xml)
 
     # Missing optional fields should return None via dict access
-    assert feed['feed']['subtitle'] is None
-    assert feed['feed']['updated'] is None
-    assert feed['feed']['author'] is None
-    assert feed['feed']['image'] is None
+    assert feed["feed"]["subtitle"] is None
+    assert feed["feed"]["updated"] is None
+    assert feed["feed"]["author"] is None
+    assert feed["feed"]["image"] is None
 
 
 def test_dict_access_detail_fields():
@@ -589,16 +589,16 @@ def test_dict_access_detail_fields():
     feed = feedparser_rs.parse(xml)
 
     # _detail fields should work with dict access
-    assert feed['feed']['subtitle_detail'] is not None
-    assert feed['feed']['subtitle_detail'].type == 'html'
+    assert feed["feed"]["subtitle_detail"] is not None
+    assert feed["feed"]["subtitle_detail"].type == "html"
 
-    assert feed['feed']['rights_detail'] is not None
-    assert feed['feed']['copyright_detail'] is not None
-    assert feed['feed']['copyright_detail'].type == 'text'
+    assert feed["feed"]["rights_detail"] is not None
+    assert feed["feed"]["copyright_detail"] is not None
+    assert feed["feed"]["copyright_detail"].type == "text"
 
-    entry = feed['entries'][0]
-    assert entry['summary_detail'] is not None
-    assert entry['description_detail'] is not None
+    entry = feed["entries"][0]
+    assert entry["summary_detail"] is not None
+    assert entry["description_detail"] is not None
 
 
 def test_dict_access_list_fields():
@@ -617,16 +617,16 @@ def test_dict_access_list_fields():
     feed = feedparser_rs.parse(xml)
 
     # List fields should work with dict access
-    assert len(feed['feed']['links']) == 2
-    assert feed['feed']['links'][0].href == "https://example.com/feed"
+    assert len(feed["feed"]["links"]) == 2
+    assert feed["feed"]["links"][0].href == "https://example.com/feed"
 
-    assert len(feed['feed']['tags']) == 2
-    assert feed['feed']['tags'][0].term == "technology"
+    assert len(feed["feed"]["tags"]) == 2
+    assert feed["feed"]["tags"][0].term == "technology"
 
-    entry = feed['entries'][0]
-    assert len(entry['links']) >= 1
-    assert len(entry['tags']) == 1
-    assert entry['tags'][0].term == "rust"
+    entry = feed["entries"][0]
+    assert len(entry["links"]) >= 1
+    assert len(entry["tags"]) == 1
+    assert entry["tags"][0].term == "rust"
 
 
 # =============================================================================
@@ -646,7 +646,7 @@ def test_parse_with_optional_http_params():
     # Should work with optional params (they're just ignored for content)
     feed = feedparser_rs.parse(xml, etag="some-etag", modified="some-date")
     assert feed.feed.title == "Test Feed"
-    assert feed.version == 'rss20'
+    assert feed.version == "rss20"
 
 
 def test_parse_with_user_agent_param():
@@ -730,10 +730,6 @@ def test_parse_with_limits_accepts_http_params():
 
     # Should work with all optional params
     feed = feedparser_rs.parse_with_limits(
-        xml,
-        etag="etag",
-        modified="modified",
-        user_agent="TestBot/1.0",
-        limits=limits
+        xml, etag="etag", modified="modified", user_agent="TestBot/1.0", limits=limits
     )
     assert feed.feed.title == "Test Feed"

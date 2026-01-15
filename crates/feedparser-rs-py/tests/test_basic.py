@@ -214,7 +214,7 @@ def test_podcast_itunes_metadata():
     # Feed-level iTunes metadata
     assert d.feed.itunes is not None
     assert d.feed.itunes.author == "John Doe"
-    assert d.feed.itunes.explicit == False
+    assert d.feed.itunes.explicit is False
 
     # Entry-level iTunes metadata
     assert d.entries[0].itunes is not None

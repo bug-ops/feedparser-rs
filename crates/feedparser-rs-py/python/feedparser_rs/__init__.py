@@ -25,14 +25,14 @@ from ._feedparser_rs import (
 )
 
 __all__ = [
+    "FeedParserDict",
+    "ParserLimits",
+    "__version__",
+    "detect_format",
     "parse",
     "parse_url",
     "parse_url_with_limits",
     "parse_with_limits",
-    "detect_format",
-    "FeedParserDict",
-    "ParserLimits",
-    "__version__",
 ]
 
 # Type alias for better IDE support

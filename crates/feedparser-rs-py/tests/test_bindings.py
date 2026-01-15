@@ -348,7 +348,7 @@ def test_podcast_soundbite():
     """
 
     result = feedparser_rs.parse(xml)
-    entry = result.entries[0]
+    _ = result.entries[0]
 
     # Note: entry.podcast may not be populated until parser implements it
     # For now just verify the direct soundbite access works if implemented

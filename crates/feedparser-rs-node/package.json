@@ -41,9 +41,13 @@
     "build:debug": "napi build --platform",
     "test": "node --test __test__/index.spec.mjs",
     "test:coverage": "c8 --reporter=lcov --reporter=text --reports-dir=coverage node --test __test__/index.spec.mjs",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "prepublishOnly": "napi prepublish -t npm"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3",
     "@napi-rs/cli": "^3.5",
     "c8": "^10.1.3"
   }
