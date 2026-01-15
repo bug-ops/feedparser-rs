@@ -477,7 +477,7 @@ name = "feedparser-rs"
 version = "0.1.8"
 description = "High-performance RSS/Atom feed parser (drop-in feedparser replacement)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: 3",

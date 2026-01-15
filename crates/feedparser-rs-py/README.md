@@ -24,7 +24,7 @@ pip install feedparser-rs
 ```
 
 > [!IMPORTANT]
-> Requires Python 3.9 or later.
+> Requires Python 3.10 or later.
 
 ## Usage
 
@@ -208,7 +208,7 @@ Pre-built wheels available for:
 | Linux | x64, arm64 |
 | Windows | x64 |
 
-Supported Python versions: 3.9, 3.10, 3.11, 3.12, 3.13
+Supported Python versions: 3.10, 3.11, 3.12, 3.13, 3.14
 
 ## Development
 

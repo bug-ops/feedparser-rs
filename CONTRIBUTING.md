@@ -13,7 +13,7 @@ This project follows the [Rust Code of Conduct](https://www.rust-lang.org/polici
 - Rust 1.88.0 or later (edition 2024)
 - [cargo-make](https://github.com/sagiegurari/cargo-make) for task automation
 - Node.js 18+ (for Node.js bindings development)
-- Python 3.9+ (for Python bindings development)
+- Python 3.10+ (for Python bindings development)
 
 ### Setup
 

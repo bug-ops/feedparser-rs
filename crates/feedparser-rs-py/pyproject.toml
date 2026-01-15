@@ -8,7 +8,7 @@ version = "0.4.2"
 description = "High-performance RSS/Atom/JSON Feed parser with feedparser-compatible API"
 readme = "README.md"
 license = { text = "MIT OR Apache-2.0" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 keywords = ["rss", "atom", "feed", "parser", "feedparser", "rust"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -16,7 +16,6 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
