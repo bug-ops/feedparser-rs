@@ -1,5 +1,5 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import { describe, it } from 'node:test';
 import { parse } from '../index.js';
 
 describe('Field Bindings', () => {
@@ -183,7 +183,7 @@ describe('Field Bindings', () => {
       assert.ok(feed.entries[0].geo);
       assert.strictEqual(feed.entries[0].geo.geoType, 'point');
       assert.strictEqual(feed.entries[0].geo.coordinates[0][0], 40.7128);
-      assert.strictEqual(feed.entries[0].geo.coordinates[0][1], -74.0060);
+      assert.strictEqual(feed.entries[0].geo.coordinates[0][1], -74.006);
     });
 
     it('should parse GeoRSS polygon in entry', () => {

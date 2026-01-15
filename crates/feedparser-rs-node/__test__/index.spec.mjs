@@ -1,6 +1,6 @@
-import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { parse, parseWithOptions, detectFormat } from '../index.js';
+import { describe, it } from 'node:test';
+import { detectFormat, parse, parseWithOptions } from '../index.js';
 
 describe('feedparser-rs', () => {
   describe('parse()', () => {
@@ -251,7 +251,8 @@ describe('feedparser-rs', () => {
     });
 
     it('should detect RSS 1.0', () => {
-      const xml = '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/"></rdf:RDF>';
+      const xml =
+        '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://purl.org/rss/1.0/"></rdf:RDF>';
       assert.strictEqual(detectFormat(xml), 'rss10');
     });
 
@@ -384,7 +385,7 @@ describe('feedparser-rs', () => {
     });
 
     it('should handle binary garbage gracefully', () => {
-      const garbage = Buffer.from([0xFF, 0xFE, 0x00, 0x01, 0x02, 0x03]);
+      const garbage = Buffer.from([0xff, 0xfe, 0x00, 0x01, 0x02, 0x03]);
       // Parser should handle binary garbage without crashing
       try {
         const feed = parse(garbage);
@@ -635,8 +636,8 @@ describe('feedparser-rs', () => {
 
       const feed = parse(xml);
 
-      const altLink = feed.feed.links.find(l => l.rel === 'alternate');
-      const selfLink = feed.feed.links.find(l => l.rel === 'self');
+      const altLink = feed.feed.links.find((l) => l.rel === 'alternate');
+      const selfLink = feed.feed.links.find((l) => l.rel === 'self');
 
       assert(altLink);
       assert.strictEqual(altLink.href, 'https://example.com');
@@ -730,7 +731,11 @@ describe('feedparser-rs', () => {
 
       assert.strictEqual(enclosure.url, 'https://example.com/file.mp3');
       // length and type may be null
-      assert(enclosure.length === null || enclosure.length === undefined || typeof enclosure.length === 'number');
+      assert(
+        enclosure.length === null ||
+          enclosure.length === undefined ||
+          typeof enclosure.length === 'number',
+      );
     });
   });
 
@@ -748,8 +753,8 @@ describe('feedparser-rs', () => {
         authors: [
           {
             name: 'Author Name',
-            url: 'https://example.com/author'
-          }
+            url: 'https://example.com/author',
+          },
         ],
         items: [
           {
@@ -766,11 +771,11 @@ describe('feedparser-rs', () => {
               {
                 url: 'https://example.com/audio.mp3',
                 mime_type: 'audio/mpeg',
-                size_in_bytes: 12345
-              }
-            ]
-          }
-        ]
+                size_in_bytes: 12345,
+              },
+            ],
+          },
+        ],
       });
 
       const feed = parse(json);
@@ -792,7 +797,7 @@ describe('feedparser-rs', () => {
       const json = JSON.stringify({
         version: 'https://jsonfeed.org/version/1',
         title: 'JSON Feed 1.0',
-        items: []
+        items: [],
       });
 
       const feed = parse(json);

@@ -1,8 +1,5 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.3.11/schema.json",
-  "organizeImports": {
-    "enabled": true
-  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -22,6 +19,15 @@
     }
   },
   "files": {
-    "ignore": ["node_modules", "dist", "coverage", "*.node"]
+    "includes": ["__test__/**/*.mjs", "biome.json", "package.json"]
+  },
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": {
+          "level": "on"
+        }
+      }
+    }
   }
 }
