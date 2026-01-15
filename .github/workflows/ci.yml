@@ -133,6 +133,44 @@ jobs:
       - name: Check formatting
         run: cargo +nightly fmt --all -- --check
 
+  # Bindings lint (ruff + biome)
+  lint-bindings:
+    name: Lint Bindings
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+          allow-prereleases: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Run ruff (Python)
+        working-directory: crates/feedparser-rs-py
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Install Node.js dependencies
+        working-directory: crates/feedparser-rs-node
+        run: npm ci
+
+      - name: Run biome (Node.js)
+        working-directory: crates/feedparser-rs-node
+        run: npx biome check .
+
   # Security audit
   security:
     name: Security Audit
@@ -530,7 +568,7 @@ jobs:
   # All checks passed gate
   ci-success:
     name: CI Success
-    needs: [changes, lint-stable, lint-nightly, security, test-rust, test-python, test-node, coverage-rust, coverage-python, coverage-node, msrv]
+    needs: [changes, lint-stable, lint-nightly, lint-bindings, security, test-rust, test-python, test-node, coverage-rust, coverage-python, coverage-node, msrv]
     runs-on: ubuntu-latest
     if: always()
     permissions:
@@ -568,6 +606,13 @@ jobs:
             FAILED=1
           else
             echo "lint-nightly: ${{ needs.lint-nightly.result }} ✓"
+          fi
+
+          if [[ "${{ needs.lint-bindings.result }}" != "success" ]]; then
+            echo "lint-bindings: ${{ needs.lint-bindings.result }} ✗ (must succeed)"
+            FAILED=1
+          else
+            echo "lint-bindings: ${{ needs.lint-bindings.result }} ✓"
           fi
 
           # Check all other jobs (success or skipped is OK)
