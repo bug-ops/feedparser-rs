@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 ///
 /// Media RSS (MRSS) is a namespace extension for RSS that provides richer media
 /// content metadata. Thumbnails are preview images for media content.
-#[pyclass(name = "MediaThumbnail", module = "feedparser_rs")]
+#[pyclass(name = "MediaThumbnail", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyMediaThumbnail {
     inner: CoreMediaThumbnail,
@@ -52,7 +52,7 @@ impl PyMediaThumbnail {
 ///
 /// Media RSS content elements describe actual media files (video, audio, images)
 /// with metadata like MIME type, file size, dimensions, and duration.
-#[pyclass(name = "MediaContent", module = "feedparser_rs")]
+#[pyclass(name = "MediaContent", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyMediaContent {
     inner: CoreMediaContent,

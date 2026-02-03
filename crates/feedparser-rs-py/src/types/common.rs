@@ -5,7 +5,7 @@ use feedparser_rs::{
 };
 use pyo3::prelude::*;
 
-#[pyclass(name = "TextConstruct", module = "feedparser_rs")]
+#[pyclass(name = "TextConstruct", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyTextConstruct {
     inner: CoreTextConstruct,
@@ -53,7 +53,7 @@ impl PyTextConstruct {
     }
 }
 
-#[pyclass(name = "Link", module = "feedparser_rs")]
+#[pyclass(name = "Link", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyLink {
     inner: CoreLink,
@@ -107,7 +107,7 @@ impl PyLink {
     }
 }
 
-#[pyclass(name = "Person", module = "feedparser_rs")]
+#[pyclass(name = "Person", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPerson {
     inner: CorePerson,
@@ -147,7 +147,7 @@ impl PyPerson {
     }
 }
 
-#[pyclass(name = "Tag", module = "feedparser_rs")]
+#[pyclass(name = "Tag", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyTag {
     inner: CoreTag,
@@ -181,7 +181,7 @@ impl PyTag {
     }
 }
 
-#[pyclass(name = "Image", module = "feedparser_rs")]
+#[pyclass(name = "Image", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyImage {
     inner: CoreImage,
@@ -230,7 +230,7 @@ impl PyImage {
     }
 }
 
-#[pyclass(name = "Enclosure", module = "feedparser_rs")]
+#[pyclass(name = "Enclosure", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyEnclosure {
     inner: CoreEnclosure,
@@ -269,7 +269,7 @@ impl PyEnclosure {
     }
 }
 
-#[pyclass(name = "Content", module = "feedparser_rs")]
+#[pyclass(name = "Content", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyContent {
     inner: CoreContent,
@@ -313,7 +313,7 @@ impl PyContent {
     }
 }
 
-#[pyclass(name = "Generator", module = "feedparser_rs")]
+#[pyclass(name = "Generator", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyGenerator {
     inner: CoreGenerator,
@@ -351,7 +351,7 @@ impl PyGenerator {
     }
 }
 
-#[pyclass(name = "Source", module = "feedparser_rs")]
+#[pyclass(name = "Source", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PySource {
     inner: CoreSource,

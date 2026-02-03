@@ -9,7 +9,7 @@ use super::geo::PyGeoLocation;
 use super::media::{PyMediaContent, PyMediaThumbnail};
 use super::podcast::{PyItunesEntryMeta, PyPodcastEntryMeta, PyPodcastPerson, PyPodcastTranscript};
 
-#[pyclass(name = "Entry", module = "feedparser_rs")]
+#[pyclass(name = "Entry", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyEntry {
     inner: CoreEntry,

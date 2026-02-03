@@ -9,7 +9,7 @@ use super::geo::PyGeoLocation;
 use super::podcast::{PyItunesFeedMeta, PyPodcastMeta};
 use super::syndication::PySyndicationMeta;
 
-#[pyclass(name = "FeedMeta", module = "feedparser_rs")]
+#[pyclass(name = "FeedMeta", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyFeedMeta {
     inner: CoreFeedMeta,

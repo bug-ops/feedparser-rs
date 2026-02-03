@@ -2,7 +2,7 @@ use feedparser_rs::ParserLimits as CoreParserLimits;
 use pyo3::prelude::*;
 
 /// Resource limits for feed parsing (DoS protection)
-#[pyclass(name = "ParserLimits", module = "feedparser_rs")]
+#[pyclass(name = "ParserLimits", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyParserLimits {
     max_feed_size_bytes: usize,

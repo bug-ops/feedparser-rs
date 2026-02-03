@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 ///
 /// GeoRSS is a namespace extension that adds geographic information to RSS feeds.
 /// Supports points, lines, polygons, and bounding boxes with coordinate data.
-#[pyclass(name = "GeoLocation", module = "feedparser_rs")]
+#[pyclass(name = "GeoLocation", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyGeoLocation {
     inner: CoreGeoLocation,

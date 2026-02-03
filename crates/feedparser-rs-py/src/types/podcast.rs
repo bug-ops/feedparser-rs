@@ -8,7 +8,7 @@ use feedparser_rs::{
 };
 use pyo3::prelude::*;
 
-#[pyclass(name = "ItunesFeedMeta", module = "feedparser_rs")]
+#[pyclass(name = "ItunesFeedMeta", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyItunesFeedMeta {
     inner: CoreItunesFeedMeta,
@@ -73,7 +73,7 @@ impl PyItunesFeedMeta {
     }
 }
 
-#[pyclass(name = "ItunesEntryMeta", module = "feedparser_rs")]
+#[pyclass(name = "ItunesEntryMeta", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyItunesEntryMeta {
     inner: CoreItunesEntryMeta,
@@ -136,7 +136,7 @@ impl PyItunesEntryMeta {
     }
 }
 
-#[pyclass(name = "ItunesOwner", module = "feedparser_rs")]
+#[pyclass(name = "ItunesOwner", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyItunesOwner {
     inner: CoreItunesOwner,
@@ -169,7 +169,7 @@ impl PyItunesOwner {
     }
 }
 
-#[pyclass(name = "ItunesCategory", module = "feedparser_rs")]
+#[pyclass(name = "ItunesCategory", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyItunesCategory {
     inner: CoreItunesCategory,
@@ -205,7 +205,7 @@ impl PyItunesCategory {
     }
 }
 
-#[pyclass(name = "PodcastMeta", module = "feedparser_rs")]
+#[pyclass(name = "PodcastMeta", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastMeta {
     inner: CorePodcastMeta,
@@ -265,7 +265,7 @@ impl PyPodcastMeta {
     }
 }
 
-#[pyclass(name = "PodcastTranscript", module = "feedparser_rs")]
+#[pyclass(name = "PodcastTranscript", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastTranscript {
     inner: CorePodcastTranscript,
@@ -309,7 +309,7 @@ impl PyPodcastTranscript {
     }
 }
 
-#[pyclass(name = "PodcastFunding", module = "feedparser_rs")]
+#[pyclass(name = "PodcastFunding", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastFunding {
     inner: CorePodcastFunding,
@@ -338,7 +338,7 @@ impl PyPodcastFunding {
     }
 }
 
-#[pyclass(name = "PodcastPerson", module = "feedparser_rs")]
+#[pyclass(name = "PodcastPerson", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastPerson {
     inner: CorePodcastPerson,
@@ -386,7 +386,7 @@ impl PyPodcastPerson {
     }
 }
 
-#[pyclass(name = "PodcastChapters", module = "feedparser_rs")]
+#[pyclass(name = "PodcastChapters", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastChapters {
     inner: CorePodcastChapters,
@@ -419,7 +419,7 @@ impl PyPodcastChapters {
     }
 }
 
-#[pyclass(name = "PodcastSoundbite", module = "feedparser_rs")]
+#[pyclass(name = "PodcastSoundbite", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastSoundbite {
     inner: CorePodcastSoundbite,
@@ -456,7 +456,7 @@ impl PyPodcastSoundbite {
     }
 }
 
-#[pyclass(name = "PodcastEntryMeta", module = "feedparser_rs")]
+#[pyclass(name = "PodcastEntryMeta", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PyPodcastEntryMeta {
     inner: CorePodcastEntryMeta,

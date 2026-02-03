@@ -2,7 +2,7 @@ use feedparser_rs::SyndicationMeta as CoreSyndicationMeta;
 use pyo3::prelude::*;
 
 /// Syndication module metadata
-#[pyclass(name = "SyndicationMeta", module = "feedparser_rs")]
+#[pyclass(name = "SyndicationMeta", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
 pub struct PySyndicationMeta {
     inner: CoreSyndicationMeta,
