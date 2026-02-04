@@ -47,8 +47,8 @@
     "prepublishOnly": "napi prepublish -t npm"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.3",
-    "@napi-rs/cli": "^3.5",
+    "@biomejs/biome": "^2.3.14",
+    "@napi-rs/cli": "^3.5.1",
     "c8": "^10.1.3"
   }
 }
