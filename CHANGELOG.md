@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.4] - 2026-02-20
 
 ### Fixed
-- Handle XML entity references (e.g. `&#038;`) in element text, matching Python feedparser behavior (#59)
+- Handle XML entity references (e.g. `&#038;`) in element text, matching Python feedparser behavior (#59, #60)
 
 ### Changed
 - Update `pyo3` from 0.27.2 to 0.28.x to fix memory corruption vulnerability RUSTSEC-2026-0013 (#51, #62)
