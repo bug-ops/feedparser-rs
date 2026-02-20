@@ -207,9 +207,14 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Run npm audit
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Run pnpm audit
         working-directory: crates/feedparser-rs-node
-        run: npm audit --audit-level=high
+        run: pnpm audit --audit-level=high
 
   # Cross-platform Rust tests
   test-rust:
