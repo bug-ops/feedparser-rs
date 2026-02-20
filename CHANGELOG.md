@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-02-20
+
 ### Fixed
+- Regenerate Node.js `package-lock.json` to fix npm release CI failures (#67)
+- Add CodeQL security scanning workflow
 - Make entity resolution bozo-tolerant: `resolve_entity` preserves malformed entities as-is instead of failing (#64)
 - Propagate bozo flag from `read_text` when encountering unresolvable entities in feed-level fields (#64)
 
@@ -214,7 +218,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.1...v0.4.2
