@@ -8,7 +8,10 @@ use crate::{
     error::{FeedError, Result},
     types::{FeedVersion, ParsedFeed},
 };
-use quick_xml::{Reader, events::Event};
+use quick_xml::{
+    Reader,
+    events::{BytesRef, Event},
+};
 
 pub use crate::types::{FromAttributes, LimitedCollectionExt};
 pub use crate::util::text::bytes_to_string;
@@ -370,6 +373,10 @@ pub fn read_text(
             Ok(Event::CData(e)) => {
                 append_bytes(&mut text, e.as_ref(), limits.max_text_length)?;
             }
+            Ok(Event::GeneralRef(e)) => {
+                let resolved = resolve_entity(&e);
+                append_bytes(&mut text, resolved.as_bytes(), limits.max_text_length)?;
+            }
             Ok(Event::End(_) | Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -378,6 +385,37 @@ pub fn read_text(
     }
 
     Ok(text)
+}
+
+/// Resolve a general entity reference (numeric or named) to a string.
+/// Preserves invalid entities as-is but has no way to set the bozo flag
+/// if that occurs
+/// Also, feedparser-py returns all entities unresolved if a single one
+/// fails, whereas this function cannot know if another call raised bozo
+fn resolve_entity(e: &BytesRef<'_>) -> String {
+    // Try numeric character references first: &#038; &#x26; etc.
+    match e.resolve_char_ref() {
+        Ok(Some(ch)) => return ch.to_string(),
+        Ok(None) => {} // Not a numeric reference; fall through to named entities.
+        Err(_) => {
+            // Invalid character reference — preserve as-is (bozo tolerance).
+            let name = String::from_utf8_lossy(e.as_ref());
+            return format!("&{name};");
+        }
+    }
+    // These are the only 5 allowed XML named entities
+    match e.as_ref() {
+        b"amp" => "&".to_string(),
+        b"lt" => "<".to_string(),
+        b"gt" => ">".to_string(),
+        b"quot" => "\"".to_string(),
+        b"apos" => "'".to_string(),
+        other => {
+            // Unknown entity — preserve as-is (bozo tolerance).
+            let name = String::from_utf8_lossy(other).into_owned();
+            format!("&{name};")
+        }
+    }
 }
 
 #[inline]
@@ -508,6 +546,191 @@ mod tests {
 
         let result = read_text(&mut reader, &mut buf, &limits);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_read_text_numeric_char_ref() {
+        let xml = b"<guid>https://example.com/?post_type=webcomic1&#038;p=3172</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+
+        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "https://example.com/?post_type=webcomic1&p=3172");
+    }
+
+    #[test]
+    fn test_read_text_amp_entity() {
+        let xml = b"<guid>https://example.com/?a=1&amp;b=2</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+
+        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "https://example.com/?a=1&b=2");
+    }
+
+    #[test]
+    fn test_read_text_hex_char_ref() {
+        let xml = b"<guid>https://example.com/?a=1&#x26;b=2</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+
+        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "https://example.com/?a=1&b=2");
+    }
+
+    #[test]
+    fn test_read_text_multiple_entities() {
+        let xml = b"<guid>https://example.com/?a=1&amp;b=2&amp;c=3</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+
+        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "https://example.com/?a=1&b=2&c=3");
+    }
+
+    #[test]
+    fn test_read_text_unknown_entity_preserved() {
+        // Unknown entities should be kept verbatim, not cause errors (bozo pattern).
+        let xml = b"<guid>https://example.com/?a=1&customEntity;b=2</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+
+        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "https://example.com/?a=1&customEntity;b=2");
+    }
+
+    #[test]
+    fn test_read_text_mixed_valid_and_unknown_entities() {
+        // Mix of standard and unknown entities — all should resolve without error.
+        // trim_text(true) strips leading/trailing whitespace from each text chunk,
+        // so spaces adjacent to entity refs are dropped; test reflects that reality.
+        let xml = b"<title>AT&amp;T&unknown;rocks</title>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+
+        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "AT&T&unknown;rocks");
+    }
+
+    /// Advance `reader` past the first Start event and return a fresh reader ready for `read_text`.
+    fn advance_past_start(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) {
+        loop {
+            match reader.read_event_into(buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+    }
+
+    #[test]
+    fn test_read_text_malformed_hex_char_ref() {
+        // &#x; (no hex digits after x) must be preserved verbatim, not cause an error.
+        let xml = b"<guid>pre&#x;suf</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let text = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "pre&#x;suf");
+    }
+
+    #[test]
+    fn test_read_text_malformed_decimal_char_ref() {
+        // &#; (no digits at all) must be preserved verbatim, not cause an error.
+        let xml = b"<guid>pre&#;suf</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let text = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "pre&#;suf");
+    }
+
+    #[test]
+    fn test_read_text_empty_entity_name() {
+        // &; (empty entity name) must be preserved verbatim, not cause an error.
+        let xml = b"<guid>pre&;suf</guid>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let text = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "pre&;suf");
     }
 
     #[test]
