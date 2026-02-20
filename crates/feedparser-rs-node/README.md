@@ -27,8 +27,7 @@ yarn add feedparser-rs
 pnpm add feedparser-rs
 ```
 
-> [!IMPORTANT]
-> Requires Node.js 18 or later.
+> **Important:** Requires Node.js 18 or later.
 
 ## Quick Start
 
@@ -65,8 +64,7 @@ console.log(feed.feed.title);
 console.log(`Fetched ${feed.entries.length} entries`);
 ```
 
-> [!TIP]
-> `fetchAndParse` automatically handles compression (gzip, deflate, brotli) and follows redirects.
+> **Tip:** `fetchAndParse` automatically handles compression (gzip, deflate, brotli) and follows redirects.
 
 ### Parsing from Buffer
 
@@ -170,8 +168,7 @@ interface Entry {
 }
 ```
 
-> [!NOTE]
-> See `index.d.ts` for complete type definitions including `Link`, `Person`, `Tag`, `Image`, `Enclosure`, and more.
+> **Note:** See `index.d.ts` for complete type definitions including `Link`, `Person`, `Tag`, `Image`, `Enclosure`, and more.
 
 ## Error Handling
 
@@ -217,8 +214,7 @@ Benchmarks on Apple M1 Pro:
 | Parse 20 KB RSS | 0.09 ms | 8.5 ms | **94x** |
 | Parse 200 KB RSS | 0.94 ms | 85 ms | **90x** |
 
-> [!TIP]
-> For best performance, pass `Buffer` instead of `string` to avoid UTF-8 conversion overhead.
+> **Tip:** For best performance, pass `Buffer` instead of `string` to avoid UTF-8 conversion overhead.
 
 ## Platform Support
 
