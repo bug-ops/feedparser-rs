@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-02-20
+
+### Fixed
+- Handle XML entity references (e.g. `&#038;`) in element text, matching Python feedparser behavior (#59, #60)
+
+### Changed
+- Update `pyo3` from 0.27.2 to 0.28.x to fix memory corruption vulnerability RUSTSEC-2026-0013 (#51, #62)
+- Switch CI security audit from `npm audit` to `pnpm audit` for correct override handling (#62)
+- Bump `minimatch` to >=10.2.1 to resolve ReDoS vulnerability GHSA-3ppc-4f35-3m26 (#62)
+- Upgrade `@biomejs/biome` to 2.4.0 (#49, #54, #57)
+- Make Rust coverage upload non-blocking in CI
+- Bump `lewagon/wait-on-check-action` from 1.3.4 to 1.5.0 (#50)
+- Add dependabot auto-merge workflow
+
+### Dependencies
+- Bump `bytes` from 1.11.0 to 1.11.1 (#52)
+- Bump `memchr` from 2.7.6 to 2.8.0 (#56)
+- Bump `thiserror` in the patch-updates group (#48)
+- Bump patch-updates group with multiple updates (#53, #55, #58)
+
 ## [0.4.3] - 2026-01-15
 
 ### Added
@@ -187,7 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.0...v0.4.1
