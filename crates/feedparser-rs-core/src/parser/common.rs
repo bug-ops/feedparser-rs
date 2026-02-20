@@ -474,9 +474,9 @@ pub fn skip_element(
 
 /// Read text content, discarding the bozo signal.
 ///
-/// Use this at call sites where `feed` is not in scope and bozo propagation
-/// is handled by a higher-level caller, or where the text field is metadata
-/// that does not carry entity content from untrusted feeds.
+/// Use this at call sites where `ParsedFeed` is not in scope and bozo
+/// propagation to the feed level is not yet implemented, such as entry-level
+/// fields (title, summary, content, author, etc.). See #70.
 #[inline]
 pub fn read_text_str(
     reader: &mut Reader<&[u8]>,

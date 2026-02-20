@@ -343,7 +343,7 @@ fn parse_channel_standard(
             let (text, bozo) = read_text(reader, buf, limits)?;
             if bozo {
                 feed.bozo = true;
-                feed.bozo_exception = Some("Unresolvable entity in feed content".to_string());
+                feed.bozo_exception = Some("Unresolvable entity in channel title".into());
             }
             feed.feed.set_title(TextConstruct {
                 value: text,
@@ -365,7 +365,8 @@ fn parse_channel_standard(
             let (text, bozo) = read_text(reader, buf, limits)?;
             if bozo {
                 feed.bozo = true;
-                feed.bozo_exception = Some("Unresolvable entity in feed content".to_string());
+                feed.bozo_exception =
+                    Some("Unresolvable entity in channel description".to_string());
             }
             feed.feed.set_subtitle(TextConstruct {
                 value: text,

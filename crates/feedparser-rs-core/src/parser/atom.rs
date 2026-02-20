@@ -157,7 +157,7 @@ fn parse_feed_element(
                         if bozo {
                             feed.bozo = true;
                             feed.bozo_exception =
-                                Some("Unresolvable entity in feed content".to_string());
+                                Some("Unresolvable entity in feed id".to_string());
                         }
                         feed.feed.id = Some(text);
                     }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Make entity resolution bozo-tolerant: `resolve_entity` preserves malformed entities as-is instead of failing (#64)
+- Propagate bozo flag from `read_text` when encountering unresolvable entities in feed-level fields (#64)
+
+### Added
+- Edge-case tests for invalid numeric refs, malformed entity syntax, unknown named entities, and mixed valid/invalid entities (#64)
+
 ## [0.4.4] - 2026-02-20
 
 ### Fixed
