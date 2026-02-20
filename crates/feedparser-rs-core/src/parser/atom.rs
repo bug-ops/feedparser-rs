@@ -14,8 +14,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, read_text, skip_element,
-    skip_to_end,
+    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, read_text, read_text_str,
+    skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -153,14 +153,20 @@ fn parse_feed_element(
                         feed.feed.set_subtitle(text);
                     }
                     b"id" if !is_empty => {
-                        feed.feed.id = Some(read_text(reader, &mut buf, limits)?);
+                        let (text, bozo) = read_text(reader, &mut buf, limits)?;
+                        if bozo {
+                            feed.bozo = true;
+                            feed.bozo_exception =
+                                Some("Unresolvable entity in feed id".to_string());
+                        }
+                        feed.feed.id = Some(text);
                     }
                     b"updated" if !is_empty => {
-                        let text = read_text(reader, &mut buf, limits)?;
+                        let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.updated = parse_date(&text);
                     }
                     b"published" if !is_empty => {
-                        let text = read_text(reader, &mut buf, limits)?;
+                        let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.published = parse_date(&text);
                     }
                     b"author" if !is_empty => {
@@ -196,11 +202,11 @@ fn parse_feed_element(
                         feed.feed.set_generator(generator);
                     }
                     b"icon" if !is_empty => {
-                        let url = read_text(reader, &mut buf, limits)?;
+                        let url = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.icon = Some(base_ctx.resolve_safe(&url));
                     }
                     b"logo" if !is_empty => {
-                        let url = read_text(reader, &mut buf, limits)?;
+                        let url = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.logo = Some(base_ctx.resolve_safe(&url));
                     }
                     b"rights" if !is_empty => {
@@ -232,7 +238,7 @@ fn parse_feed_element(
                         let handled = if let Some(dc_element) = is_dc_tag(tag) {
                             let dc_elem = dc_element.to_string();
                             if !is_empty {
-                                let text = read_text(reader, &mut buf, limits)?;
+                                let text = read_text_str(reader, &mut buf, limits)?;
                                 dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
                             }
                             true
@@ -321,14 +327,14 @@ fn parse_entry(
                         }
                     }
                     b"id" if !is_empty => {
-                        entry.id = Some(read_text(reader, buf, limits)?.into());
+                        entry.id = Some(read_text_str(reader, buf, limits)?.into());
                     }
                     b"updated" if !is_empty => {
-                        let text = read_text(reader, buf, limits)?;
+                        let text = read_text_str(reader, buf, limits)?;
                         entry.updated = parse_date(&text);
                     }
                     b"published" if !is_empty => {
-                        let text = read_text(reader, buf, limits)?;
+                        let text = read_text_str(reader, buf, limits)?;
                         entry.published = parse_date(&text);
                     }
                     b"summary" if !is_empty => {
@@ -377,14 +383,14 @@ fn parse_entry(
                         let handled = if let Some(dc_element) = is_dc_tag(tag) {
                             let dc_elem = dc_element.to_string();
                             if !is_empty {
-                                let text = read_text(reader, buf, limits)?;
+                                let text = read_text_str(reader, buf, limits)?;
                                 dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
                             }
                             true
                         } else if let Some(content_element) = is_content_tag(tag) {
                             let content_elem = content_element.to_string();
                             if !is_empty {
-                                let text = read_text(reader, buf, limits)?;
+                                let text = read_text_str(reader, buf, limits)?;
                                 content::handle_entry_element(&content_elem, &text, &mut entry);
                             }
                             true
@@ -417,7 +423,7 @@ fn parse_entry(
                             } else {
                                 let media_elem = media_element.to_string();
                                 if !is_empty {
-                                    let text = read_text(reader, buf, limits)?;
+                                    let text = read_text_str(reader, buf, limits)?;
                                     media_rss::handle_entry_element(&media_elem, &text, &mut entry);
                                 }
                             }
@@ -467,7 +473,7 @@ fn parse_text_construct(
         }
     }
 
-    let value = read_text(reader, buf, limits)?;
+    let value = read_text_str(reader, buf, limits)?;
 
     Ok(TextConstruct {
         value,
@@ -495,9 +501,9 @@ fn parse_person(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"name" => name = Some(read_text(reader, buf, limits)?.into()),
-                    b"email" => email = Some(read_text(reader, buf, limits)?.into()),
-                    b"uri" => uri = Some(read_text(reader, buf, limits)?),
+                    b"name" => name = Some(read_text_str(reader, buf, limits)?.into()),
+                    b"email" => email = Some(read_text_str(reader, buf, limits)?.into()),
+                    b"uri" => uri = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);
@@ -540,7 +546,7 @@ fn parse_generator(
     }
 
     Ok(Generator {
-        value: read_text(reader, buf, limits)?,
+        value: read_text_str(reader, buf, limits)?,
         uri,
         version,
     })
@@ -565,7 +571,7 @@ fn parse_content(
     }
 
     Ok(Content {
-        value: read_text(reader, buf, limits)?,
+        value: read_text_str(reader, buf, limits)?,
         content_type,
         language: None,
         base: None,
@@ -592,7 +598,7 @@ fn parse_atom_source(
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
                 match element.name().as_ref() {
-                    b"title" => title = Some(read_text(reader, buf, limits)?),
+                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
                     b"link" => {
                         if let Some(l) = Link::from_attributes(
                             element.attributes().flatten(),
@@ -603,7 +609,7 @@ fn parse_atom_source(
                         }
                         skip_to_end(reader, buf, b"link")?;
                     }
-                    b"id" => id = Some(read_text(reader, buf, limits)?),
+                    b"id" => id = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);

@@ -17,7 +17,7 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
-    is_georss_tag, is_syn_tag, read_text, skip_element,
+    is_georss_tag, is_syn_tag, read_text_str, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -194,15 +194,15 @@ fn parse_channel(
 
                 match name.as_ref() {
                     b"title" => {
-                        feed.feed.title = Some(read_text(reader, &mut buf, limits)?);
+                        feed.feed.title = Some(read_text_str(reader, &mut buf, limits)?);
                     }
                     b"link" => {
-                        let link_text = read_text(reader, &mut buf, limits)?;
+                        let link_text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed
                             .set_alternate_link(link_text, limits.max_links_per_feed);
                     }
                     b"description" => {
-                        feed.feed.subtitle = Some(read_text(reader, &mut buf, limits)?);
+                        feed.feed.subtitle = Some(read_text_str(reader, &mut buf, limits)?);
                     }
                     b"items" => {
                         // RSS 1.0 has an <items> element containing rdf:Seq with rdf:li references
@@ -221,15 +221,15 @@ fn parse_channel(
                         // Check for Dublin Core and other namespace tags
                         if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
                             let dc_elem = dc_element.to_string();
-                            let text = read_text(reader, &mut buf, limits)?;
+                            let text = read_text_str(reader, &mut buf, limits)?;
                             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
                         } else if let Some(syn_element) = is_syn_tag(full_name.as_ref()) {
                             let syn_elem = syn_element.to_string();
-                            let text = read_text(reader, &mut buf, limits)?;
+                            let text = read_text_str(reader, &mut buf, limits)?;
                             syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
                         } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
                             let georss_elem = georss_element.to_string();
-                            let text = read_text(reader, &mut buf, limits)?;
+                            let text = read_text_str(reader, &mut buf, limits)?;
                             georss::handle_feed_element(
                                 georss_elem.as_bytes(),
                                 &text,
@@ -278,14 +278,14 @@ fn parse_item(
 
                 match name.as_ref() {
                     b"title" => {
-                        entry.title = Some(read_text(reader, buf, limits)?);
+                        entry.title = Some(read_text_str(reader, buf, limits)?);
                     }
                     b"link" => {
-                        let link_text = read_text(reader, buf, limits)?;
+                        let link_text = read_text_str(reader, buf, limits)?;
                         entry.set_alternate_link(link_text, limits.max_links_per_entry);
                     }
                     b"description" => {
-                        let desc = read_text(reader, buf, limits)?;
+                        let desc = read_text_str(reader, buf, limits)?;
                         entry.summary = Some(desc.clone());
                         entry.summary_detail = Some(TextConstruct {
                             value: desc,
@@ -298,16 +298,16 @@ fn parse_item(
                         // Check for Dublin Core and other namespace tags
                         if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
                             let dc_elem = dc_element.to_string();
-                            let text = read_text(reader, buf, limits)?;
+                            let text = read_text_str(reader, buf, limits)?;
                             // dublin_core::handle_entry_element already handles dc:date -> published
                             dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
                         } else if let Some(content_element) = is_content_tag(full_name.as_ref()) {
                             let content_elem = content_element.to_string();
-                            let text = read_text(reader, buf, limits)?;
+                            let text = read_text_str(reader, buf, limits)?;
                             content::handle_entry_element(&content_elem, &text, &mut entry);
                         } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
                             let georss_elem = georss_element.to_string();
-                            let text = read_text(reader, buf, limits)?;
+                            let text = read_text_str(reader, buf, limits)?;
                             georss::handle_entry_element(
                                 georss_elem.as_bytes(),
                                 &text,
@@ -352,9 +352,9 @@ fn parse_image(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"url" => url = read_text(reader, buf, limits)?,
-                    b"title" => title = Some(read_text(reader, buf, limits)?),
-                    b"link" => link = Some(read_text(reader, buf, limits)?),
+                    b"url" => url = read_text_str(reader, buf, limits)?,
+                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
+                    b"link" => link = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);
