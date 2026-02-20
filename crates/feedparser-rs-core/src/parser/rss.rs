@@ -16,7 +16,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text, skip_element,
+    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text,
+    read_text_str, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -339,7 +340,11 @@ fn parse_channel_standard(
 ) -> Result<()> {
     match tag {
         b"title" => {
-            let text = read_text(reader, buf, limits)?;
+            let (text, bozo) = read_text(reader, buf, limits)?;
+            if bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Unresolvable entity in feed content".to_string());
+            }
             feed.feed.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Text,
@@ -348,7 +353,7 @@ fn parse_channel_standard(
             });
         }
         b"link" => {
-            let link_text = read_text(reader, buf, limits)?;
+            let link_text = read_text_str(reader, buf, limits)?;
             feed.feed
                 .set_alternate_link(link_text.clone(), limits.max_links_per_feed);
 
@@ -357,7 +362,11 @@ fn parse_channel_standard(
             }
         }
         b"description" => {
-            let text = read_text(reader, buf, limits)?;
+            let (text, bozo) = read_text(reader, buf, limits)?;
+            if bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Unresolvable entity in feed content".to_string());
+            }
             feed.feed.set_subtitle(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
@@ -366,10 +375,10 @@ fn parse_channel_standard(
             });
         }
         b"language" => {
-            feed.feed.language = Some(read_text(reader, buf, limits)?.into());
+            feed.feed.language = Some(read_text_str(reader, buf, limits)?.into());
         }
         b"pubDate" => {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             match parse_date(&text) {
                 Some(dt) => feed.feed.published = Some(dt),
                 None if !text.is_empty() => {
@@ -380,20 +389,20 @@ fn parse_channel_standard(
             }
         }
         b"managingEditor" => {
-            feed.feed.author = Some(read_text(reader, buf, limits)?.into());
+            feed.feed.author = Some(read_text_str(reader, buf, limits)?.into());
         }
         b"webMaster" => {
-            feed.feed.publisher = Some(read_text(reader, buf, limits)?.into());
+            feed.feed.publisher = Some(read_text_str(reader, buf, limits)?.into());
         }
         b"generator" => {
-            feed.feed.generator = Some(read_text(reader, buf, limits)?);
+            feed.feed.generator = Some(read_text_str(reader, buf, limits)?);
         }
         b"ttl" => {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             feed.feed.ttl = text.parse().ok();
         }
         b"category" => {
-            let term = read_text(reader, buf, limits)?;
+            let term = read_text_str(reader, buf, limits)?;
             feed.feed.tags.try_push_limited(
                 Tag {
                     term: term.into(),
@@ -424,7 +433,7 @@ fn parse_channel_itunes(
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"author") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             let itunes = feed
                 .feed
                 .itunes
@@ -448,7 +457,7 @@ fn parse_channel_itunes(
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             let itunes = feed
                 .feed
                 .itunes
@@ -479,7 +488,7 @@ fn parse_channel_itunes(
         Ok(true)
     } else if is_itunes_tag(tag, b"keywords") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             let itunes = feed
                 .feed
                 .itunes
@@ -493,7 +502,7 @@ fn parse_channel_itunes(
         Ok(true)
     } else if is_itunes_tag(tag, b"type") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             let itunes = feed
                 .feed
                 .itunes
@@ -503,7 +512,7 @@ fn parse_channel_itunes(
         Ok(true)
     } else if is_itunes_tag(tag, b"complete") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             let itunes = feed
                 .feed
                 .itunes
@@ -513,7 +522,7 @@ fn parse_channel_itunes(
         Ok(true)
     } else if is_itunes_tag(tag, b"new-feed-url") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             if !text.is_empty() {
                 let itunes = feed
                     .feed
@@ -619,7 +628,7 @@ fn parse_channel_podcast(
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:guid") {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             let podcast = feed
                 .feed
                 .podcast
@@ -634,7 +643,7 @@ fn parse_channel_podcast(
         let message = if is_empty {
             None
         } else {
-            let message_text = read_text(reader, buf, limits)?;
+            let message_text = read_text_str(reader, buf, limits)?;
             if message_text.is_empty() {
                 None
             } else {
@@ -677,7 +686,7 @@ fn parse_channel_namespace(
     if let Some(dc_element) = is_dc_tag(tag) {
         if !is_empty {
             let dc_elem = dc_element.to_string();
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
         }
         Ok(true)
@@ -693,13 +702,13 @@ fn parse_channel_namespace(
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             georss::handle_feed_element(georss_element.as_bytes(), &text, &mut feed.feed, limits);
         }
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
         if !is_empty {
-            feed.feed.license = Some(read_text(reader, buf, limits)?);
+            feed.feed.license = Some(read_text_str(reader, buf, limits)?);
         }
         Ok(true)
     } else {
@@ -815,7 +824,7 @@ fn parse_item_standard(
 ) -> Result<()> {
     match tag {
         b"title" => {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             entry.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Text,
@@ -824,7 +833,7 @@ fn parse_item_standard(
             });
         }
         b"link" => {
-            let link_text = read_text(reader, buf, limits)?;
+            let link_text = read_text_str(reader, buf, limits)?;
             let resolved_link = base_ctx.resolve_safe(&link_text);
             entry.link = Some(resolved_link.clone());
             entry.links.try_push_limited(
@@ -837,7 +846,7 @@ fn parse_item_standard(
             );
         }
         b"description" => {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             entry.set_summary(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
@@ -846,17 +855,17 @@ fn parse_item_standard(
             });
         }
         b"guid" => {
-            entry.id = Some(read_text(reader, buf, limits)?.into());
+            entry.id = Some(read_text_str(reader, buf, limits)?.into());
         }
         b"pubDate" => {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             entry.published = parse_date(&text);
         }
         b"author" => {
-            entry.author = Some(read_text(reader, buf, limits)?.into());
+            entry.author = Some(read_text_str(reader, buf, limits)?.into());
         }
         b"category" => {
-            let term = read_text(reader, buf, limits)?;
+            let term = read_text_str(reader, buf, limits)?;
             entry.tags.try_push_limited(
                 Tag {
                     term: term.into(),
@@ -867,7 +876,7 @@ fn parse_item_standard(
             );
         }
         b"comments" => {
-            entry.comments = Some(read_text(reader, buf, limits)?);
+            entry.comments = Some(read_text_str(reader, buf, limits)?);
         }
         _ => {}
     }
@@ -893,28 +902,28 @@ fn parse_item_itunes(
     depth: usize,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"title") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.title = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"author") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.author = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"duration") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.duration = parse_duration(&text);
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
@@ -932,21 +941,21 @@ fn parse_item_itunes(
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"episode") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.episode = text.parse().ok();
         Ok(true)
     } else if is_itunes_tag(tag, b"season") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.season = text.parse().ok();
         Ok(true)
     } else if is_itunes_tag(tag, b"episodeType") {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
@@ -1051,7 +1060,7 @@ fn parse_podcast_person(
     let href =
         find_attribute(attrs, b"href").map(|v| truncate_to_length(v, limits.max_attribute_length));
 
-    let name = read_text(reader, buf, limits)?;
+    let name = read_text_str(reader, buf, limits)?;
     if !name.is_empty() {
         entry.podcast_persons.try_push_limited(
             PodcastPerson {
@@ -1119,7 +1128,7 @@ fn parse_podcast_soundbite(
         let title = if is_empty {
             None
         } else {
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             if text.is_empty() { None } else { Some(text) }
         };
 
@@ -1161,16 +1170,16 @@ fn parse_item_namespace(
 ) -> Result<bool> {
     if let Some(dc_element) = is_dc_tag(tag) {
         let dc_elem = dc_element.to_string();
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         dublin_core::handle_entry_element(&dc_elem, &text, entry);
         Ok(true)
     } else if let Some(content_element) = is_content_tag(tag) {
         let content_elem = content_element.to_string();
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         content::handle_entry_element(&content_elem, &text, entry);
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
-        let text = read_text(reader, buf, limits)?;
+        let text = read_text_str(reader, buf, limits)?;
         georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag) {
@@ -1186,7 +1195,7 @@ fn parse_item_namespace(
         )?;
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
-        entry.license = Some(read_text(reader, buf, limits)?);
+        entry.license = Some(read_text_str(reader, buf, limits)?);
         Ok(true)
     } else {
         Ok(false)
@@ -1257,7 +1266,7 @@ fn parse_item_media(
         }
         _ => {
             let media_elem = media_element.to_string();
-            let text = read_text(reader, buf, limits)?;
+            let text = read_text_str(reader, buf, limits)?;
             media_rss::handle_entry_element(&media_elem, &text, entry);
         }
     }
@@ -1285,20 +1294,20 @@ fn parse_image(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"url" => url = read_text(reader, buf, limits)?,
-                    b"title" => title = Some(read_text(reader, buf, limits)?),
-                    b"link" => link = Some(read_text(reader, buf, limits)?),
+                    b"url" => url = read_text_str(reader, buf, limits)?,
+                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
+                    b"link" => link = Some(read_text_str(reader, buf, limits)?),
                     b"width" => {
-                        if let Ok(w) = read_text(reader, buf, limits)?.parse() {
+                        if let Ok(w) = read_text_str(reader, buf, limits)?.parse() {
                             width = Some(w);
                         }
                     }
                     b"height" => {
-                        if let Ok(h) = read_text(reader, buf, limits)?.parse() {
+                        if let Ok(h) = read_text_str(reader, buf, limits)?.parse() {
                             height = Some(h);
                         }
                     }
-                    b"description" => description = Some(read_text(reader, buf, limits)?),
+                    b"description" => description = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);
@@ -1343,8 +1352,8 @@ fn parse_source(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"title" => title = Some(read_text(reader, buf, limits)?),
-                    b"url" => link = Some(read_text(reader, buf, limits)?),
+                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
+                    b"url" => link = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);
@@ -1377,9 +1386,9 @@ fn parse_itunes_owner(
 
                 let tag_name = e.local_name();
                 if is_itunes_tag(tag_name.as_ref(), b"name") {
-                    owner.name = Some(read_text(reader, buf, limits)?);
+                    owner.name = Some(read_text_str(reader, buf, limits)?);
                 } else if is_itunes_tag(tag_name.as_ref(), b"email") {
-                    owner.email = Some(read_text(reader, buf, limits)?);
+                    owner.email = Some(read_text_str(reader, buf, limits)?);
                 } else {
                     skip_element(reader, buf, limits, *depth)?;
                 }

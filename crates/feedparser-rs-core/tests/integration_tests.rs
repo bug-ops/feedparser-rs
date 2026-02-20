@@ -204,3 +204,57 @@ fn test_parse_itunes_podcast_feed() {
 
     assert!(!feed.entries.is_empty(), "Feed should have episodes");
 }
+
+#[test]
+fn test_rss_with_unknown_entity_sets_bozo() {
+    let xml = br#"<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Test &unknown; Feed</title>
+    <link>https://example.com</link>
+    <description>desc</description>
+  </channel>
+</rss>"#;
+    let result = parse(xml).unwrap();
+    assert!(result.bozo, "Feed with unknown entity should set bozo=true");
+    assert!(
+        result
+            .bozo_exception
+            .as_deref()
+            .unwrap_or("")
+            .contains("Unresolvable entity"),
+        "bozo_exception should mention unresolvable entity"
+    );
+}
+
+#[test]
+fn test_atom_with_unknown_entity_sets_bozo() {
+    let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://example.com/&unknown;feed</id>
+  <title>Test Feed</title>
+  <updated>2024-01-01T00:00:00Z</updated>
+</feed>"#;
+    let result = parse(xml).unwrap();
+    assert!(
+        result.bozo,
+        "Atom feed with unknown entity should set bozo=true"
+    );
+}
+
+#[test]
+fn test_feed_with_standard_entities_no_bozo() {
+    let xml = br#"<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>AT&amp;T Feed</title>
+    <link>https://example.com</link>
+    <description>Less &lt;than&gt; and more</description>
+  </channel>
+</rss>"#;
+    let result = parse(xml).unwrap();
+    assert!(
+        !result.bozo,
+        "Feed with only standard entities should not set bozo"
+    );
+}

@@ -357,13 +357,19 @@ pub fn extract_xml_lang(
         .map(|s| s.to_string())
 }
 
-/// Read text content from current XML element (handles text and CDATA)
+/// Read text content from current XML element (handles text and CDATA).
+///
+/// Returns `(text, had_bozo)` where `had_bozo` is `true` if any unresolved
+/// entity references were encountered. Unlike feedparser-py (which treats all
+/// entities atomically and fails if any one fails), this implementation resolves
+/// each entity independently and signals bozo per-entity. This is a known deviation.
 pub fn read_text(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     limits: &ParserLimits,
-) -> Result<String> {
+) -> Result<(String, bool)> {
     let mut text = String::with_capacity(TEXT_BUFFER_CAPACITY);
+    let mut had_bozo = false;
 
     loop {
         match reader.read_event_into(buf) {
@@ -374,7 +380,8 @@ pub fn read_text(
                 append_bytes(&mut text, e.as_ref(), limits.max_text_length)?;
             }
             Ok(Event::GeneralRef(e)) => {
-                let resolved = resolve_entity(&e);
+                let (resolved, is_bozo) = resolve_entity(&e);
+                had_bozo |= is_bozo;
                 append_bytes(&mut text, resolved.as_bytes(), limits.max_text_length)?;
             }
             Ok(Event::End(_) | Event::Eof) => break,
@@ -384,36 +391,33 @@ pub fn read_text(
         buf.clear();
     }
 
-    Ok(text)
+    Ok((text, had_bozo))
 }
 
-/// Resolve a general entity reference (numeric or named) to a string.
-/// Preserves invalid entities as-is but has no way to set the bozo flag
-/// if that occurs
-/// Also, feedparser-py returns all entities unresolved if a single one
-/// fails, whereas this function cannot know if another call raised bozo
-fn resolve_entity(e: &BytesRef<'_>) -> String {
+/// Resolve a general entity reference (numeric or named) to `(string, is_bozo)`.
+/// Returns `true` for `is_bozo` when the entity is unknown or invalid.
+fn resolve_entity(e: &BytesRef<'_>) -> (String, bool) {
     // Try numeric character references first: &#038; &#x26; etc.
     match e.resolve_char_ref() {
-        Ok(Some(ch)) => return ch.to_string(),
+        Ok(Some(ch)) => return (ch.to_string(), false),
         Ok(None) => {} // Not a numeric reference; fall through to named entities.
         Err(_) => {
-            // Invalid character reference — preserve as-is (bozo tolerance).
+            // Invalid character reference — preserve as-is (bozo condition).
             let name = String::from_utf8_lossy(e.as_ref());
-            return format!("&{name};");
+            return (format!("&{name};"), true);
         }
     }
     // These are the only 5 allowed XML named entities
     match e.as_ref() {
-        b"amp" => "&".to_string(),
-        b"lt" => "<".to_string(),
-        b"gt" => ">".to_string(),
-        b"quot" => "\"".to_string(),
-        b"apos" => "'".to_string(),
+        b"amp" => ("&".to_string(), false),
+        b"lt" => ("<".to_string(), false),
+        b"gt" => (">".to_string(), false),
+        b"quot" => ("\"".to_string(), false),
+        b"apos" => ("'".to_string(), false),
         other => {
-            // Unknown entity — preserve as-is (bozo tolerance).
+            // Unknown entity — preserve as-is (bozo condition).
             let name = String::from_utf8_lossy(other).into_owned();
-            format!("&{name};")
+            (format!("&{name};"), true)
         }
     }
 }
@@ -468,6 +472,20 @@ pub fn skip_element(
     Ok(())
 }
 
+/// Read text content, discarding the bozo signal.
+///
+/// Use this at call sites where `feed` is not in scope and bozo propagation
+/// is handled by a higher-level caller, or where the text field is metadata
+/// that does not carry entity content from untrusted feeds.
+#[inline]
+pub fn read_text_str(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+) -> Result<String> {
+    read_text(reader, buf, limits).map(|(t, _)| t)
+}
+
 /// Skip to end of specified element (for attribute-only elements like `<link>`)
 pub fn skip_to_end(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>, tag: &[u8]) -> Result<()> {
     loop {
@@ -518,8 +536,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "Test Title");
+        assert!(!had_bozo);
     }
 
     #[test]
@@ -566,8 +585,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "https://example.com/?post_type=webcomic1&p=3172");
+        assert!(!had_bozo);
     }
 
     #[test]
@@ -588,8 +608,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "https://example.com/?a=1&b=2");
+        assert!(!had_bozo);
     }
 
     #[test]
@@ -610,8 +631,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "https://example.com/?a=1&b=2");
+        assert!(!had_bozo);
     }
 
     #[test]
@@ -632,8 +654,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "https://example.com/?a=1&b=2&c=3");
+        assert!(!had_bozo);
     }
 
     #[test]
@@ -655,8 +678,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "https://example.com/?a=1&customEntity;b=2");
+        assert!(had_bozo);
     }
 
     #[test]
@@ -680,8 +704,9 @@ mod tests {
         }
         buf.clear();
 
-        let text = read_text(&mut reader, &mut buf, &limits).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
         assert_eq!(text, "AT&T&unknown;rocks");
+        assert!(had_bozo);
     }
 
     /// Advance `reader` past the first Start event and return a fresh reader ready for `read_text`.
@@ -705,8 +730,9 @@ mod tests {
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
-        let text = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
         assert_eq!(text, "pre&#x;suf");
+        assert!(had_bozo);
     }
 
     #[test]
@@ -717,8 +743,9 @@ mod tests {
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
-        let text = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
         assert_eq!(text, "pre&#;suf");
+        assert!(had_bozo);
     }
 
     #[test]
@@ -729,8 +756,9 @@ mod tests {
         reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
-        let text = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
         assert_eq!(text, "pre&;suf");
+        assert!(had_bozo);
     }
 
     #[test]
@@ -755,5 +783,78 @@ mod tests {
 
         let result = skip_element(&mut reader, &mut buf, &limits, depth);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_entity_valid_named() {
+        let xml = b"<t>&amp;</t>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "&");
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_resolve_entity_valid_numeric() {
+        let xml = b"<t>&#38;</t>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "&");
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_resolve_entity_unknown_named() {
+        let xml = b"<t>&foo;</t>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "&foo;");
+        assert!(had_bozo);
+    }
+
+    #[test]
+    fn test_read_text_returns_bozo_on_unknown_entity() {
+        let xml = b"<t>hello &custom; world</t>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert!(text.contains("&custom;"));
+        assert!(had_bozo);
+    }
+
+    #[test]
+    fn test_read_text_no_bozo_on_standard_entities() {
+        // trim_text(true) removes whitespace adjacent to entity refs, so result has no spaces
+        let xml = b"<t>a&amp;b&lt;c&gt;</t>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "a&b<c>");
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_read_text_mixed_entities_bozo() {
+        let xml = b"<t>&amp;&unknown;</t>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        reader.config_mut().trim_text(true);
+        let mut buf = Vec::new();
+        advance_past_start(&mut reader, &mut buf);
+        let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(text, "&&unknown;");
+        assert!(had_bozo);
     }
 }
