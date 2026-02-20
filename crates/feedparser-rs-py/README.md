@@ -23,8 +23,7 @@ High-performance RSS/Atom/JSON Feed parser for Python with feedparser-compatible
 pip install feedparser-rs
 ```
 
-> [!IMPORTANT]
-> Requires Python 3.10 or later.
+> **Important:** Requires Python 3.10 or later.
 
 ## Usage
 
@@ -52,8 +51,7 @@ for entry in d.entries:
     print(entry.published_parsed)  # time.struct_time
 ```
 
-> [!NOTE]
-> Date fields like `published_parsed` return `time.struct_time` for feedparser compatibility.
+> **Note:** Date fields like `published_parsed` return `time.struct_time` for feedparser compatibility.
 
 ### Fetching from URL
 
@@ -80,8 +78,7 @@ limits = feedparser_rs.ParserLimits(max_entries=100)
 d = feedparser_rs.parse_with_limits('https://example.com/feed.xml', limits=limits)
 ```
 
-> [!TIP]
-> URL fetching supports automatic compression (gzip, deflate, brotli) and follows redirects.
+> **Tip:** URL fetching supports automatic compression (gzip, deflate, brotli) and follows redirects.
 
 ## Migration from feedparser
 
@@ -195,8 +192,7 @@ Benchmarks vs Python feedparser on Apple M1 Pro:
 | Parse 20 KB RSS | 0.09 ms | 8.5 ms | **94x** |
 | Parse 200 KB RSS | 0.94 ms | 85 ms | **90x** |
 
-> [!TIP]
-> For maximum performance, pass `bytes` instead of `str` to avoid UTF-8 re-encoding.
+> **Tip:** For maximum performance, pass `bytes` instead of `str` to avoid UTF-8 re-encoding.
 
 ## Platform Support
 
