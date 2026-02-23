@@ -17,7 +17,7 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
-    is_georss_tag, is_syn_tag, read_text_str, skip_element,
+    is_georss_tag, is_syn_tag, read_text, read_text_str, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -134,8 +134,23 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                         continue;
                     }
 
-                    match parse_item(&mut reader, &mut buf, &limits, &mut depth, item_id) {
-                        Ok(entry) => feed.entries.push(entry),
+                    let mut item_bozo = false;
+                    match parse_item(
+                        &mut reader,
+                        &mut buf,
+                        &limits,
+                        &mut depth,
+                        item_id,
+                        &mut item_bozo,
+                    ) {
+                        Ok(entry) => {
+                            if item_bozo && !feed.bozo {
+                                feed.bozo = true;
+                                feed.bozo_exception =
+                                    Some("Unresolvable entity in entry field".to_string());
+                            }
+                            feed.entries.push(entry);
+                        }
                         Err(err) => {
                             feed.bozo = true;
                             feed.bozo_exception = Some(err.to_string());
@@ -263,6 +278,7 @@ fn parse_item(
     limits: &ParserLimits,
     depth: &mut usize,
     item_id: Option<String>,
+    bozo: &mut bool,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
     entry.id = item_id.map(std::convert::Into::into);
@@ -278,14 +294,17 @@ fn parse_item(
 
                 match name.as_ref() {
                     b"title" => {
-                        entry.title = Some(read_text_str(reader, buf, limits)?);
+                        let (text, had_bozo) = read_text(reader, buf, limits)?;
+                        *bozo |= had_bozo;
+                        entry.title = Some(text);
                     }
                     b"link" => {
                         let link_text = read_text_str(reader, buf, limits)?;
                         entry.set_alternate_link(link_text, limits.max_links_per_entry);
                     }
                     b"description" => {
-                        let desc = read_text_str(reader, buf, limits)?;
+                        let (desc, had_bozo) = read_text(reader, buf, limits)?;
+                        *bozo |= had_bozo;
                         entry.summary = Some(desc.clone());
                         entry.summary_detail = Some(TextConstruct {
                             value: desc,
@@ -298,16 +317,19 @@ fn parse_item(
                         // Check for Dublin Core and other namespace tags
                         if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
                             let dc_elem = dc_element.to_string();
-                            let text = read_text_str(reader, buf, limits)?;
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
                             // dublin_core::handle_entry_element already handles dc:date -> published
                             dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
                         } else if let Some(content_element) = is_content_tag(full_name.as_ref()) {
                             let content_elem = content_element.to_string();
-                            let text = read_text_str(reader, buf, limits)?;
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
                             content::handle_entry_element(&content_elem, &text, &mut entry);
                         } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
                             let georss_elem = georss_element.to_string();
-                            let text = read_text_str(reader, buf, limits)?;
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
                             georss::handle_entry_element(
                                 georss_elem.as_bytes(),
                                 &text,

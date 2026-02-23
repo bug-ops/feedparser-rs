@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Feed</title>
+  <id>urn:uuid:test-feed</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <title>Entry with entity</title>
+    <id>urn:uuid:entry-1-&unresolvable;</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <summary>Summary here</summary>
+  </entry>
+</feed>

@@ -243,6 +243,42 @@ fn test_atom_with_unknown_entity_sets_bozo() {
 }
 
 #[test]
+fn test_rss20_entry_entity_bozo() {
+    let xml = load_fixture("malformed/entry-entity-rss20.xml");
+    let feed = parse(&xml).unwrap();
+    assert!(feed.bozo);
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("Unresolvable entity in entry field")
+    );
+    assert_eq!(feed.entries.len(), 1);
+}
+
+#[test]
+fn test_atom10_entry_entity_bozo() {
+    let xml = load_fixture("malformed/entry-entity-atom10.xml");
+    let feed = parse(&xml).unwrap();
+    assert!(feed.bozo);
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("Unresolvable entity in entry field")
+    );
+    assert_eq!(feed.entries.len(), 1);
+}
+
+#[test]
+fn test_rss10_entry_entity_bozo() {
+    let xml = load_fixture("malformed/entry-entity-rss10.xml");
+    let feed = parse(&xml).unwrap();
+    assert!(feed.bozo);
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("Unresolvable entity in entry field")
+    );
+    assert_eq!(feed.entries.len(), 1);
+}
+
+#[test]
 fn test_feed_with_standard_entities_no_bozo() {
     let xml = br#"<?xml version="1.0"?>
 <rss version="2.0">

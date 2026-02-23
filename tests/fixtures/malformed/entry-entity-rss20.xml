@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Feed</title>
+    <link>http://example.com</link>
+    <description>Test</description>
+    <item>
+      <title>Item with &unresolvable; entity</title>
+      <link>http://example.com/1</link>
+      <description>Description with &alsoUnresolvable; entity</description>
+      <guid>http://example.com/1</guid>
+    </item>
+  </channel>
+</rss>
