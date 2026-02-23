@@ -255,10 +255,14 @@ fn parse_channel_item(
     let effective_lang = item_lang.or(channel_lang);
 
     match parse_item(reader, buf, limits, depth, base_ctx, effective_lang) {
-        Ok((entry, has_attr_errors)) => {
+        Ok((entry, has_attr_errors, has_entity_bozo)) => {
             if has_attr_errors {
                 feed.bozo = true;
                 feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
+            }
+            if has_entity_bozo && !feed.bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
             }
             feed.entries.push(entry);
         }
@@ -721,7 +725,8 @@ fn parse_channel_namespace(
 ///
 /// Returns a tuple where:
 /// - First element: the parsed `Entry`
-/// - Second element: `bool` indicating whether attribute parsing errors occurred (for bozo flag)
+/// - Second element: `bool` indicating whether attribute parsing errors occurred
+/// - Third element: `bool` indicating whether unresolvable entities were encountered
 fn parse_item(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -729,9 +734,10 @@ fn parse_item(
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
     item_lang: Option<&str>,
-) -> Result<(Entry, bool)> {
+) -> Result<(Entry, bool, bool)> {
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
+    let mut has_entity_bozo = false;
 
     loop {
         match reader.read_event_into(buf) {
@@ -758,7 +764,14 @@ fn parse_item(
                     b"title" | b"link" | b"description" | b"guid" | b"pubDate" | b"author"
                     | b"category" | b"comments" => {
                         parse_item_standard(
-                            reader, buf, &tag, &mut entry, limits, base_ctx, item_lang,
+                            reader,
+                            buf,
+                            &tag,
+                            &mut entry,
+                            limits,
+                            base_ctx,
+                            item_lang,
+                            &mut has_entity_bozo,
                         )?;
                     }
                     b"enclosure" => {
@@ -779,7 +792,15 @@ fn parse_item(
                     }
                     _ => {
                         let mut handled = parse_item_itunes(
-                            reader, buf, &tag, &attrs, &mut entry, limits, is_empty, *depth,
+                            reader,
+                            buf,
+                            &tag,
+                            &attrs,
+                            &mut entry,
+                            limits,
+                            is_empty,
+                            *depth,
+                            &mut has_entity_bozo,
                         )?;
                         if !handled {
                             handled = parse_item_podcast(
@@ -788,7 +809,15 @@ fn parse_item(
                         }
                         if !handled {
                             handled = parse_item_namespace(
-                                reader, buf, &tag, &attrs, &mut entry, limits, is_empty, *depth,
+                                reader,
+                                buf,
+                                &tag,
+                                &attrs,
+                                &mut entry,
+                                limits,
+                                is_empty,
+                                *depth,
+                                &mut has_entity_bozo,
                             )?;
                         }
 
@@ -809,11 +838,12 @@ fn parse_item(
         buf.clear();
     }
 
-    Ok((entry, has_attr_errors))
+    Ok((entry, has_attr_errors, has_entity_bozo))
 }
 
 /// Parse standard RSS 2.0 item elements
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn parse_item_standard(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -822,10 +852,12 @@ fn parse_item_standard(
     limits: &ParserLimits,
     base_ctx: &BaseUrlContext,
     item_lang: Option<&str>,
+    bozo: &mut bool,
 ) -> Result<()> {
     match tag {
         b"title" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
             entry.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Text,
@@ -847,7 +879,8 @@ fn parse_item_standard(
             );
         }
         b"description" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
             entry.set_summary(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
@@ -856,17 +889,22 @@ fn parse_item_standard(
             });
         }
         b"guid" => {
-            entry.id = Some(read_text_str(reader, buf, limits)?.into());
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            entry.id = Some(text.into());
         }
         b"pubDate" => {
             let text = read_text_str(reader, buf, limits)?;
             entry.published = parse_date(&text);
         }
         b"author" => {
-            entry.author = Some(read_text_str(reader, buf, limits)?.into());
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            entry.author = Some(text.into());
         }
         b"category" => {
-            let term = read_text_str(reader, buf, limits)?;
+            let (term, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
             entry.tags.try_push_limited(
                 Tag {
                     term: term.into(),
@@ -888,7 +926,7 @@ fn parse_item_standard(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 ///
-/// Note: Uses 8 parameters instead of a context struct due to borrow checker constraints
+/// Note: Uses 9 parameters instead of a context struct due to borrow checker constraints
 /// with multiple simultaneous `&mut` references during parsing.
 #[inline]
 #[allow(clippy::too_many_arguments)]
@@ -901,16 +939,19 @@ fn parse_item_itunes(
     limits: &ParserLimits,
     is_empty: bool,
     depth: usize,
+    bozo: &mut bool,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"title") {
-        let text = read_text_str(reader, buf, limits)?;
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.title = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"author") {
-        let text = read_text_str(reader, buf, limits)?;
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
@@ -1155,7 +1196,7 @@ fn parse_podcast_soundbite(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 ///
-/// Note: Uses 8 parameters instead of a context struct due to borrow checker constraints
+/// Note: Uses 9 parameters instead of a context struct due to borrow checker constraints
 /// with multiple simultaneous `&mut` references during parsing.
 #[inline]
 #[allow(clippy::too_many_arguments)]
@@ -1168,19 +1209,23 @@ fn parse_item_namespace(
     limits: &ParserLimits,
     is_empty: bool,
     depth: usize,
+    bozo: &mut bool,
 ) -> Result<bool> {
     if let Some(dc_element) = is_dc_tag(tag) {
         let dc_elem = dc_element.to_string();
-        let text = read_text_str(reader, buf, limits)?;
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
         dublin_core::handle_entry_element(&dc_elem, &text, entry);
         Ok(true)
     } else if let Some(content_element) = is_content_tag(tag) {
         let content_elem = content_element.to_string();
-        let text = read_text_str(reader, buf, limits)?;
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
         content::handle_entry_element(&content_elem, &text, entry);
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
-        let text = read_text_str(reader, buf, limits)?;
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
         georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag) {
@@ -2528,5 +2573,77 @@ mod tests {
         assert_eq!(value.method, "keysend");
         assert_eq!(value.suggested.as_deref(), Some("0.00000005000"));
         assert_eq!(value.recipients.len(), 0);
+    }
+
+    #[test]
+    fn test_entry_bozo_on_unresolvable_entity_in_title() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <item>
+                    <title>Item with &unresolvable; entity</title>
+                    <link>http://example.com/1</link>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(
+            feed.bozo,
+            "bozo should be true when entry has unresolvable entity"
+        );
+        assert_eq!(
+            feed.bozo_exception.as_deref(),
+            Some("Unresolvable entity in entry field")
+        );
+        assert_eq!(
+            feed.entries.len(),
+            1,
+            "entry should still be parsed despite bozo"
+        );
+    }
+
+    #[test]
+    fn test_entry_bozo_on_unresolvable_entity_in_description() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <item>
+                    <title>Normal Title</title>
+                    <description>Description with &badEntity; inside</description>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert_eq!(
+            feed.bozo_exception.as_deref(),
+            Some("Unresolvable entity in entry field")
+        );
+        assert_eq!(feed.entries.len(), 1);
+        assert_eq!(feed.entries[0].title.as_deref(), Some("Normal Title"));
+    }
+
+    #[test]
+    fn test_clean_entry_no_bozo() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <item>
+                    <title>Clean Item &amp; more</title>
+                    <description>Description &lt;with&gt; entities</description>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "standard XML entities should not trigger bozo");
+        assert_eq!(feed.entries.len(), 1);
+        // &amp; is a standard XML entity - quick-xml resolves it
+        assert!(feed.entries[0].title.is_some());
     }
 }

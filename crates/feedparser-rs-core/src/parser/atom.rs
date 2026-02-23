@@ -225,8 +225,23 @@ fn parse_feed_element(
                             entry_ctx.update_base(&xml_base);
                         }
 
-                        match parse_entry(reader, &mut buf, limits, depth, &entry_ctx) {
-                            Ok(entry) => feed.entries.push(entry),
+                        let mut entry_bozo = false;
+                        match parse_entry(
+                            reader,
+                            &mut buf,
+                            limits,
+                            depth,
+                            &entry_ctx,
+                            &mut entry_bozo,
+                        ) {
+                            Ok(entry) => {
+                                if entry_bozo && !feed.bozo {
+                                    feed.bozo = true;
+                                    feed.bozo_exception =
+                                        Some("Unresolvable entity in entry field".to_string());
+                                }
+                                feed.entries.push(entry);
+                            }
                             Err(e) => {
                                 feed.bozo = true;
                                 feed.bozo_exception = Some(e.to_string());
@@ -284,6 +299,7 @@ fn parse_entry(
     limits: &ParserLimits,
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
+    bozo: &mut bool,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
 
@@ -327,7 +343,9 @@ fn parse_entry(
                         }
                     }
                     b"id" if !is_empty => {
-                        entry.id = Some(read_text_str(reader, buf, limits)?.into());
+                        let (text, had_bozo) = read_text(reader, buf, limits)?;
+                        *bozo |= had_bozo;
+                        entry.id = Some(text.into());
                     }
                     b"updated" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
@@ -383,14 +401,16 @@ fn parse_entry(
                         let handled = if let Some(dc_element) = is_dc_tag(tag) {
                             let dc_elem = dc_element.to_string();
                             if !is_empty {
-                                let text = read_text_str(reader, buf, limits)?;
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
                                 dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
                             }
                             true
                         } else if let Some(content_element) = is_content_tag(tag) {
                             let content_elem = content_element.to_string();
                             if !is_empty {
-                                let text = read_text_str(reader, buf, limits)?;
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
                                 content::handle_entry_element(&content_elem, &text, &mut entry);
                             }
                             true
@@ -423,7 +443,8 @@ fn parse_entry(
                             } else {
                                 let media_elem = media_element.to_string();
                                 if !is_empty {
-                                    let text = read_text_str(reader, buf, limits)?;
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
                                     media_rss::handle_entry_element(&media_elem, &text, &mut entry);
                                 }
                             }
@@ -979,5 +1000,56 @@ mod tests {
             feed.entries[0].link.as_deref(),
             Some("https://example.com/entry/1")
         );
+    }
+
+    #[test]
+    fn test_entry_bozo_on_unresolvable_entity_in_id() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <id>urn:test</id>
+            <updated>2024-01-01T00:00:00Z</updated>
+            <entry>
+                <title>Test Entry</title>
+                <id>urn:entry-&unresolvable;</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(
+            feed.bozo,
+            "bozo should be true when entry id has unresolvable entity"
+        );
+        assert_eq!(
+            feed.bozo_exception.as_deref(),
+            Some("Unresolvable entity in entry field")
+        );
+        assert_eq!(
+            feed.entries.len(),
+            1,
+            "entry should still be parsed despite bozo"
+        );
+    }
+
+    #[test]
+    fn test_clean_atom_entry_no_bozo() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <id>urn:test</id>
+            <updated>2024-01-01T00:00:00Z</updated>
+            <entry>
+                <title>Normal &amp; Clean Entry</title>
+                <id>urn:entry-1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo, "standard XML entities should not trigger bozo");
+        assert_eq!(feed.entries.len(), 1);
+        // parse_text_construct handles title - entity decoding is handled by quick-xml
+        assert!(feed.entries[0].title.is_some());
     }
 }
