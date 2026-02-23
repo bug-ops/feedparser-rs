@@ -6,27 +6,28 @@
 [![npm](https://img.shields.io/npm/v/feedparser-rs)](https://www.npmjs.com/package/feedparser-rs)
 [![CI](https://img.shields.io/github/actions/workflow/status/bug-ops/feedparser-rs/ci.yml?branch=main)](https://github.com/bug-ops/feedparser-rs/actions)
 [![codecov](https://codecov.io/gh/bug-ops/feedparser-rs/graph/badge.svg)](https://codecov.io/gh/bug-ops/feedparser-rs)
+[![MSRV](https://img.shields.io/badge/MSRV-1.88.0-blue)](https://blog.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-MIT)
 
-High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node.js bindings.
+High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node.js bindings. A drop-in replacement for Python [feedparser](https://github.com/kurtmckee/feedparser) that is 90-100x faster.
 
 ## Features
 
-- **Multi-format support** — RSS 0.9x, 1.0, 2.0 / Atom 0.3, 1.0 / JSON Feed 1.0, 1.1
-- **Tolerant parsing** — Handles malformed feeds gracefully with `bozo` flag pattern
-- **HTTP fetching** — Built-in URL fetching with compression (gzip, deflate, brotli)
-- **Conditional GET** — ETag/Last-Modified support for bandwidth-efficient polling
-- **Podcast support** — iTunes and Podcast 2.0 namespace extensions
-- **Multi-language bindings** — Native Python (PyO3) and Node.js (napi-rs) bindings
-- **feedparser drop-in** — Dict-style access, field aliases, same API patterns as Python feedparser
+- **Multi-format support** -- RSS 0.9x, 1.0, 2.0 / Atom 0.3, 1.0 / JSON Feed 1.0, 1.1
+- **Tolerant parsing** -- Handles malformed feeds gracefully with the `bozo` flag pattern, propagated at both feed and entry level
+- **HTTP fetching** -- Built-in URL fetching with compression (gzip, deflate, brotli) and conditional GET (ETag/Last-Modified)
+- **Podcast support** -- iTunes and Podcast 2.0 namespace extensions
+- **Security** -- DoS protection via `ParserLimits`, SSRF protection, input size validation
+- **Multi-language bindings** -- Native Python (PyO3) and Node.js (napi-rs) bindings
+- **feedparser drop-in** -- Dict-style access, field aliases, same API patterns as Python feedparser
 
 ## Supported Formats
 
 | Format | Versions | Status |
 |--------|----------|--------|
-| RSS | 0.90, 0.91, 0.92, 1.0, 2.0 | ✅ Full support |
-| Atom | 0.3, 1.0 | ✅ Full support |
-| JSON Feed | 1.0, 1.1 | ✅ Full support |
+| RSS | 0.90, 0.91, 0.92, 1.0, 2.0 | Full support |
+| Atom | 0.3, 1.0 | Full support |
+| JSON Feed | 1.0, 1.1 | Full support |
 
 ### Namespace Extensions
 
@@ -53,27 +54,31 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.2"
+feedparser-rs = "0.4"
 ```
 
 > [!IMPORTANT]
 > Requires Rust 1.88.0 or later (edition 2024).
-
-### Node.js
-
-```bash
-npm install feedparser-rs
-# or
-yarn add feedparser-rs
-# or
-pnpm add feedparser-rs
-```
 
 ### Python
 
 ```bash
 pip install feedparser-rs
 ```
+
+> [!NOTE]
+> Requires Python 3.10 or later.
+
+### Node.js
+
+```bash
+npm install feedparser-rs
+# or
+pnpm add feedparser-rs
+```
+
+> [!NOTE]
+> Requires Node.js 18 or later.
 
 ## Usage
 
@@ -126,23 +131,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 > [!TIP]
 > Use `fetch_and_parse` for URL fetching with automatic compression handling (gzip, deflate, brotli).
 
-### Node.js
-
-```javascript
-import { parse, fetchAndParse } from 'feedparser-rs';
-
-// Parse from string
-const feed = parse('<rss version="2.0">...</rss>');
-console.log(feed.version);  // 'rss20'
-console.log(feed.feed.title);
-console.log(feed.entries.length);
-
-// Fetch from URL
-const remoteFeed = await fetchAndParse('https://example.com/feed.xml');
-```
-
-See [Node.js API documentation](crates/feedparser-rs-node/README.md) for complete reference.
-
 ### Python
 
 ```python
@@ -162,12 +150,29 @@ print(d['feed']['title'])
 print(d['entries'][0]['link'])
 
 # Deprecated field aliases work
-print(d.feed.description)  # → d.feed.subtitle
-print(d.channel.title)     # → d.feed.title
+print(d.feed.description)  # -> d.feed.subtitle
+print(d.channel.title)     # -> d.feed.title
 ```
 
 > [!NOTE]
 > Python bindings provide full feedparser compatibility: dict-style access, field aliases, and `time.struct_time` for date fields.
+
+### Node.js
+
+```javascript
+import { parse, fetchAndParse } from 'feedparser-rs';
+
+// Parse from string
+const feed = parse('<rss version="2.0">...</rss>');
+console.log(feed.version);  // 'rss20'
+console.log(feed.feed.title);
+console.log(feed.entries.length);
+
+// Fetch from URL
+const remoteFeed = await fetchAndParse('https://example.com/feed.xml');
+```
+
+See [Node.js API documentation](crates/feedparser-rs-node/README.md) for complete reference.
 
 ## Cargo Features
 
@@ -179,7 +184,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.2", default-features = false }
+feedparser-rs = { version = "0.4", default-features = false }
 ```
 
 ## Workspace Structure
@@ -218,9 +223,9 @@ Measured on Apple M1 Pro, parsing real-world RSS feeds:
 
 | Feed Size | Time | Throughput |
 |-----------|------|------------|
-| Small (2 KB) | **10.7 µs** | 187 MB/s |
-| Medium (20 KB) | **93.6 µs** | 214 MB/s |
-| Large (200 KB) | **939 µs** | 213 MB/s |
+| Small (2 KB) | **10.7 us** | 187 MB/s |
+| Medium (20 KB) | **93.6 us** | 214 MB/s |
+| Large (200 KB) | **939 us** | 213 MB/s |
 
 Format detection: **128 ns** (near-instant)
 
