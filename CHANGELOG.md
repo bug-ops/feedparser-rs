@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Propagate bozo flag from entry-level fields: thread bozo signal through `parse_item`, `parse_entry`, and `parse_rss10_item` (#70)
+
 ## [0.4.5] - 2026-02-20
 
 ### Fixed
