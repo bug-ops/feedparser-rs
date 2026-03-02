@@ -75,7 +75,7 @@ jobs:
           args: --release --out dist -i python3.10 -i python3.11 -i python3.12 -i python3.13 -i python3.14
           manylinux: auto
           working-directory: crates/feedparser-rs-py
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi-linux-${{ matrix.target }}
           path: crates/feedparser-rs-py/dist/*.whl
@@ -105,7 +105,7 @@ jobs:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
           working-directory: crates/feedparser-rs-py
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi-macos-${{ matrix.target }}
           path: crates/feedparser-rs-py/dist/*.whl
@@ -131,7 +131,7 @@ jobs:
           target: x64
           args: --release --out dist --find-interpreter
           working-directory: crates/feedparser-rs-py
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi-windows
           path: crates/feedparser-rs-py/dist/*.whl
@@ -148,7 +148,7 @@ jobs:
           command: sdist
           args: --out dist
           working-directory: crates/feedparser-rs-py
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: pypi-sdist
           path: crates/feedparser-rs-py/dist/*.tar.gz
@@ -225,7 +225,7 @@ jobs:
           (matrix.target == 'aarch64-apple-darwin' && matrix.os == 'macos-latest')
         working-directory: crates/feedparser-rs-node
         run: npm test
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: npm-${{ matrix.target }}
           path: crates/feedparser-rs-node/*.node
