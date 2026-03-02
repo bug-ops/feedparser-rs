@@ -163,7 +163,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/feedparser-rs
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: pypi-*
@@ -248,7 +248,7 @@ jobs:
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: crates/feedparser-rs-node/artifacts
           pattern: npm-*
@@ -286,13 +286,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: pypi-*
           merge-multiple: true
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts/npm
           pattern: npm-*
