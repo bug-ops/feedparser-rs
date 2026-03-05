@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-03-05
+
 ### Fixed
-- Propagate bozo flag from entry-level fields: thread bozo signal through `parse_item`, `parse_entry`, and `parse_rss10_item` (#70)
+- Propagate bozo flag from entry-level fields: thread bozo signal through `parse_item`, `parse_entry`, and `parse_rss10_item` (#75)
+
+### Security
+- Bump `aws-lc-sys` from 0.37.1 to 0.38.0 (via `aws-lc-rs` 1.16.1) to fix three HIGH severity advisories: PKCS7_verify Certificate Chain Validation Bypass (GHSA-vw5v-4f2q-w9xf), Timing Side-Channel in AES-CCM Tag Verification (GHSA-65p9-r9h6-22vj), PKCS7_verify Signature Validation Bypass (GHSA-hfpc-8r3f-gw53) (#81)
+
+### Dependencies
+- Bump `chrono` in the patch-updates group (#80)
+- Bump `minimatch` from 10.2.2 to 10.2.4 in Node.js bindings (#77)
+- Bump patch-updates group with 2 updates (#76)
+- Bump `@biomejs/biome` (#74)
+- Bump `actions/checkout` from 4 to 6 (#73)
+- Bump `github/codeql-action` from 3 to 4 (#72)
+- Bump `actions/upload-artifact` from 6 to 7 (#78)
+- Bump `actions/download-artifact` from 7 to 8 (#79)
 
 ## [0.4.5] - 2026-02-20
 
@@ -221,7 +236,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.6...HEAD
+[0.4.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.2...v0.4.3
