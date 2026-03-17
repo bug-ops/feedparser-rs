@@ -62,7 +62,7 @@ jobs:
 
           echo "full-ci=$FULL_CI" >> $GITHUB_OUTPUT
 
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
