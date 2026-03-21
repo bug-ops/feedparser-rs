@@ -30,7 +30,7 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.2"
+feedparser-rs = "0.4"
 ```
 
 > [!IMPORTANT]
@@ -92,7 +92,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.2", default-features = false }
+feedparser-rs = { version = "0.4", default-features = false }
 ```
 
 ## Cargo Features
