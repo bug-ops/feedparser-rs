@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.7] - 2026-03-21
+
+### Dependencies
+
+- Bump `once_cell` in the patch-updates group (#87)
+- Bump `@biomejs/biome` (#86, #83)
+- Bump `dorny/paths-filter` from 3 to 4 (#85)
+- Bump `quinn-proto` from 0.11.13 to 0.11.14 (#84)
+- Bump dependency versions in Cargo.lock
+
 ## [0.4.6] - 2026-03-05
 
 ### Fixed
@@ -236,7 +246,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.7...HEAD
+[0.4.7]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.3...v0.4.4
