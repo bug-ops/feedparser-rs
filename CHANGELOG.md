@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- feat(core): populate `feed.next_url` from Atom/RSS `<link rel="next">` per RFC 5005 (#120)
 - Atom Threading Extensions (RFC 4685) support: parse `thr:in-reply-to` and `thr:total` elements in Atom 1.0, RSS 2.0, and RSS 1.0 feeds (#111)
   - New `InReplyTo` struct with fields `ref_`, `href`, `type_`, `source` (all `Option`)
   - New `Entry` fields: `in_reply_to: Vec<InReplyTo>` and `thr_total: Option<u32>`

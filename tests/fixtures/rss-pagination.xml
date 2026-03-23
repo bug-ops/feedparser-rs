@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Pagination Test</title>
+    <link>http://example.com/</link>
+    <description>Test RSS feed with pagination</description>
+    <atom:link href="http://example.com/feed?page=2" rel="next" type="application/rss+xml"/>
+    <atom:link href="http://example.com/feed" rel="self" type="application/rss+xml"/>
+    <item>
+      <title>Entry 1</title>
+      <link>http://example.com/1</link>
+    </item>
+  </channel>
+</rss>

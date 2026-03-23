@@ -148,6 +148,9 @@ fn parse_feed_element(
                             {
                                 feed.feed.license = Some(link.href.to_string());
                             }
+                            if feed.feed.next_url.is_none() && link.rel.as_deref() == Some("next") {
+                                feed.feed.next_url = Some(link.href.to_string());
+                            }
                             feed.feed
                                 .links
                                 .try_push_limited(link, limits.max_links_per_feed);
@@ -1073,6 +1076,31 @@ mod tests {
             feed.entries[0].link.as_deref(),
             Some("https://example.com/entry/1")
         );
+    }
+
+    #[test]
+    fn test_parse_atom_feed_next_url() {
+        let xml = include_bytes!("../../../../tests/fixtures/atom-pagination.xml");
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.feed.next_url.as_deref(),
+            Some("http://example.com/feed?page=2")
+        );
+    }
+
+    #[test]
+    fn test_parse_atom_feed_next_url_absent() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>No Pagination</title>
+            <link href="http://example.com/" rel="alternate"/>
+            <id>urn:uuid:no-pagination</id>
+            <updated>2024-01-01T00:00:00Z</updated>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.next_url.is_none());
     }
 
     #[test]
