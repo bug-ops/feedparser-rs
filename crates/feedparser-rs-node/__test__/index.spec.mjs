@@ -123,8 +123,11 @@ describe('feedparser-rs', () => {
 
       // Date may or may not be parsed depending on format support
       if (feed.entries[0].published !== null && feed.entries[0].published !== undefined) {
-        assert.strictEqual(typeof feed.entries[0].published, 'number');
-        assert(feed.entries[0].published > 0);
+        assert.strictEqual(typeof feed.entries[0].published, 'string');
+        assert(feed.entries[0].published.length > 0);
+        assert.notStrictEqual(Number.isNaN(new Date(feed.entries[0].published).getTime()), true);
+        assert.strictEqual(typeof feed.entries[0].publishedParsed, 'number');
+        assert(feed.entries[0].publishedParsed > 0);
       }
     });
 
@@ -145,10 +148,12 @@ describe('feedparser-rs', () => {
       const feed = parse(xml);
 
       assert(feed.feed.published !== null && feed.feed.published !== undefined);
-      assert.strictEqual(typeof feed.feed.published, 'number');
-      assert(feed.feed.published > 0);
-      // Verify it's the expected timestamp (Wed, 18 Dec 2024 10:00:00 +0000)
-      assert.strictEqual(feed.feed.published, 1734516000000);
+      assert.strictEqual(typeof feed.feed.published, 'string');
+      assert(feed.feed.published.length > 0);
+      // Verify the date can be parsed and matches the expected timestamp (Wed, 18 Dec 2024 10:00:00 +0000)
+      assert.strictEqual(new Date(feed.feed.published).getTime(), 1734516000000);
+      assert.strictEqual(typeof feed.feed.publishedParsed, 'number');
+      assert.strictEqual(feed.feed.publishedParsed, 1734516000000);
     });
 
     it('should handle multiple entries', () => {
@@ -592,9 +597,9 @@ describe('feedparser-rs', () => {
       const entry = feed.entries[0];
 
       assert.strictEqual(typeof entry.title, 'string');
-      // published may be number or null/undefined depending on date parsing
+      // published may be a string or null/undefined depending on date parsing
       if (entry.published !== null && entry.published !== undefined) {
-        assert.strictEqual(typeof entry.published, 'number');
+        assert.strictEqual(typeof entry.published, 'string');
       }
       assert(Array.isArray(entry.links));
       assert(Array.isArray(entry.tags));

@@ -28,7 +28,7 @@ export declare function detectFormat(source: Buffer | string): string
 /** Enclosure (attached media file) */
 export interface Enclosure {
   /** Enclosure URL */
-  url: string
+  href: string
   /** File size in bytes */
   length?: number
   /** MIME type */
@@ -47,20 +47,32 @@ export interface Entry {
   link?: string
   /** All links associated with this entry */
   links: Array<Link>
+  /** Entry subtitle (Atom §4.2.12 at entry level) */
+  subtitle?: string
+  /** Detailed subtitle with metadata */
+  subtitleDetail?: TextConstruct
   /** Short description/summary */
   summary?: string
   /** Detailed summary with metadata */
   summaryDetail?: TextConstruct
   /** Full content blocks */
   content: Array<Content>
-  /** Publication date (milliseconds since epoch) */
-  published?: number
-  /** Last update date (milliseconds since epoch) */
-  updated?: number
-  /** Creation date (milliseconds since epoch) */
-  created?: number
-  /** Expiration date (milliseconds since epoch) */
-  expired?: number
+  /** Publication date (RFC 3339 string) */
+  published?: string
+  /** Parsed publication date as JS Date object */
+  publishedParsed?: number
+  /** Last update date (RFC 3339 string) */
+  updated?: string
+  /** Parsed last update date as JS Date object */
+  updatedParsed?: number
+  /** Creation date (RFC 3339 string) */
+  created?: string
+  /** Parsed creation date as JS Date object */
+  createdParsed?: number
+  /** Expiration date (RFC 3339 string) */
+  expired?: string
+  /** Parsed expiration date as JS Date object */
+  expiredParsed?: number
   /** Primary author name */
   author?: string
   /** Detailed author information */
@@ -91,8 +103,10 @@ export interface Entry {
   geo?: GeoLocation
   /** Dublin Core creator (author) */
   dcCreator?: string
-  /** Dublin Core date (milliseconds since epoch) */
-  dcDate?: number
+  /** Dublin Core date (RFC 3339 string) */
+  dcDate?: string
+  /** Parsed Dublin Core date as JS Date object */
+  dcDateParsed?: number
   /** Dublin Core subject tags */
   dcSubject: Array<string>
   /** Dublin Core rights (copyright) */
@@ -105,6 +119,14 @@ export interface Entry {
   itunes?: ItunesEntryMeta
   /** Podcast 2.0 episode metadata */
   podcast?: PodcastEntryMeta
+  /** Atom Threading Extensions: in-reply-to references (RFC 4685) */
+  thrInReplyTo: Array<InReplyTo>
+  /** Atom Threading Extensions: total reply count (RFC 4685) */
+  thrTotal?: number
+  /** Slash namespace: comment count */
+  slashComments?: number
+  /** WFW namespace: comment RSS feed URL */
+  wfwCommentRss?: string
 }
 
 /** Feed metadata */
@@ -121,10 +143,14 @@ export interface FeedMeta {
   subtitle?: string
   /** Detailed subtitle with metadata */
   subtitleDetail?: TextConstruct
-  /** Last update date (milliseconds since epoch) */
-  updated?: number
-  /** Initial publication date (milliseconds since epoch) */
-  published?: number
+  /** Last update date (RFC 3339 string) */
+  updated?: string
+  /** Parsed last update date as JS Date object */
+  updatedParsed?: number
+  /** Initial publication date (RFC 3339 string) */
+  published?: string
+  /** Parsed publication date as JS Date object */
+  publishedParsed?: number
   /** Primary author name */
   author?: string
   /** Detailed author information */
@@ -175,13 +201,15 @@ export interface FeedMeta {
   itunes?: ItunesFeedMeta
   /** Podcast 2.0 metadata */
   podcast?: PodcastMeta
+  /** JSON Feed next_url for pagination (JSON Feed 1.1) */
+  nextUrl?: string
 }
 
 /** Generator metadata */
 export interface Generator {
-  /** Generator name (text content of the generator element) */
+  /** Generator name (text content of the `<generator>` element) */
   name: string
-  /** Generator URI (href attribute, matching Python feedparser API) */
+  /** Generator URI (`href` attribute, matching Python feedparser API) */
   href?: string
   /** Generator version */
   version?: string
@@ -208,7 +236,7 @@ export interface GeoLocation {
 /** Image metadata */
 export interface Image {
   /** Image URL */
-  url: string
+  href: string
   /** Image title */
   title?: string
   /** Link associated with the image */
@@ -218,7 +246,19 @@ export interface Image {
   /** Image height in pixels */
   height?: number
   /** Image description */
-  description?: string
+  subtitle?: string
+}
+
+/** Atom Threading Extensions in-reply-to reference (RFC 4685) */
+export interface InReplyTo {
+  /** IRI of the entry being replied to (ref attribute) */
+  ref?: string
+  /** URL where the referenced entry can be found */
+  href?: string
+  /** MIME type of the linked resource */
+  type?: string
+  /** IRI of the feed containing the referenced entry */
+  source?: string
 }
 
 /** iTunes category */
@@ -309,6 +349,12 @@ export interface Link {
   length?: number
   /** Language of the linked resource */
   hreflang?: string
+  /** RFC 4685 §4: number of replies at the IRI */
+  thrCount?: number
+  /** RFC 4685 §4: when the reply resource was last modified (RFC 3339) */
+  thrUpdated?: string
+  /** Parsed thr:updated as milliseconds since epoch */
+  thrUpdatedParsed?: number
 }
 
 /** Media RSS content */
@@ -488,7 +534,7 @@ export interface Person {
   /** Person's email address */
   email?: string
   /** Person's URI/website */
-  uri?: string
+  href?: string
 }
 
 /** Podcast chapters */

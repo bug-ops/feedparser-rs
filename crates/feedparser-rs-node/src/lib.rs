@@ -319,10 +319,16 @@ pub struct FeedMeta {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
-    /// Last update date (milliseconds since epoch)
-    pub updated: Option<i64>,
-    /// Initial publication date (milliseconds since epoch)
-    pub published: Option<i64>,
+    /// Last update date (RFC 3339 string)
+    pub updated: Option<String>,
+    /// Parsed last update date as JS Date object
+    #[napi(js_name = "updatedParsed")]
+    pub updated_parsed: Option<f64>,
+    /// Initial publication date (RFC 3339 string)
+    pub published: Option<String>,
+    /// Parsed publication date as JS Date object
+    #[napi(js_name = "publishedParsed")]
+    pub published_parsed: Option<f64>,
     /// Primary author name
     pub author: Option<String>,
     /// Detailed author information
@@ -389,8 +395,10 @@ impl From<CoreFeedMeta> for FeedMeta {
             links: core.links.into_iter().map(Link::from).collect(),
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
-            updated: core.updated.map(|dt| dt.timestamp_millis()),
-            published: core.published.map(|dt| dt.timestamp_millis()),
+            updated: core.updated.map(|dt| dt.to_rfc3339()),
+            updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
+            published: core.published.map(|dt| dt.to_rfc3339()),
+            published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
@@ -470,14 +478,26 @@ pub struct Entry {
     pub summary_detail: Option<TextConstruct>,
     /// Full content blocks
     pub content: Vec<Content>,
-    /// Publication date (milliseconds since epoch)
-    pub published: Option<i64>,
-    /// Last update date (milliseconds since epoch)
-    pub updated: Option<i64>,
-    /// Creation date (milliseconds since epoch)
-    pub created: Option<i64>,
-    /// Expiration date (milliseconds since epoch)
-    pub expired: Option<i64>,
+    /// Publication date (RFC 3339 string)
+    pub published: Option<String>,
+    /// Parsed publication date as JS Date object
+    #[napi(js_name = "publishedParsed")]
+    pub published_parsed: Option<f64>,
+    /// Last update date (RFC 3339 string)
+    pub updated: Option<String>,
+    /// Parsed last update date as JS Date object
+    #[napi(js_name = "updatedParsed")]
+    pub updated_parsed: Option<f64>,
+    /// Creation date (RFC 3339 string)
+    pub created: Option<String>,
+    /// Parsed creation date as JS Date object
+    #[napi(js_name = "createdParsed")]
+    pub created_parsed: Option<f64>,
+    /// Expiration date (RFC 3339 string)
+    pub expired: Option<String>,
+    /// Parsed expiration date as JS Date object
+    #[napi(js_name = "expiredParsed")]
+    pub expired_parsed: Option<f64>,
     /// Primary author name
     pub author: Option<String>,
     /// Detailed author information
@@ -509,9 +529,12 @@ pub struct Entry {
     /// Dublin Core creator (author)
     #[napi(js_name = "dcCreator")]
     pub dc_creator: Option<String>,
-    /// Dublin Core date (milliseconds since epoch)
+    /// Dublin Core date (RFC 3339 string)
     #[napi(js_name = "dcDate")]
-    pub dc_date: Option<i64>,
+    pub dc_date: Option<String>,
+    /// Parsed Dublin Core date as JS Date object
+    #[napi(js_name = "dcDateParsed")]
+    pub dc_date_parsed: Option<f64>,
     /// Dublin Core subject tags
     #[napi(js_name = "dcSubject")]
     pub dc_subject: Vec<String>,
@@ -555,10 +578,14 @@ impl From<CoreEntry> for Entry {
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),
-            published: core.published.map(|dt| dt.timestamp_millis()),
-            updated: core.updated.map(|dt| dt.timestamp_millis()),
-            created: core.created.map(|dt| dt.timestamp_millis()),
-            expired: core.expired.map(|dt| dt.timestamp_millis()),
+            published: core.published.map(|dt| dt.to_rfc3339()),
+            published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
+            updated: core.updated.map(|dt| dt.to_rfc3339()),
+            updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
+            created: core.created.map(|dt| dt.to_rfc3339()),
+            created_parsed: core.created.map(|dt| dt.timestamp_millis() as f64),
+            expired: core.expired.map(|dt| dt.to_rfc3339()),
+            expired_parsed: core.expired.map(|dt| dt.timestamp_millis() as f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
@@ -582,7 +609,8 @@ impl From<CoreEntry> for Entry {
             license: core.license,
             geo: core.geo.map(|b| GeoLocation::from(*b)),
             dc_creator: core.dc_creator.map(|s| s.to_string()),
-            dc_date: core.dc_date.map(|dt| dt.timestamp_millis()),
+            dc_date: core.dc_date.map(|dt| dt.to_rfc3339()),
+            dc_date_parsed: core.dc_date.map(|dt| dt.timestamp_millis() as f64),
             dc_subject: core.dc_subject,
             dc_rights: core.dc_rights,
             media_thumbnails: core
@@ -654,6 +682,9 @@ pub struct Link {
     pub thr_count: Option<u32>,
     /// RFC 4685 §4: when the reply resource was last modified (RFC 3339)
     pub thr_updated: Option<String>,
+    /// Parsed thr:updated as milliseconds since epoch
+    #[napi(js_name = "thrUpdatedParsed")]
+    pub thr_updated_parsed: Option<f64>,
 }
 
 impl From<CoreLink> for Link {
@@ -666,7 +697,8 @@ impl From<CoreLink> for Link {
             length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
             hreflang: core.hreflang.map(|s| s.to_string()),
             thr_count: core.thr_count,
-            thr_updated: core.thr_updated.map(|dt| dt.to_rfc3339()),
+            thr_updated: core.thr_updated.as_ref().map(|dt| dt.to_rfc3339()),
+            thr_updated_parsed: core.thr_updated.map(|dt| dt.timestamp_millis() as f64),
         }
     }
 }
