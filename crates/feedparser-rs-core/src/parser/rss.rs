@@ -181,13 +181,26 @@ fn parse_channel(
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
-                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"category"
+                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl"
                         if !is_empty =>
                     {
                         parse_channel_standard(
                             reader,
                             &mut buf,
                             &tag,
+                            &attrs,
+                            feed,
+                            limits,
+                            base_ctx,
+                            channel_lang,
+                        )?;
+                    }
+                    b"category" => {
+                        parse_channel_standard(
+                            reader,
+                            &mut buf,
+                            &tag,
+                            &attrs,
                             feed,
                             limits,
                             base_ctx,
@@ -333,10 +346,12 @@ fn parse_enclosure(attrs: &[(Vec<u8>, String)], limits: &ParserLimits) -> Option
 
 /// Parse standard RSS 2.0 channel elements
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn parse_channel_standard(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     tag: &[u8],
+    attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     base_ctx: &mut BaseUrlContext,
@@ -407,15 +422,18 @@ fn parse_channel_standard(
             feed.feed.ttl = text.parse().ok();
         }
         b"category" => {
+            let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
             let term = read_text_str(reader, buf, limits)?;
-            feed.feed.tags.try_push_limited(
-                Tag {
-                    term: term.into(),
-                    scheme: None,
-                    label: None,
-                },
-                limits.max_tags,
-            );
+            if !term.is_empty() || scheme.is_some() {
+                feed.feed.tags.try_push_limited(
+                    Tag {
+                        term: term.into(),
+                        scheme,
+                        label: None,
+                    },
+                    limits.max_tags,
+                );
+            }
         }
         _ => {}
     }
@@ -767,6 +785,7 @@ fn parse_item(
                             reader,
                             buf,
                             &tag,
+                            &attrs,
                             &mut entry,
                             limits,
                             base_ctx,
@@ -848,6 +867,7 @@ fn parse_item_standard(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     tag: &[u8],
+    attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
     limits: &ParserLimits,
     base_ctx: &BaseUrlContext,
@@ -903,12 +923,13 @@ fn parse_item_standard(
             entry.author = Some(text.into());
         }
         b"category" => {
+            let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
             let (term, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
             entry.tags.try_push_limited(
                 Tag {
                     term: term.into(),
-                    scheme: None,
+                    scheme,
                     label: None,
                 },
                 limits.max_tags,
