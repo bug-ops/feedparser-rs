@@ -87,15 +87,15 @@ pub fn parse_with_limits(data: &[u8], limits: crate::ParserLimits) -> Result<Par
             json::parse_json_feed_with_limits(data, limits)
         }
 
-        // Unknown format - try RSS first (most common)
+        // Unknown format - return a bozo feed since the format is unrecognized.
+        // The bozo pattern requires we never panic and always return partial data,
+        // but unrecognizable input must signal the caller via bozo=true.
         FeedVersion::Unknown => {
-            // Try RSS first
-            if let Ok(feed) = rss::parse_rss20_with_limits(data, limits) {
-                return Ok(feed);
-            }
-
-            // Try Atom
-            atom::parse_atom10_with_limits(data, limits)
+            let mut feed = crate::types::ParsedFeed::new();
+            feed.version = FeedVersion::Unknown;
+            feed.bozo = true;
+            feed.bozo_exception = Some("Feed format not recognized".to_string());
+            Ok(feed)
         }
     }
 }
@@ -105,8 +105,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_returns_ok() {
-        let result = parse(b"test");
-        assert!(result.is_ok());
+    fn test_parse_returns_ok_bozo_for_garbage() {
+        let feed = parse(b"test").unwrap();
+        assert!(feed.bozo, "unrecognized input must set bozo");
+        assert_eq!(feed.version, crate::types::FeedVersion::Unknown);
+        assert!(feed.entries.is_empty());
     }
 }
