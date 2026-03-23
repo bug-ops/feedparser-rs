@@ -136,12 +136,13 @@ fn test_dc_fallback_behavior() {
     assert_eq!(feed.feed.author.as_deref(), Some("DC Author"));
     assert_eq!(feed.feed.dc_creator.as_deref(), Some("DC Author"));
 
-    // Entry level: RSS author should take precedence, but dc_creator is also stored
+    // Entry level: RSS author should take precedence, but dc_creator is also stored.
+    // The email (Name) format is parsed: author string becomes the name.
     let entry = &feed.entries[0];
-    assert_eq!(
-        entry.author.as_deref(),
-        Some("rss@example.com (RSS Author)")
-    );
+    assert_eq!(entry.author.as_deref(), Some("RSS Author"));
+    let detail = entry.author_detail.as_ref().unwrap();
+    assert_eq!(detail.name.as_deref(), Some("RSS Author"));
+    assert_eq!(detail.email.as_deref(), Some("rss@example.com"));
     assert_eq!(entry.dc_creator.as_deref(), Some("DC Entry Author"));
 }
 

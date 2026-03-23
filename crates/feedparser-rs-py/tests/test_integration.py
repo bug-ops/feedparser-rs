@@ -165,7 +165,7 @@ def test_rss_relative_enclosures():
     """
 
     result = feedparser_rs.parse(xml)
-    assert result.entries[0].enclosures[0].url == "http://podcast.example.com/episodes/ep1.mp3"
+    assert result.entries[0].enclosures[0].href == "http://podcast.example.com/episodes/ep1.mp3"
 
 
 def test_absolute_urls_not_modified():

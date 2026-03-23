@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `generator_detail.href` replaces `generator_detail.uri` to match Python feedparser API (`generator_detail['href']`) (#132)
 - Python bindings: `PyGenerator` now exposes `.name` and `.href` getters; `.value` is kept as a backward-compatibility alias for `.name` (#132)
 - Node.js bindings: `Generator` object now has `name` and `href` fields instead of `value` and `uri` (#132)
+- Python/Node.js bindings: rename `Enclosure.url` → `href`, `Image.url` → `href`, `Image.description` → `subtitle` for feedparser API compatibility (#130)
+- RSS `<author>`, `<managingEditor>`, and `<webMaster>` now parse `email (Name)` and `Name <email>` formats into structured `author_detail` / `publisher_detail` (`Person` with `name` and `email`), matching Python feedparser behavior (#128)
+- Python binding: `Person.uri` renamed to `Person.href` for feedparser API compatibility; added `__getitem__` for dict-like access (`person['href']`, `person['name']`, `person['email']`) (#126)
+- Node.js binding: `Person.uri` renamed to `Person.href` for feedparser API compatibility (#126)
+- `author_detail.name` (and `publisher_detail.name`) was always `None` due to `Person.name` being moved via `.take()` into the shorthand field instead of cloned; affected `Entry` and `FeedMeta` setters (`set_author`, `set_publisher`) (#127)
 
 ## [0.4.8] - 2026-03-23
 

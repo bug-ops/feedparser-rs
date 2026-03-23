@@ -679,7 +679,7 @@ pub struct Person {
     /// Person's email address
     pub email: Option<String>,
     /// Person's URI/website
-    pub uri: Option<String>,
+    pub href: Option<String>,
 }
 
 impl From<CorePerson> for Person {
@@ -687,7 +687,7 @@ impl From<CorePerson> for Person {
         Self {
             name: core.name.map(|s| s.to_string()),
             email: core.email.map(|e| e.into_inner()),
-            uri: core.uri,
+            href: core.uri,
         }
     }
 }
@@ -717,7 +717,7 @@ impl From<CoreTag> for Tag {
 #[napi(object)]
 pub struct Image {
     /// Image URL
-    pub url: String,
+    pub href: String,
     /// Image title
     pub title: Option<String>,
     /// Link associated with the image
@@ -727,18 +727,18 @@ pub struct Image {
     /// Image height in pixels
     pub height: Option<u32>,
     /// Image description
-    pub description: Option<String>,
+    pub subtitle: Option<String>,
 }
 
 impl From<CoreImage> for Image {
     fn from(core: CoreImage) -> Self {
         Self {
-            url: core.url.into_inner(),
+            href: core.url.into_inner(),
             title: core.title,
             link: core.link,
             width: core.width,
             height: core.height,
-            description: core.description,
+            subtitle: core.description,
         }
     }
 }
@@ -747,7 +747,7 @@ impl From<CoreImage> for Image {
 #[napi(object)]
 pub struct Enclosure {
     /// Enclosure URL
-    pub url: String,
+    pub href: String,
     /// File size in bytes
     pub length: Option<i64>,
     /// MIME type
@@ -758,7 +758,7 @@ pub struct Enclosure {
 impl From<CoreEnclosure> for Enclosure {
     fn from(core: CoreEnclosure) -> Self {
         Self {
-            url: core.url.into_inner(),
+            href: core.url.into_inner(),
             length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
             enclosure_type: core.enclosure_type.map(|t| t.to_string()),
         }

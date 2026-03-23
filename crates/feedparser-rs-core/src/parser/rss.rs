@@ -10,7 +10,11 @@ use crate::{
         PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
         PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
     },
-    util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
+    util::{
+        base_url::BaseUrlContext,
+        parse_date,
+        text::{parse_rss_person, truncate_to_length},
+    },
 };
 use quick_xml::{Reader, events::Event};
 
@@ -437,10 +441,12 @@ fn parse_channel_standard(
             }
         }
         b"managingEditor" => {
-            feed.feed.author = Some(read_text_str(reader, buf, limits)?.into());
+            let text = read_text_str(reader, buf, limits)?;
+            feed.feed.set_author(parse_rss_person(&text));
         }
         b"webMaster" => {
-            feed.feed.publisher = Some(read_text_str(reader, buf, limits)?.into());
+            let text = read_text_str(reader, buf, limits)?;
+            feed.feed.set_publisher(parse_rss_person(&text));
         }
         b"generator" => {
             feed.feed.generator = Some(read_text_str(reader, buf, limits)?);
@@ -954,7 +960,7 @@ fn parse_item_standard(
         b"author" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
-            entry.author = Some(text.into());
+            entry.set_author(parse_rss_person(&text));
         }
         b"category" => {
             let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
@@ -1833,10 +1839,10 @@ mod tests {
         </rss>"#;
 
         let feed = parse_rss20(xml).unwrap();
-        assert_eq!(
-            feed.entries[0].author.as_deref(),
-            Some("john@example.com (John Doe)")
-        );
+        assert_eq!(feed.entries[0].author.as_deref(), Some("John Doe"));
+        let detail = feed.entries[0].author_detail.as_ref().unwrap();
+        assert_eq!(detail.name.as_deref(), Some("John Doe"));
+        assert_eq!(detail.email.as_deref(), Some("john@example.com"));
     }
 
     #[test]
@@ -2694,5 +2700,81 @@ mod tests {
         let feed = parse_rss20(xml).unwrap();
         assert!(!feed.bozo);
         assert!(feed.feed.next_url.is_none());
+    }
+
+    #[test]
+    fn test_rss_author_email_paren_name() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>T</title>
+                <link>http://x.com</link>
+                <managingEditor>editor@example.com (John Editor)</managingEditor>
+                <item>
+                    <title>Item</title>
+                    <author>author@example.com (Jane Author)</author>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        let author_detail = feed.feed.author_detail.as_ref().unwrap();
+        assert_eq!(author_detail.name.as_deref(), Some("John Editor"));
+        assert_eq!(author_detail.email.as_deref(), Some("editor@example.com"));
+        assert_eq!(feed.feed.author.as_deref(), Some("John Editor"));
+
+        let entry_detail = feed.entries[0].author_detail.as_ref().unwrap();
+        assert_eq!(entry_detail.name.as_deref(), Some("Jane Author"));
+        assert_eq!(entry_detail.email.as_deref(), Some("author@example.com"));
+        assert_eq!(feed.entries[0].author.as_deref(), Some("Jane Author"));
+    }
+
+    #[test]
+    fn test_rss_author_name_angle_email() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>T</title>
+                <link>http://x.com</link>
+                <managingEditor>John Editor &lt;editor@example.com&gt;</managingEditor>
+                <item>
+                    <title>Item</title>
+                    <author>Jane Author &lt;author@example.com&gt;</author>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        let author_detail = feed.feed.author_detail.as_ref().unwrap();
+        assert_eq!(author_detail.name.as_deref(), Some("John Editor"));
+        assert_eq!(author_detail.email.as_deref(), Some("editor@example.com"));
+
+        let entry_detail = feed.entries[0].author_detail.as_ref().unwrap();
+        assert_eq!(entry_detail.name.as_deref(), Some("Jane Author"));
+        assert_eq!(entry_detail.email.as_deref(), Some("author@example.com"));
+    }
+
+    #[test]
+    fn test_rss_webmaster_publisher_detail() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>T</title>
+                <link>http://x.com</link>
+                <webMaster>webmaster@example.com (Web Master)</webMaster>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        let pub_detail = feed.feed.publisher_detail.as_ref().unwrap();
+        assert_eq!(pub_detail.name.as_deref(), Some("Web Master"));
+        assert_eq!(pub_detail.email.as_deref(), Some("webmaster@example.com"));
+        assert_eq!(feed.feed.publisher.as_deref(), Some("Web Master"));
     }
 }

@@ -148,8 +148,17 @@ impl PyPerson {
     }
 
     #[getter]
-    fn uri(&self) -> Option<&str> {
+    fn href(&self) -> Option<&str> {
         self.inner.uri.as_deref()
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "name" => Ok(self.inner.name.as_deref().map(str::to_owned)),
+            "email" => Ok(self.inner.email.as_deref().map(str::to_owned)),
+            "href" => Ok(self.inner.uri.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
     }
 
     fn __repr__(&self) -> String {
@@ -212,7 +221,7 @@ impl PyImage {
 #[pymethods]
 impl PyImage {
     #[getter]
-    fn url(&self) -> &str {
+    fn href(&self) -> &str {
         &self.inner.url
     }
 
@@ -237,12 +246,12 @@ impl PyImage {
     }
 
     #[getter]
-    fn description(&self) -> Option<&str> {
+    fn subtitle(&self) -> Option<&str> {
         self.inner.description.as_deref()
     }
 
     fn __repr__(&self) -> String {
-        format!("Image(url='{}')", &self.inner.url)
+        format!("Image(href='{}')", &self.inner.url)
     }
 }
 
@@ -261,7 +270,7 @@ impl PyEnclosure {
 #[pymethods]
 impl PyEnclosure {
     #[getter]
-    fn url(&self) -> &str {
+    fn href(&self) -> &str {
         &self.inner.url
     }
 
@@ -278,7 +287,7 @@ impl PyEnclosure {
 
     fn __repr__(&self) -> String {
         format!(
-            "Enclosure(url='{}', type='{}')",
+            "Enclosure(href='{}', type='{}')",
             &self.inner.url,
             self.inner.enclosure_type.as_deref().unwrap_or("unknown")
         )
