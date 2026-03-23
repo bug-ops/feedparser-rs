@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+- Add end-to-end integration tests for GeoRSS (`georss:point`, `georss:polygon`, feed-level geo, invalid coordinates) and Creative Commons (`creativeCommons:license`, `cc:license`) namespace parsing (#93)
+
 ## [0.4.7] - 2026-03-21
 
 ### Dependencies
