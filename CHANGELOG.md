@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Python/Node.js bindings: rename `Enclosure.url` → `href`, `Image.url` → `href`, `Image.description` → `subtitle` for feedparser API compatibility (#130)
+
 ## [0.4.8] - 2026-03-23
 
 ### Added
