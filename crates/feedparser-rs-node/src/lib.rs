@@ -464,6 +464,10 @@ pub struct Entry {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Rights/copyright statement
+    pub rights: Option<String>,
+    /// Detailed rights with metadata
+    pub rights_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -552,6 +556,8 @@ impl From<CoreEntry> for Entry {
             links: core.links.into_iter().map(Link::from).collect(),
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
+            rights: core.rights,
+            rights_detail: core.rights_detail.map(TextConstruct::from),
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),

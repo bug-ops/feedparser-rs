@@ -285,6 +285,19 @@ impl PyEntry {
     }
 
     #[getter]
+    fn rights(&self) -> Option<&str> {
+        self.inner.rights.as_deref()
+    }
+
+    #[getter]
+    fn rights_detail(&self) -> Option<PyTextConstruct> {
+        self.inner
+            .rights_detail
+            .as_ref()
+            .map(|tc| PyTextConstruct::from_core(tc.clone()))
+    }
+
+    #[getter]
     fn dc_rights(&self) -> Option<&str> {
         self.inner.dc_rights.as_deref()
     }
@@ -693,6 +706,34 @@ impl PyEntry {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
+            "rights" => Ok(self
+                .inner
+                .rights
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "rights_detail" => {
+                if let Some(ref tc) = self.inner.rights_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "copyright" => Ok(self
+                .inner
+                .rights
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "copyright_detail" => {
+                if let Some(ref tc) = self.inner.rights_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
             "dc_rights" => Ok(self
                 .inner
                 .dc_rights
