@@ -151,8 +151,8 @@ impl Entry {
     /// assert_eq!(entry.title.as_deref(), Some("Great Article"));
     /// ```
     #[inline]
-    pub fn set_title(&mut self, mut text: TextConstruct) {
-        self.title = Some(std::mem::take(&mut text.value));
+    pub fn set_title(&mut self, text: TextConstruct) {
+        self.title = Some(text.value.clone());
         self.title_detail = Some(text);
     }
 
@@ -168,8 +168,8 @@ impl Entry {
     /// assert_eq!(entry.subtitle.as_deref(), Some("A teaser"));
     /// ```
     #[inline]
-    pub fn set_subtitle(&mut self, mut text: TextConstruct) {
-        self.subtitle = Some(std::mem::take(&mut text.value));
+    pub fn set_subtitle(&mut self, text: TextConstruct) {
+        self.subtitle = Some(text.value.clone());
         self.subtitle_detail = Some(text);
     }
 
@@ -192,8 +192,8 @@ impl Entry {
     /// assert_eq!(entry.summary.as_deref(), Some("A summary"));
     /// ```
     #[inline]
-    pub fn set_summary(&mut self, mut text: TextConstruct) {
-        self.summary = Some(std::mem::take(&mut text.value));
+    pub fn set_summary(&mut self, text: TextConstruct) {
+        self.summary = Some(text.value.clone());
         self.summary_detail = Some(text);
     }
 

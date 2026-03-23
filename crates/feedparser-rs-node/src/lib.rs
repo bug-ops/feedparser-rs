@@ -630,9 +630,9 @@ impl From<CoreTextConstruct> for TextConstruct {
         Self {
             value: core.value,
             content_type: match core.content_type {
-                TextType::Text => "text".to_string(),
-                TextType::Html => "html".to_string(),
-                TextType::Xhtml => "xhtml".to_string(),
+                TextType::Text => "text/plain".to_string(),
+                TextType::Html => "text/html".to_string(),
+                TextType::Xhtml => "application/xhtml+xml".to_string(),
             },
             language: core.language.map(|s| s.to_string()),
             base: core.base,
