@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `author_detail.name` (and `publisher_detail.name`) was always `None` due to `Person.name` being moved via `.take()` into the shorthand field instead of cloned; affected `Entry` and `FeedMeta` setters (`set_author`, `set_publisher`) (#127)
+
 ## [0.4.8] - 2026-03-23
 
 ### Added
