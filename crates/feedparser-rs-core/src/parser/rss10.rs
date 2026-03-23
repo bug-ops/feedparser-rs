@@ -285,7 +285,12 @@ fn parse_item(
 
     loop {
         match reader.read_event_into(buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
+
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
 
@@ -340,25 +345,17 @@ fn parse_item(
                             // Atom Threading Extensions (RFC 4685)
                             match thr_element {
                                 "in-reply-to" => {
-                                    // RSS 1.0 thr:in-reply-to: collect attrs inline since
-                                    // we only have the BytesStart ref here
-                                    let attrs: Vec<(Vec<u8>, String)> = e
-                                        .attributes()
-                                        .flatten()
-                                        .filter_map(|attr| {
-                                            attr.unescape_value().ok().map(|v| {
-                                                (attr.key.as_ref().to_vec(), v.to_string())
-                                            })
-                                        })
-                                        .collect();
-                                    if let Some(reply) = threading::parse_in_reply_to_from_collected(
-                                        &attrs,
+                                    if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+                                        e.attributes().flatten(),
                                         limits.max_attribute_length,
                                     ) {
                                         // Shares max_links_per_entry limit; split if needed later
                                         entry
                                             .in_reply_to
                                             .try_push_limited(reply, limits.max_links_per_entry);
+                                    }
+                                    if !is_empty {
+                                        skip_element(reader, buf, limits, *depth)?;
                                     }
                                 }
                                 "total" => {

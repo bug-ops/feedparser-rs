@@ -6,7 +6,7 @@
 /// Handles two elements:
 /// - `thr:in-reply-to` — attribute-only element referencing the parent entry
 /// - `thr:total` — text element with total response count
-use crate::types::{Entry, InReplyTo};
+use crate::types::{Entry, InReplyTo, MimeType, SmallString, Url};
 
 /// Atom Threading Extensions namespace URI
 pub const THREADING_NAMESPACE: &str = "http://purl.org/syndication/thread/1.0";
@@ -22,7 +22,28 @@ fn non_empty(s: &str) -> Option<&str> {
     }
 }
 
-/// Parse `thr:in-reply-to` from a quick-xml attribute iterator (Atom parser path)
+/// Build an `InReplyTo` from its four optional fields.
+///
+/// Returns `None` only if ALL fields are `None` (fully empty element).
+#[inline]
+fn build_in_reply_to(
+    ref_: Option<SmallString>,
+    href: Option<Url>,
+    type_: Option<MimeType>,
+    source: Option<Url>,
+) -> Option<InReplyTo> {
+    if ref_.is_none() && href.is_none() && type_.is_none() && source.is_none() {
+        return None;
+    }
+    Some(InReplyTo {
+        ref_,
+        href,
+        type_,
+        source,
+    })
+}
+
+/// Parse `thr:in-reply-to` from a quick-xml attribute iterator (Atom and RSS 1.0 parser paths)
 ///
 /// Returns `None` only if ALL fields are `None` after normalization (fully empty element).
 /// Returns `Some(InReplyTo)` even if `ref` is missing, to tolerate malformed feeds.
@@ -56,19 +77,10 @@ pub fn parse_in_reply_to_from_attrs<'a>(
         }
     }
 
-    if ref_.is_none() && href.is_none() && type_.is_none() && source.is_none() {
-        return None;
-    }
-
-    Some(InReplyTo {
-        ref_,
-        href,
-        type_,
-        source,
-    })
+    build_in_reply_to(ref_, href, type_, source)
 }
 
-/// Parse `thr:in-reply-to` from collected attributes (RSS parser path)
+/// Parse `thr:in-reply-to` from collected attributes (RSS 2.0 parser path)
 ///
 /// Returns `None` only if ALL fields are `None` after normalization.
 ///
@@ -98,16 +110,7 @@ pub fn parse_in_reply_to_from_collected(
         }
     }
 
-    if ref_.is_none() && href.is_none() && type_.is_none() && source.is_none() {
-        return None;
-    }
-
-    Some(InReplyTo {
-        ref_,
-        href,
-        type_,
-        source,
-    })
+    build_in_reply_to(ref_, href, type_, source)
 }
 
 /// Handle `thr:total` text content

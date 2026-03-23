@@ -807,6 +807,99 @@ describe('feedparser-rs', () => {
     });
   });
 
+  describe('Atom Threading Extensions (RFC 4685)', () => {
+    const THREADING_XML = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <title>Threading Test</title>
+  <id>tag:example.com,2024:threading</id>
+  <updated>2024-01-15T12:00:00Z</updated>
+  <entry>
+    <title>Full in-reply-to</title>
+    <id>tag:example.com,2024:reply/1</id>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:in-reply-to
+      ref="tag:example.com,2024:post/1"
+      href="https://example.com/post/1"
+      type="text/html"
+      source="https://example.com/feed.xml"/>
+    <thr:total>15</thr:total>
+  </entry>
+  <entry>
+    <title>Multiple in-reply-to</title>
+    <id>tag:example.com,2024:reply/2</id>
+    <updated>2024-01-15T11:00:00Z</updated>
+    <thr:in-reply-to ref="tag:example.com,2024:post/1"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/2"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/3" href="https://example.com/post/3"/>
+  </entry>
+  <entry>
+    <title>Empty ref</title>
+    <id>tag:example.com,2024:reply/3</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <thr:in-reply-to ref="" href="https://example.com/post/1"/>
+  </entry>
+  <entry>
+    <title>Negative total</title>
+    <id>tag:example.com,2024:reply/4</id>
+    <updated>2024-01-15T13:00:00Z</updated>
+    <thr:total>-5</thr:total>
+  </entry>
+  <entry>
+    <title>Overflow total</title>
+    <id>tag:example.com,2024:reply/5</id>
+    <updated>2024-01-15T14:00:00Z</updated>
+    <thr:total>99999999999999</thr:total>
+  </entry>
+</feed>`;
+
+    it('should parse thr:in-reply-to with all four attributes', () => {
+      const feed = parse(THREADING_XML);
+      assert.strictEqual(feed.bozo, false);
+      const entry = feed.entries[0];
+      assert(Array.isArray(entry.thrInReplyTo));
+      assert.strictEqual(entry.thrInReplyTo.length, 1);
+      const irt = entry.thrInReplyTo[0];
+      assert.strictEqual(irt.ref, 'tag:example.com,2024:post/1');
+      assert.strictEqual(irt.href, 'https://example.com/post/1');
+      assert.strictEqual(irt.type, 'text/html');
+      assert.strictEqual(irt.source, 'https://example.com/feed.xml');
+      assert.strictEqual(entry.thrTotal, 15);
+    });
+
+    it('should parse multiple thr:in-reply-to elements on one entry', () => {
+      const feed = parse(THREADING_XML);
+      const entry = feed.entries[1];
+      assert.strictEqual(entry.thrInReplyTo.length, 3);
+      assert.strictEqual(entry.thrInReplyTo[0].ref, 'tag:example.com,2024:post/1');
+      assert.strictEqual(entry.thrInReplyTo[1].ref, 'tag:example.com,2024:post/2');
+      assert.strictEqual(entry.thrInReplyTo[2].ref, 'tag:example.com,2024:post/3');
+      assert.strictEqual(entry.thrInReplyTo[2].href, 'https://example.com/post/3');
+      assert.strictEqual(entry.thrTotal, null);
+    });
+
+    it('should normalize empty ref attribute to null', () => {
+      const feed = parse(THREADING_XML);
+      const entry = feed.entries[2];
+      assert.strictEqual(entry.thrInReplyTo.length, 1);
+      const irt = entry.thrInReplyTo[0];
+      assert.strictEqual(irt.ref, null);
+      assert.strictEqual(irt.href, 'https://example.com/post/1');
+    });
+
+    it('should return null for negative thr:total', () => {
+      const feed = parse(THREADING_XML);
+      const entry = feed.entries[3];
+      assert.strictEqual(entry.thrTotal, null);
+    });
+
+    it('should return null for u32-overflowing thr:total', () => {
+      const feed = parse(THREADING_XML);
+      const entry = feed.entries[4];
+      assert.strictEqual(entry.thrTotal, null);
+    });
+  });
+
   describe('RSS 1.0 (RDF) handling', () => {
     it('should detect RSS 1.0 format', () => {
       const xml = `
