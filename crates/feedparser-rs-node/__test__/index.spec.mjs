@@ -542,7 +542,7 @@ describe('feedparser-rs', () => {
       assert(entry.summary || entry.summary === ''); // description maps to summary
       assert(entry.tags.length > 0);
       assert(entry.enclosures.length > 0);
-      assert.strictEqual(entry.enclosures[0].url, 'https://example.com/audio.mp3');
+      assert.strictEqual(entry.enclosures[0].href, 'https://example.com/audio.mp3');
     });
   });
 
@@ -706,7 +706,7 @@ describe('feedparser-rs', () => {
       const feed = parse(xml);
       const enclosure = feed.entries[0].enclosures[0];
 
-      assert.strictEqual(enclosure.url, 'https://example.com/ep1.mp3');
+      assert.strictEqual(enclosure.href, 'https://example.com/ep1.mp3');
       assert.strictEqual(enclosure.type, 'audio/mpeg');
       assert.strictEqual(typeof enclosure.length, 'number');
       assert(enclosure.length > 0);
@@ -729,7 +729,7 @@ describe('feedparser-rs', () => {
       const feed = parse(xml);
       const enclosure = feed.entries[0].enclosures[0];
 
-      assert.strictEqual(enclosure.url, 'https://example.com/file.mp3');
+      assert.strictEqual(enclosure.href, 'https://example.com/file.mp3');
       // length and type may be null
       assert(
         enclosure.length === null ||
