@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Parse `<subtitle>` element at the Atom entry level: `Entry` now exposes `subtitle: Option<String>` and `subtitle_detail: Option<TextConstruct>`, mirroring the existing feed-level subtitle fields (#110)
 - Expose `subtitle` and `subtitle_detail` on `Entry` in Python (PyO3) and Node.js (napi-rs) bindings (#110)
 - RFC 4685 Atom Threading Extensions: parse `thr:count` (reply count) and `thr:updated` (last reply datetime) attributes on `<link>` elements; exposed as `link.thr_count: Option<u32>` and `link.thr_updated: Option<DateTime<Utc>>` in core, `link.thr_count` / `link.thr_updated` / `link.thr_updated_parsed` in Python bindings, and `link.thrCount` / `link.thrUpdated` in Node.js bindings (#118)
+- Map Atom `<link rel="enclosure">` to `entry.enclosures` for API parity with Python feedparser; enclosure links are dual-populated into both `entry.links` and `entry.enclosures`, with optional `type` and `length` attributes silently mapped to `None` when absent or invalid (#119)
 
 ### Fixed
 - Parse RSS `<category domain="...">` attribute as `Tag.scheme` (#116)

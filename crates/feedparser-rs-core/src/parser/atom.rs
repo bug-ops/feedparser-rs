@@ -5,8 +5,8 @@ use crate::{
     error::{FeedError, Result},
     namespace::{content, dublin_core, media_rss, slash, threading},
     types::{
-        Content, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail, ParsedFeed,
-        Person, Source, Tag, TextConstruct, TextType,
+        Content, Enclosure, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail,
+        ParsedFeed, Person, Source, Tag, TextConstruct, TextType,
     },
     util::{base_url::BaseUrlContext, parse_date},
 };
@@ -347,6 +347,16 @@ fn parse_entry(
                             }
                             if entry.license.is_none() && link.rel.as_deref() == Some("license") {
                                 entry.license = Some(link.href.to_string());
+                            }
+                            if link.rel.as_deref() == Some("enclosure") {
+                                entry.enclosures.try_push_limited(
+                                    Enclosure {
+                                        url: link.href.clone(),
+                                        length: link.length,
+                                        enclosure_type: link.link_type.clone(),
+                                    },
+                                    limits.max_enclosures,
+                                );
                             }
                             entry
                                 .links
