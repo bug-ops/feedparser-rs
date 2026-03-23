@@ -279,6 +279,33 @@ fn test_rss10_entry_entity_bozo() {
 }
 
 #[test]
+fn test_parse_atom03_fixture() {
+    let xml = load_fixture("atom/atom03.xml");
+    let result = parse(&xml);
+
+    assert!(result.is_ok(), "Failed to parse Atom 0.3 fixture");
+    let feed = result.unwrap();
+
+    assert!(!feed.bozo, "Well-formed Atom 0.3 feed must not set bozo");
+    assert_eq!(feed.version, FeedVersion::Atom03, "Version must be atom03");
+    assert_eq!(feed.feed.title.as_deref(), Some("Example Atom 0.3 Feed"));
+    assert!(feed.feed.link.is_some(), "Feed link must be populated");
+    assert_eq!(feed.entries.len(), 2, "Feed must have two entries");
+
+    let entry = &feed.entries[0];
+    assert_eq!(entry.title.as_deref(), Some("First Entry"));
+    assert!(entry.id.is_some(), "Entry id must be populated");
+    assert!(entry.updated.is_some(), "Entry updated must be parsed");
+}
+
+#[test]
+fn test_detect_format_atom03_fixture() {
+    let xml = load_fixture("atom/atom03.xml");
+    let version = detect_format(&xml);
+    assert_eq!(version, FeedVersion::Atom03);
+}
+
+#[test]
 fn test_feed_with_standard_entities_no_bozo() {
     let xml = br#"<?xml version="1.0"?>
 <rss version="2.0">

@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Tests
+### Fixed
+- Atom 0.3 feeds now correctly report `version = "atom03"` instead of `"atom10"` (#91)
+- Atom 0.3 `<modified>` and `<issued>` elements are now mapped to `updated` and `published` fields respectively (#91)
 
+### Tests
+- Add integration test fixture and tests for Atom 0.3 feed parsing (#91)
 - Expand date parsing unit tests to cover all 27 format strings and 2 special cases (#92)
 
 ## [0.4.7] - 2026-03-21
