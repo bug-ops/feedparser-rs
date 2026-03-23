@@ -679,7 +679,7 @@ pub struct Person {
     /// Person's email address
     pub email: Option<String>,
     /// Person's URI/website
-    pub uri: Option<String>,
+    pub href: Option<String>,
 }
 
 impl From<CorePerson> for Person {
@@ -687,7 +687,7 @@ impl From<CorePerson> for Person {
         Self {
             name: core.name.map(|s| s.to_string()),
             email: core.email.map(|e| e.into_inner()),
-            uri: core.uri,
+            href: core.uri,
         }
     }
 }
