@@ -705,10 +705,10 @@ impl TextConstruct {
 /// Generator metadata
 #[derive(Debug, Clone)]
 pub struct Generator {
-    /// Generator name
-    pub value: String,
-    /// Generator URI
-    pub uri: Option<String>,
+    /// Generator name (text content of the `<generator>` element)
+    pub name: String,
+    /// Generator URI (href attribute)
+    pub href: Option<String>,
     /// Generator version (stored inline for versions ≤24 bytes)
     pub version: Option<SmallString>,
 }
