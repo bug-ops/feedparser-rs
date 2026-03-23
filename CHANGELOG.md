@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unrecognized feed format now sets `bozo = true` and `version = Unknown` instead of silently returning an empty RSS 2.0 feed (#100)
 
 ### Tests
+- Add adversarial input tests covering DOCTYPE entity injection, XML bomb patterns, NUL bytes, long attributes, and malformed namespace URIs; verify no panics and correct bozo behavior (#101)
 - Add integration tests for non-UTF-8 feed parsing: ISO-8859-1, Windows-1252, UTF-8 BOM, and UTF-16 LE BOM feeds (#95)
 - Add integration tests for all 16 previously untested `ParserLimits` fields (#94): `max_links_per_feed`, `max_links_per_entry`, `max_authors`, `max_contributors`, `max_tags`, `max_content_blocks`, `max_enclosures`, `max_namespaces`, `max_text_length`, `max_feed_size_bytes`, `max_attribute_length`, `max_podcast_soundbites`, `max_podcast_transcripts`, `max_podcast_funding`, `max_podcast_persons`, `max_value_recipients`
 - Add integration test fixture and tests for Atom 0.3 feed parsing (#91)
