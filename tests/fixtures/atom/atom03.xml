@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed version="0.3" xmlns="http://purl.org/atom/ns#" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title>Example Atom 0.3 Feed</title>
+  <link rel="alternate" type="text/html" href="http://example.com/"/>
+  <modified>2024-12-14T10:00:00Z</modified>
+  <id>http://example.com/feed</id>
+  <author>
+    <name>John Doe</name>
+    <email>john@example.com</email>
+  </author>
+  <tagline>An example Atom 0.3 feed</tagline>
+
+  <entry>
+    <title>First Entry</title>
+    <link rel="alternate" type="text/html" href="http://example.com/entry1"/>
+    <id>http://example.com/entry1</id>
+    <modified>2024-12-14T09:00:00Z</modified>
+    <issued>2024-12-13T09:00:00Z</issued>
+    <summary>Summary of first entry</summary>
+    <content type="text/html" mode="escaped">&lt;p&gt;Content of first entry&lt;/p&gt;</content>
+    <dc:creator>John Doe</dc:creator>
+  </entry>
+
+  <entry>
+    <title>Second Entry</title>
+    <link rel="alternate" type="text/html" href="http://example.com/entry2"/>
+    <id>http://example.com/entry2</id>
+    <modified>2024-12-13T08:00:00Z</modified>
+    <summary>Summary of second entry</summary>
+  </entry>
+</feed>
