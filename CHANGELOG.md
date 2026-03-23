@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Python binding: nested objects (`Enclosure`, `Tag`, `Image`, `Content`, `Generator`, `Link`, `Source`) now support dict-like subscript access (`obj['key']`), matching Python feedparser `FeedParserDict` behaviour; unknown keys raise `KeyError` (#134)
 - `generator_detail.name` now contains the generator text content (previously the field was named `value` and was empty after `set_generator` consumed it via `mem::take`) (#132)
 - `generator_detail.href` replaces `generator_detail.uri` to match Python feedparser API (`generator_detail['href']`) (#132)
 - Python bindings: `PyGenerator` now exposes `.name` and `.href` getters; `.value` is kept as a backward-compatibility alias for `.name` (#132)
