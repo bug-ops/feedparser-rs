@@ -82,6 +82,10 @@ pub struct Entry {
     pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
+    /// Slash namespace: comment count (`slash:comments`)
+    pub slash_comments: Option<u32>,
+    /// WFW namespace: comment RSS feed URL (`wfw:commentRss`)
+    pub wfw_comment_rss: Option<String>,
 }
 
 impl Entry {
