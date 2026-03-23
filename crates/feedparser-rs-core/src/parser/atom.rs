@@ -647,8 +647,8 @@ fn parse_generator(
     }
 
     Ok(Generator {
-        value: read_text_str(reader, buf, limits)?,
-        uri,
+        name: read_text_str(reader, buf, limits)?,
+        href: uri,
         version,
     })
 }
@@ -854,7 +854,11 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         assert!(feed.feed.generator_detail.is_some());
         let generator_detail = feed.feed.generator_detail.as_ref().unwrap();
-        assert_eq!(generator_detail.uri.as_deref(), Some("http://example.com/"));
+        assert_eq!(generator_detail.name, "Example CMS");
+        assert_eq!(
+            generator_detail.href.as_deref(),
+            Some("http://example.com/")
+        );
         assert_eq!(generator_detail.version.as_deref(), Some("1.0"));
     }
 
