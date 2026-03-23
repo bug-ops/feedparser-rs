@@ -68,6 +68,7 @@ jobs:
           filters: |
             rust-core:
               - 'crates/feedparser-rs-core/**'
+              - 'tests/fixtures/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
             python:
