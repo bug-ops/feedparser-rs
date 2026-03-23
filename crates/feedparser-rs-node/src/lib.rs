@@ -376,6 +376,8 @@ pub struct FeedMeta {
     pub itunes: Option<ItunesFeedMeta>,
     /// Podcast 2.0 metadata
     pub podcast: Option<PodcastMeta>,
+    /// JSON Feed next_url for pagination (JSON Feed 1.1)
+    pub next_url: Option<String>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -414,6 +416,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             geo: core.geo.map(|b| GeoLocation::from(*b)),
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
+            next_url: core.next_url,
         }
     }
 }
@@ -457,6 +460,10 @@ pub struct Entry {
     pub link: Option<String>,
     /// All links associated with this entry
     pub links: Vec<Link>,
+    /// Entry subtitle (Atom §4.2.12 at entry level)
+    pub subtitle: Option<String>,
+    /// Detailed subtitle with metadata
+    pub subtitle_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -527,6 +534,12 @@ pub struct Entry {
     /// Atom Threading Extensions: total reply count (RFC 4685)
     #[napi(js_name = "thrTotal")]
     pub thr_total: Option<u32>,
+    /// Slash namespace: comment count
+    #[napi(js_name = "slashComments")]
+    pub slash_comments: Option<u32>,
+    /// WFW namespace: comment RSS feed URL
+    #[napi(js_name = "wfwCommentRss")]
+    pub wfw_comment_rss: Option<String>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -537,6 +550,8 @@ impl From<CoreEntry> for Entry {
             title_detail: core.title_detail.map(TextConstruct::from),
             link: core.link,
             links: core.links.into_iter().map(Link::from).collect(),
+            subtitle: core.subtitle,
+            subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),
@@ -584,6 +599,8 @@ impl From<CoreEntry> for Entry {
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
             thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),
             thr_total: core.thr_total,
+            slash_comments: core.slash_comments,
+            wfw_comment_rss: core.wfw_comment_rss,
         }
     }
 }

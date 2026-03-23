@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Category Domain Test Feed</title>
+    <link>http://example.com/</link>
+    <description>Feed for testing RSS category domain attribute parsing</description>
+    <category domain="http://www.sixapart.com/ns/types#">music</category>
+    <category>plain-term</category>
+
+    <item>
+      <title>Test Entry</title>
+      <link>http://example.com/entry1</link>
+      <description>Entry with category domain attributes</description>
+      <guid>http://example.com/entry1</guid>
+      <category domain="http://example.com/topics">Technology</category>
+      <category domain="http://example.com/topics">Rust</category>
+      <category>no-domain</category>
+    </item>
+  </channel>
+</rss>

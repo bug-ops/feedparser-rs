@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, georss, media_rss, threading},
+    namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastChapters,
@@ -16,8 +16,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_thr_tag, read_text,
-    read_text_str, skip_element,
+    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag,
+    is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -181,13 +181,26 @@ fn parse_channel(
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
-                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"category"
+                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl"
                         if !is_empty =>
                     {
                         parse_channel_standard(
                             reader,
                             &mut buf,
                             &tag,
+                            &attrs,
+                            feed,
+                            limits,
+                            base_ctx,
+                            channel_lang,
+                        )?;
+                    }
+                    b"category" => {
+                        parse_channel_standard(
+                            reader,
+                            &mut buf,
+                            &tag,
+                            &attrs,
                             feed,
                             limits,
                             base_ctx,
@@ -333,10 +346,12 @@ fn parse_enclosure(attrs: &[(Vec<u8>, String)], limits: &ParserLimits) -> Option
 
 /// Parse standard RSS 2.0 channel elements
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn parse_channel_standard(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     tag: &[u8],
+    attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     base_ctx: &mut BaseUrlContext,
@@ -407,15 +422,18 @@ fn parse_channel_standard(
             feed.feed.ttl = text.parse().ok();
         }
         b"category" => {
+            let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
             let term = read_text_str(reader, buf, limits)?;
-            feed.feed.tags.try_push_limited(
-                Tag {
-                    term: term.into(),
-                    scheme: None,
-                    label: None,
-                },
-                limits.max_tags,
-            );
+            if !term.is_empty() || scheme.is_some() {
+                feed.feed.tags.try_push_limited(
+                    Tag {
+                        term: term.into(),
+                        scheme,
+                        label: None,
+                    },
+                    limits.max_tags,
+                );
+            }
         }
         _ => {}
     }
@@ -773,6 +791,7 @@ fn parse_item(
                             reader,
                             buf,
                             &tag,
+                            &attrs,
                             &mut entry,
                             limits,
                             base_ctx,
@@ -854,6 +873,7 @@ fn parse_item_standard(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     tag: &[u8],
+    attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
     limits: &ParserLimits,
     base_ctx: &BaseUrlContext,
@@ -909,12 +929,13 @@ fn parse_item_standard(
             entry.author = Some(text.into());
         }
         b"category" => {
+            let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
             let (term, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
             entry.tags.try_push_limited(
                 Tag {
                     term: term.into(),
-                    scheme: None,
+                    scheme,
                     label: None,
                 },
                 limits.max_tags,
@@ -1233,6 +1254,18 @@ fn parse_item_namespace(
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
         georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
+        Ok(true)
+    } else if let Some(slash_element) = is_slash_tag(tag) {
+        let slash_elem = slash_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        slash::handle_slash_entry_element(&slash_elem, &text, entry);
+        Ok(true)
+    } else if let Some(wfw_element) = is_wfw_tag(tag) {
+        let wfw_elem = wfw_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        slash::handle_wfw_entry_element(&wfw_elem, &text, entry);
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag) {
         parse_item_media(

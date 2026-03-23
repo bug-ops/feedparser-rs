@@ -7,7 +7,7 @@
     clippy::panic
 )]
 
-use feedparser_rs::{FeedVersion, detect_format, parse};
+use feedparser_rs::{FeedVersion, TextType, detect_format, parse};
 
 /// Helper function to load test fixtures
 fn load_fixture(path: &str) -> Vec<u8> {
@@ -326,4 +326,137 @@ fn test_feed_with_standard_entities_no_bozo() {
         !result.bozo,
         "Feed with only standard entities should not set bozo"
     );
+}
+
+#[test]
+fn test_parse_json_feed_next_url_banner_fixture() {
+    let json = load_fixture("json/next-url-banner.json");
+    let result = parse(&json);
+
+    assert!(result.is_ok(), "Failed to parse next-url-banner fixture");
+    let feed = result.unwrap();
+
+    assert_eq!(feed.version, FeedVersion::JsonFeed11);
+    assert!(!feed.bozo);
+
+    // Verify next_url is parsed
+    assert_eq!(
+        feed.feed.next_url.as_deref(),
+        Some("https://example.com/feed.json?page=2")
+    );
+
+    // Entry 0: has banner_image
+    let banner = feed.entries[0]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("banner"));
+    assert!(banner.is_some(), "Entry 0 must have a banner link");
+    assert_eq!(
+        banner.unwrap().href.as_str(),
+        "https://example.com/banner.jpg"
+    );
+
+    // Entry 1: has both image and banner_image
+    let enclosure = feed.entries[1]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("enclosure"));
+    let banner2 = feed.entries[1]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("banner"));
+    assert!(enclosure.is_some(), "Entry 1 must have an enclosure link");
+    assert!(banner2.is_some(), "Entry 1 must have a banner link");
+
+    // Entry 2: no banner_image
+    let no_banner = feed.entries[2]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("banner"));
+    assert!(no_banner.is_none(), "Entry 2 must not have a banner link");
+}
+
+#[test]
+fn test_atom_entry_subtitle_html() {
+    let xml = load_fixture("atom/entry-subtitle.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "Valid feed must not set bozo");
+    assert_eq!(feed.entries.len(), 3);
+
+    // First entry: html subtitle with entities
+    let entry = &feed.entries[0];
+    assert_eq!(
+        entry.subtitle.as_deref(),
+        Some("A longer<em>teaser</em>description")
+    );
+    let detail = entry.subtitle_detail.as_ref().unwrap();
+    assert_eq!(detail.content_type, TextType::Html);
+    // summary is independent from subtitle
+    assert_eq!(entry.summary.as_deref(), Some("Plain text summary"));
+
+    // Second entry: subtitle without type attr defaults to "text"
+    let entry2 = &feed.entries[1];
+    assert_eq!(
+        entry2.subtitle.as_deref(),
+        Some("Plain text subtitle without type attribute")
+    );
+    let detail2 = entry2.subtitle_detail.as_ref().unwrap();
+    assert_eq!(detail2.content_type, TextType::Text);
+
+    // Third entry: no subtitle
+    let entry3 = &feed.entries[2];
+    assert!(entry3.subtitle.is_none());
+    assert!(entry3.subtitle_detail.is_none());
+}
+
+#[test]
+fn test_atom_entry_subtitle_does_not_affect_feed_subtitle() {
+    let xml = load_fixture("atom/entry-subtitle.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert_eq!(feed.feed.subtitle.as_deref(), Some("Feed-level subtitle"));
+}
+
+#[test]
+fn test_rss_category_domain_attribute() {
+    let xml = load_fixture("rss/rss20-category-domain.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "Valid feed must not be bozo");
+
+    // Feed-level categories
+    let feed_tags = &feed.feed.tags;
+    assert_eq!(feed_tags.len(), 2);
+
+    let tag_with_domain = &feed_tags[0];
+    assert_eq!(tag_with_domain.term.as_str(), "music");
+    assert_eq!(
+        tag_with_domain.scheme.as_deref(),
+        Some("http://www.sixapart.com/ns/types#")
+    );
+
+    let tag_plain = &feed_tags[1];
+    assert_eq!(tag_plain.term.as_str(), "plain-term");
+    assert!(tag_plain.scheme.is_none());
+
+    // Entry-level categories
+    let entry = &feed.entries[0];
+    let entry_tags = &entry.tags;
+    assert_eq!(entry_tags.len(), 3);
+
+    assert_eq!(entry_tags[0].term.as_str(), "Technology");
+    assert_eq!(
+        entry_tags[0].scheme.as_deref(),
+        Some("http://example.com/topics")
+    );
+
+    assert_eq!(entry_tags[1].term.as_str(), "Rust");
+    assert_eq!(
+        entry_tags[1].scheme.as_deref(),
+        Some("http://example.com/topics")
+    );
+
+    assert_eq!(entry_tags[2].term.as_str(), "no-domain");
+    assert!(entry_tags[2].scheme.is_none());
 }

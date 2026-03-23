@@ -57,6 +57,19 @@ impl PyEntry {
     }
 
     #[getter]
+    fn subtitle(&self) -> Option<&str> {
+        self.inner.subtitle.as_deref()
+    }
+
+    #[getter]
+    fn subtitle_detail(&self) -> Option<PyTextConstruct> {
+        self.inner
+            .subtitle_detail
+            .as_ref()
+            .map(|tc| PyTextConstruct::from_core(tc.clone()))
+    }
+
+    #[getter]
     fn summary(&self) -> Option<&str> {
         self.inner.summary.as_deref()
     }
@@ -252,6 +265,16 @@ impl PyEntry {
     }
 
     #[getter]
+    fn slash_comments(&self) -> Option<u32> {
+        self.inner.slash_comments
+    }
+
+    #[getter]
+    fn wfw_commentrss(&self) -> Option<&str> {
+        self.inner.wfw_comment_rss.as_deref()
+    }
+
+    #[getter]
     fn dc_date(&self) -> Option<String> {
         self.inner.dc_date.map(|dt| dt.to_rfc3339())
     }
@@ -420,6 +443,20 @@ impl PyEntry {
                 .unbind()),
             "title_detail" => {
                 if let Some(ref tc) = self.inner.title_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "subtitle" => Ok(self
+                .inner
+                .subtitle
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "subtitle_detail" => {
+                if let Some(ref tc) = self.inner.subtitle_detail {
                     Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
                 } else {
                     Ok(py.None())
@@ -640,6 +677,19 @@ impl PyEntry {
                 .into_any()
                 .unbind()),
             "dc_date_parsed" => Ok(optional_datetime_to_struct_time(py, &self.inner.dc_date)?
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "slash_comments" => Ok(self
+                .inner
+                .slash_comments
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "wfw_commentrss" => Ok(self
+                .inner
+                .wfw_comment_rss
+                .as_deref()
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),

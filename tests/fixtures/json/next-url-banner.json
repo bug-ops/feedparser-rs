@@ -1,0 +1,26 @@
+{
+    "version": "https://jsonfeed.org/version/1.1",
+    "title": "Paginated Feed",
+    "next_url": "https://example.com/feed.json?page=2",
+    "items": [
+        {
+            "id": "1",
+            "title": "Post with Banner",
+            "url": "https://example.com/1",
+            "banner_image": "https://example.com/banner.jpg",
+            "content_text": "Hello"
+        },
+        {
+            "id": "2",
+            "title": "Post with Image and Banner",
+            "url": "https://example.com/2",
+            "image": "https://example.com/image.jpg",
+            "banner_image": "https://example.com/banner2.jpg"
+        },
+        {
+            "id": "3",
+            "title": "Post without Banner",
+            "url": "https://example.com/3"
+        }
+    ]
+}
