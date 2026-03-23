@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, georss, media_rss},
+    namespace::{content, dublin_core, georss, media_rss, slash},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastChapters,
@@ -16,8 +16,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text,
-    read_text_str, skip_element,
+    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag,
+    is_wfw_tag, read_text, read_text_str, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -1227,6 +1227,18 @@ fn parse_item_namespace(
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
         georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
+        Ok(true)
+    } else if let Some(slash_element) = is_slash_tag(tag) {
+        let slash_elem = slash_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        slash::handle_slash_entry_element(&slash_elem, &text, entry);
+        Ok(true)
+    } else if let Some(wfw_element) = is_wfw_tag(tag) {
+        let wfw_elem = wfw_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        slash::handle_wfw_entry_element(&wfw_elem, &text, entry);
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag) {
         parse_item_media(
