@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose `next_url` in Node.js bindings as `FeedMeta.next_url`
 - Parse `<subtitle>` element at the Atom entry level: `Entry` now exposes `subtitle: Option<String>` and `subtitle_detail: Option<TextConstruct>`, mirroring the existing feed-level subtitle fields (#110)
 - Expose `subtitle` and `subtitle_detail` on `Entry` in Python (PyO3) and Node.js (napi-rs) bindings (#110)
+- Map Atom `<link rel="enclosure">` to `entry.enclosures` for API parity with Python feedparser; enclosure links are dual-populated into both `entry.links` and `entry.enclosures`, with optional `type` and `length` attributes silently mapped to `None` when absent or invalid (#119)
 
 ### Fixed
 - Add `tests/fixtures/**` to the `rust-core` paths-filter group so fixture-only PRs correctly trigger Rust test jobs (#107)
