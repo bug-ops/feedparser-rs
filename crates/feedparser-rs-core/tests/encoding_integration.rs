@@ -2,12 +2,7 @@
 //!
 //! Verifies that feeds encoded in ISO-8859-1, Windows-1252, UTF-8 with BOM,
 //! and UTF-16 LE are correctly decoded and their fields contain valid Unicode.
-#![allow(
-    missing_docs,
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic
-)]
+#![allow(missing_docs, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use feedparser_rs::parse;
 
