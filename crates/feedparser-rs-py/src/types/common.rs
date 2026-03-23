@@ -241,7 +241,7 @@ impl PyImage {
 #[pymethods]
 impl PyImage {
     #[getter]
-    fn url(&self) -> &str {
+    fn href(&self) -> &str {
         &self.inner.url
     }
 
@@ -266,12 +266,12 @@ impl PyImage {
     }
 
     #[getter]
-    fn description(&self) -> Option<&str> {
+    fn subtitle(&self) -> Option<&str> {
         self.inner.description.as_deref()
     }
 
     fn __repr__(&self) -> String {
-        format!("Image(url='{}')", &self.inner.url)
+        format!("Image(href='{}')", &self.inner.url)
     }
 
     fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
@@ -302,7 +302,7 @@ impl PyEnclosure {
 #[pymethods]
 impl PyEnclosure {
     #[getter]
-    fn url(&self) -> &str {
+    fn href(&self) -> &str {
         &self.inner.url
     }
 
@@ -319,7 +319,7 @@ impl PyEnclosure {
 
     fn __repr__(&self) -> String {
         format!(
-            "Enclosure(url='{}', type='{}')",
+            "Enclosure(href='{}', type='{}')",
             &self.inner.url,
             self.inner.enclosure_type.as_deref().unwrap_or("unknown")
         )
@@ -403,14 +403,22 @@ impl PyGenerator {
 
 #[pymethods]
 impl PyGenerator {
+    /// Generator name (text content of the `<generator>` element)
     #[getter]
-    fn value(&self) -> &str {
-        &self.inner.value
+    fn name(&self) -> &str {
+        &self.inner.name
     }
 
+    /// Generator URI (feedparser compatibility alias for `name`)
     #[getter]
-    fn uri(&self) -> Option<&str> {
-        self.inner.uri.as_deref()
+    fn value(&self) -> &str {
+        &self.inner.name
+    }
+
+    /// Generator URI (`href` attribute, matching Python feedparser API)
+    #[getter]
+    fn href(&self) -> Option<&str> {
+        self.inner.href.as_deref()
     }
 
     #[getter]
@@ -420,16 +428,16 @@ impl PyGenerator {
 
     fn __repr__(&self) -> String {
         format!(
-            "Generator(value='{}', version='{}')",
-            &self.inner.value,
+            "Generator(name='{}', version='{}')",
+            &self.inner.name,
             self.inner.version.as_deref().unwrap_or("unknown")
         )
     }
 
     fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
         match key {
-            "name" => Ok(Some(self.inner.value.clone())),
-            "href" => Ok(self.inner.uri.as_deref().map(str::to_owned)),
+            "name" => Ok(Some(self.inner.name.clone())),
+            "href" => Ok(self.inner.href.as_deref().map(str::to_owned)),
             "version" => Ok(self.inner.version.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
