@@ -793,10 +793,10 @@ impl From<CoreContent> for Content {
 /// Generator metadata
 #[napi(object)]
 pub struct Generator {
-    /// Generator name
-    pub value: String,
-    /// Generator URI
-    pub uri: Option<String>,
+    /// Generator name (text content of the `<generator>` element)
+    pub name: String,
+    /// Generator URI (`href` attribute, matching Python feedparser API)
+    pub href: Option<String>,
     /// Generator version
     pub version: Option<String>,
 }
@@ -804,8 +804,8 @@ pub struct Generator {
 impl From<CoreGenerator> for Generator {
     fn from(core: CoreGenerator) -> Self {
         Self {
-            value: core.value,
-            uri: core.uri,
+            name: core.name,
+            href: core.href,
             version: core.version.map(|s| s.to_string()),
         }
     }

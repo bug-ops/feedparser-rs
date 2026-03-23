@@ -352,14 +352,22 @@ impl PyGenerator {
 
 #[pymethods]
 impl PyGenerator {
+    /// Generator name (text content of the `<generator>` element)
     #[getter]
-    fn value(&self) -> &str {
-        &self.inner.value
+    fn name(&self) -> &str {
+        &self.inner.name
     }
 
+    /// Generator URI (feedparser compatibility alias for `name`)
     #[getter]
-    fn uri(&self) -> Option<&str> {
-        self.inner.uri.as_deref()
+    fn value(&self) -> &str {
+        &self.inner.name
+    }
+
+    /// Generator URI (`href` attribute, matching Python feedparser API)
+    #[getter]
+    fn href(&self) -> Option<&str> {
+        self.inner.href.as_deref()
     }
 
     #[getter]
@@ -369,8 +377,8 @@ impl PyGenerator {
 
     fn __repr__(&self) -> String {
         format!(
-            "Generator(value='{}', version='{}')",
-            &self.inner.value,
+            "Generator(name='{}', version='{}')",
+            &self.inner.name,
             self.inner.version.as_deref().unwrap_or("unknown")
         )
     }

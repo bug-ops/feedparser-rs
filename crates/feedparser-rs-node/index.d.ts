@@ -179,10 +179,10 @@ export interface FeedMeta {
 
 /** Generator metadata */
 export interface Generator {
-  /** Generator name */
-  value: string
-  /** Generator URI */
-  uri?: string
+  /** Generator name (text content of the generator element) */
+  name: string
+  /** Generator URI (href attribute, matching Python feedparser API) */
+  href?: string
   /** Generator version */
   version?: string
 }
