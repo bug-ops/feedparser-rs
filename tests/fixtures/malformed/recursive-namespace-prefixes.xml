@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<rss version="2.0"
+     xmlns:a="http://example.com/a"
+     xmlns:a:b="http://example.com/a/b"
+     xmlns:a:b:c="http://example.com/a/b/c">
+  <channel>
+    <title>Test</title>
+    <a:b:c:element>Nested NS</a:b:c:element>
+  </channel>
+</rss>
