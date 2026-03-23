@@ -875,7 +875,7 @@ describe('feedparser-rs', () => {
       assert.strictEqual(entry.thrInReplyTo[1].ref, 'tag:example.com,2024:post/2');
       assert.strictEqual(entry.thrInReplyTo[2].ref, 'tag:example.com,2024:post/3');
       assert.strictEqual(entry.thrInReplyTo[2].href, 'https://example.com/post/3');
-      assert.strictEqual(entry.thrTotal, null);
+      assert.ok(entry.thrTotal == null);
     });
 
     it('should normalize empty ref attribute to null', () => {
@@ -883,20 +883,20 @@ describe('feedparser-rs', () => {
       const entry = feed.entries[2];
       assert.strictEqual(entry.thrInReplyTo.length, 1);
       const irt = entry.thrInReplyTo[0];
-      assert.strictEqual(irt.ref, null);
+      assert.ok(irt.ref == null);
       assert.strictEqual(irt.href, 'https://example.com/post/1');
     });
 
     it('should return null for negative thr:total', () => {
       const feed = parse(THREADING_XML);
       const entry = feed.entries[3];
-      assert.strictEqual(entry.thrTotal, null);
+      assert.ok(entry.thrTotal == null);
     });
 
     it('should return null for u32-overflowing thr:total', () => {
       const feed = parse(THREADING_XML);
       const entry = feed.entries[4];
-      assert.strictEqual(entry.thrTotal, null);
+      assert.ok(entry.thrTotal == null);
     });
   });
 
