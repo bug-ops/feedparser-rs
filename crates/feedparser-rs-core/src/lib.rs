@@ -188,9 +188,9 @@ pub use limits::{LimitError, ParserLimits};
 pub use options::ParseOptions;
 pub use parser::{detect_format, parse, parse_with_limits};
 pub use types::{
-    Content, Email, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
-    ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link, MediaContent,
-    MediaThumbnail, MimeType, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta,
+    Content, Email, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, InReplyTo,
+    ItunesCategory, ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link,
+    MediaContent, MediaThumbnail, MimeType, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta,
     PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, PodcastValue,
     PodcastValueRecipient, Source, Tag, TextConstruct, TextType, Url, parse_duration,
     parse_explicit,

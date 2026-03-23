@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <channel>
+    <title>RSS Threading Test Feed</title>
+    <link>https://example.com/</link>
+    <description>Feed with Atom Threading Extensions in RSS 2.0</description>
+
+    <!-- Item with full thr:in-reply-to -->
+    <item>
+      <title>RSS Reply with all attributes</title>
+      <link>https://example.com/rss/reply/1</link>
+      <guid>tag:example.com,2024:rss-reply/1</guid>
+      <thr:in-reply-to
+        ref="tag:example.com,2024:post/1"
+        href="https://example.com/post/1"
+        type="text/html"
+        source="https://example.com/feed.xml"/>
+      <thr:total>7</thr:total>
+    </item>
+
+    <!-- Item with thr:total only -->
+    <item>
+      <title>RSS Item with total count</title>
+      <link>https://example.com/rss/post/2</link>
+      <guid>tag:example.com,2024:rss-post/2</guid>
+      <thr:total>100</thr:total>
+    </item>
+  </channel>
+</rss>

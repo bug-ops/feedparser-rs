@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <title>Atom Threading Test Feed</title>
+  <link href="https://example.com/feed.xml" rel="self"/>
+  <link href="https://example.com/" rel="alternate"/>
+  <id>tag:example.com,2024:feed</id>
+  <updated>2024-01-15T12:00:00Z</updated>
+
+  <!-- Entry 1: full thr:in-reply-to with all four attributes -->
+  <entry>
+    <title>Reply with all attributes</title>
+    <id>tag:example.com,2024:reply/1</id>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <link href="https://example.com/reply/1"/>
+    <thr:in-reply-to
+      ref="tag:example.com,2024:post/1"
+      href="https://example.com/post/1"
+      type="text/html"
+      source="https://example.com/feed.xml"/>
+    <thr:total>15</thr:total>
+  </entry>
+
+  <!-- Entry 2: multiple thr:in-reply-to elements -->
+  <entry>
+    <title>Reply to multiple entries</title>
+    <id>tag:example.com,2024:reply/2</id>
+    <updated>2024-01-15T11:00:00Z</updated>
+    <link href="https://example.com/reply/2"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/1"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/2"/>
+    <thr:in-reply-to
+      ref="tag:example.com,2024:post/3"
+      href="https://example.com/post/3"/>
+  </entry>
+
+  <!-- Entry 3: thr:in-reply-to with only ref (optional attributes missing) -->
+  <entry>
+    <title>Reply with only ref</title>
+    <id>tag:example.com,2024:reply/3</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <link href="https://example.com/reply/3"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/1"/>
+  </entry>
+
+  <!-- Entry 4: thr:in-reply-to with missing ref (malformed but tolerated) -->
+  <entry>
+    <title>Reply with missing ref</title>
+    <id>tag:example.com,2024:reply/4</id>
+    <updated>2024-01-15T13:00:00Z</updated>
+    <link href="https://example.com/reply/4"/>
+    <thr:in-reply-to href="https://example.com/post/1" type="text/html"/>
+  </entry>
+
+  <!-- Entry 5: thr:total only -->
+  <entry>
+    <title>Entry with total only</title>
+    <id>tag:example.com,2024:post/5</id>
+    <updated>2024-01-15T14:00:00Z</updated>
+    <link href="https://example.com/post/5"/>
+    <thr:total>42</thr:total>
+  </entry>
+</feed>

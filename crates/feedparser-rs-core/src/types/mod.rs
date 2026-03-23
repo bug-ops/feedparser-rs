@@ -3,6 +3,7 @@ mod entry;
 mod feed;
 pub mod generics;
 mod podcast;
+mod thread;
 mod version;
 
 pub use common::{
@@ -17,4 +18,5 @@ pub use podcast::{
     PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
     PodcastTranscript, PodcastValue, PodcastValueRecipient, parse_duration, parse_explicit,
 };
+pub use thread::InReplyTo;
 pub use version::FeedVersion;

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Atom Threading Extensions (RFC 4685) support: parse `thr:in-reply-to` and `thr:total` elements in Atom 1.0, RSS 2.0, and RSS 1.0 feeds (#111)
+  - New `InReplyTo` struct with fields `ref_`, `href`, `type_`, `source` (all `Option`)
+  - New `Entry` fields: `in_reply_to: Vec<InReplyTo>` and `thr_total: Option<u32>`
+  - Tolerant parsing: empty attribute values normalized to `None`; missing `ref` attribute accepted; all-empty `thr:in-reply-to` elements skipped; malformed/negative/overflow `thr:total` silently ignored
+  - Python bindings: `PyInReplyTo` class with attribute and dict-style access; `thr_in_reply_to` and `thr_total` getters on entry (both `thr_in_reply_to` and `thr_in-reply-to` dict keys supported)
+  - Node.js bindings: `InReplyTo` object type with `thrInReplyTo` and `thrTotal` fields on `Entry`
+  - Filed #118 as follow-up for `thr:count` and `thr:updated` on `<link rel="replies">` (RFC 4685 §4)
+
 ### Fixed
 - Add `tests/fixtures/**` to the `rust-core` paths-filter group so fixture-only PRs correctly trigger Rust test jobs (#107)
 - Fix encoding detection for non-UTF-8 feeds: `extract_xml_encoding` now performs a byte-level search for the XML declaration instead of calling `str::from_utf8` on the full search buffer, which failed when non-ASCII bytes appeared within the first 512 bytes (#95)

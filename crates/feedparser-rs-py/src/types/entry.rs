@@ -8,6 +8,7 @@ use super::datetime::optional_datetime_to_struct_time;
 use super::geo::PyGeoLocation;
 use super::media::{PyMediaContent, PyMediaThumbnail};
 use super::podcast::{PyItunesEntryMeta, PyPodcastEntryMeta, PyPodcastPerson, PyPodcastTranscript};
+use super::thread::PyInReplyTo;
 
 #[pyclass(name = "Entry", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
@@ -294,6 +295,28 @@ impl PyEntry {
             .podcast
             .as_deref()
             .map(|p| PyPodcastEntryMeta::from_core(p.clone()))
+    }
+
+    /// Atom Threading Extensions: entries this entry is a reply to.
+    ///
+    /// Returns a list of `InReplyTo` objects, one per `thr:in-reply-to` element.
+    /// Python feedparser exposes this as `entry.thr_in_reply_to`.
+    #[getter]
+    fn thr_in_reply_to(&self) -> Vec<PyInReplyTo> {
+        self.inner
+            .in_reply_to
+            .iter()
+            .map(|r| PyInReplyTo::from_core(r.clone()))
+            .collect()
+    }
+
+    /// Atom Threading Extensions: total response count.
+    ///
+    /// Returns the `thr:total` value as a string for Python feedparser compatibility.
+    /// Python feedparser returns this as a string (e.g., `"5"`), not an integer.
+    #[getter]
+    fn thr_total(&self) -> Option<String> {
+        self.inner.thr_total.map(|n| n.to_string())
     }
 
     fn __repr__(&self) -> String {
@@ -658,6 +681,22 @@ impl PyEntry {
                 } else {
                     Ok(py.None())
                 }
+            }
+            // Atom Threading Extensions: support both underscore and hyphen variants
+            // for Python feedparser dict-key compatibility
+            "thr_in_reply_to" | "thr_in-reply-to" => {
+                let replies: Vec<_> = self
+                    .inner
+                    .in_reply_to
+                    .iter()
+                    .map(|r| PyInReplyTo::from_core(r.clone()))
+                    .collect();
+                Ok(replies.into_pyobject(py)?.into_any().unbind())
+            }
+            "thr_total" => {
+                // Return as string for Python feedparser compatibility
+                let value = self.inner.thr_total.map(|n| n.to_string());
+                Ok(value.into_pyobject(py)?.into_any().unbind())
             }
             // Check for deprecated field name aliases
             _ => {

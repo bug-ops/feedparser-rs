@@ -37,6 +37,8 @@ pub mod georss;
 pub mod media_rss;
 /// Syndication Module for RSS 1.0
 pub mod syndication;
+/// Atom Threading Extensions (RFC 4685)
+pub mod threading;
 
 /// Common namespace URIs used in feeds
 pub mod namespaces {
@@ -75,6 +77,9 @@ pub mod namespaces {
 
     /// Creative Commons (legacy Userland)
     pub const CREATIVE_COMMONS: &str = "http://backend.userland.com/creativeCommonsRssModule";
+
+    /// Atom Threading Extensions (RFC 4685)
+    pub const THREADING: &str = "http://purl.org/syndication/thread/1.0";
 }
 
 /// Get namespace URI for a common prefix
@@ -99,6 +104,7 @@ pub fn get_namespace_uri(prefix: &str) -> Option<&'static str> {
         "georss" => Some(namespaces::GEORSS),
         "cc" => Some(namespaces::CC),
         "creativeCommons" => Some(namespaces::CREATIVE_COMMONS),
+        "thr" => Some(namespaces::THREADING),
         _ => None,
     }
 }
@@ -125,6 +131,7 @@ pub fn get_namespace_prefix(uri: &str) -> Option<&'static str> {
         namespaces::GEORSS => Some("georss"),
         namespaces::CC => Some("cc"),
         namespaces::CREATIVE_COMMONS => Some("creativeCommons"),
+        namespaces::THREADING => Some("thr"),
         _ => None,
     }
 }

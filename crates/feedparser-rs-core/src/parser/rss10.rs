@@ -10,14 +10,14 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, georss, syndication},
+    namespace::{content, dublin_core, georss, syndication, threading},
     types::{Entry, FeedVersion, Image, ParsedFeed, TextConstruct, TextType},
 };
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
-    is_georss_tag, is_syn_tag, read_text, read_text_str, skip_element,
+    is_georss_tag, is_syn_tag, is_thr_tag, read_text, read_text_str, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -336,6 +336,40 @@ fn parse_item(
                                 &mut entry,
                                 limits,
                             );
+                        } else if let Some(thr_element) = is_thr_tag(full_name.as_ref()) {
+                            // Atom Threading Extensions (RFC 4685)
+                            match thr_element {
+                                "in-reply-to" => {
+                                    // RSS 1.0 thr:in-reply-to: collect attrs inline since
+                                    // we only have the BytesStart ref here
+                                    let attrs: Vec<(Vec<u8>, String)> = e
+                                        .attributes()
+                                        .flatten()
+                                        .filter_map(|attr| {
+                                            attr.unescape_value().ok().map(|v| {
+                                                (attr.key.as_ref().to_vec(), v.to_string())
+                                            })
+                                        })
+                                        .collect();
+                                    if let Some(reply) = threading::parse_in_reply_to_from_collected(
+                                        &attrs,
+                                        limits.max_attribute_length,
+                                    ) {
+                                        // Shares max_links_per_entry limit; split if needed later
+                                        entry
+                                            .in_reply_to
+                                            .try_push_limited(reply, limits.max_links_per_entry);
+                                    }
+                                }
+                                "total" => {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    threading::handle_total(&text, &mut entry);
+                                }
+                                _ => {
+                                    skip_element(reader, buf, limits, *depth)?;
+                                }
+                            }
                         } else {
                             skip_element(reader, buf, limits, *depth)?;
                         }

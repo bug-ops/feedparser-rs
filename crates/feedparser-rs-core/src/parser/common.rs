@@ -254,6 +254,20 @@ pub fn is_georss_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"georss:")
 }
 
+/// Check if element is a Threading (thr:) namespaced tag
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_thr_tag(b"thr:in-reply-to"), Some("in-reply-to"));
+/// assert_eq!(is_thr_tag(b"thr:total"), Some("total"));
+/// assert_eq!(is_thr_tag(b"dc:creator"), None);
+/// ```
+#[inline]
+pub fn is_thr_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"thr:")
+}
+
 /// Check if element matches an iTunes namespace tag
 ///
 /// Supports both prefixed (itunes:author) and unprefixed (author) forms

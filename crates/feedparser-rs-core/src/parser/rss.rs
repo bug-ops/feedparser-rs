@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, georss, media_rss},
+    namespace::{content, dublin_core, georss, media_rss, threading},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastChapters,
@@ -16,7 +16,7 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, read_text,
+    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_thr_tag, read_text,
     read_text_str, skip_element,
 };
 
@@ -716,6 +716,12 @@ fn parse_channel_namespace(
             feed.feed.license = Some(read_text_str(reader, buf, limits)?);
         }
         Ok(true)
+    } else if is_thr_tag(tag).is_some() {
+        // Atom Threading Extensions at channel level — recognize and skip
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
+        Ok(true)
     } else {
         Ok(false)
     }
@@ -1242,6 +1248,34 @@ fn parse_item_namespace(
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
         entry.license = Some(read_text_str(reader, buf, limits)?);
+        Ok(true)
+    } else if let Some(thr_element) = is_thr_tag(tag) {
+        // Atom Threading Extensions (RFC 4685)
+        match thr_element {
+            "in-reply-to" => {
+                if let Some(reply) =
+                    threading::parse_in_reply_to_from_collected(attrs, limits.max_attribute_length)
+                {
+                    // Shares max_links_per_entry limit; split if needed later
+                    entry
+                        .in_reply_to
+                        .try_push_limited(reply, limits.max_links_per_entry);
+                }
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
+            "total" if !is_empty => {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                threading::handle_total(&text, entry);
+            }
+            _ => {
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
+        }
         Ok(true)
     } else {
         Ok(false)
