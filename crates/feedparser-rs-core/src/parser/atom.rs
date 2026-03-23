@@ -73,6 +73,14 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                     base_ctx.update_base(&xml_base);
                 }
 
+                for attr in e.attributes().flatten() {
+                    if attr.key.as_ref() == b"xmlns"
+                        && attr.value.as_ref() == b"http://purl.org/atom/ns#"
+                    {
+                        feed.version = FeedVersion::Atom03;
+                    }
+                }
+
                 depth += 1;
                 if let Err(e) =
                     parse_feed_element(&mut reader, &mut feed, &limits, &mut depth, &base_ctx)
@@ -161,11 +169,11 @@ fn parse_feed_element(
                         }
                         feed.feed.id = Some(text);
                     }
-                    b"updated" if !is_empty => {
+                    b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.updated = parse_date(&text);
                     }
-                    b"published" if !is_empty => {
+                    b"published" | b"issued" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.published = parse_date(&text);
                     }
@@ -347,11 +355,11 @@ fn parse_entry(
                         *bozo |= had_bozo;
                         entry.id = Some(text.into());
                     }
-                    b"updated" if !is_empty => {
+                    b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
                         entry.updated = parse_date(&text);
                     }
-                    b"published" if !is_empty => {
+                    b"published" | b"issued" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
                         entry.published = parse_date(&text);
                     }
