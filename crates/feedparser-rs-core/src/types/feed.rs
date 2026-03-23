@@ -325,8 +325,8 @@ impl FeedMeta {
     /// # fn main() {
     /// let mut meta = FeedMeta::default();
     /// let generator = Generator {
-    ///     value: "Example Generator".to_string(),
-    ///     uri: None,
+    ///     name: "Example Generator".to_string(),
+    ///     href: None,
     ///     version: None,
     /// };
     /// meta.set_generator(generator);
@@ -334,8 +334,9 @@ impl FeedMeta {
     /// # }
     /// ```
     #[inline]
-    pub fn set_generator(&mut self, mut generator: Generator) {
-        self.generator = Some(std::mem::take(&mut generator.value));
+    pub fn set_generator(&mut self, generator: Generator) {
+        // Clone the name for the flat `generator` field; the detail struct keeps its own copy.
+        self.generator = Some(generator.name.clone());
         self.generator_detail = Some(generator);
     }
 

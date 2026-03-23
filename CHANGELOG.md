@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `generator_detail.name` now contains the generator text content (previously the field was named `value` and was empty after `set_generator` consumed it via `mem::take`) (#132)
+- `generator_detail.href` replaces `generator_detail.uri` to match Python feedparser API (`generator_detail['href']`) (#132)
+- Python bindings: `PyGenerator` now exposes `.name` and `.href` getters; `.value` is kept as a backward-compatibility alias for `.name` (#132)
+- Node.js bindings: `Generator` object now has `name` and `href` fields instead of `value` and `uri` (#132)
+
 ## [0.4.8] - 2026-03-23
 
 ### Added
