@@ -60,33 +60,39 @@ fn test_detect_format_atom() {
 
 #[test]
 fn test_parse_empty_input() {
-    let result = parse(b"");
+    let feed = parse(b"").unwrap();
+    assert!(feed.bozo, "empty input must set bozo");
+    assert_eq!(feed.version, FeedVersion::Unknown);
+    assert!(feed.entries.is_empty());
+}
 
-    // Should not panic, might return error or empty feed
-    match result {
-        Ok(feed) => {
-            // Empty input might set bozo flag
-            let _ = feed;
-        }
-        Err(_) => {
-            // Or might return error - both are acceptable
-        }
-    }
+#[test]
+fn test_parse_whitespace_only() {
+    let feed = parse(b"   \n  ").unwrap();
+    assert!(feed.bozo, "whitespace-only input must set bozo");
+    assert_eq!(feed.version, FeedVersion::Unknown);
+    assert!(feed.entries.is_empty());
 }
 
 #[test]
 fn test_parse_invalid_xml() {
-    let result = parse(b"<invalid><xml>");
+    let feed = parse(b"<invalid><xml>").unwrap();
+    assert!(feed.bozo, "invalid XML must set bozo");
+    assert_eq!(feed.version, FeedVersion::Unknown);
+}
 
-    // Should handle gracefully (either error or bozo flag)
-    match result {
-        Ok(feed) => {
-            let _ = feed;
-        }
-        Err(_) => {
-            // Or return error - both acceptable
-        }
-    }
+#[test]
+fn test_parse_doctype_only() {
+    let feed = parse(b"<!DOCTYPE foo>").unwrap();
+    assert!(feed.bozo, "DOCTYPE-only input must set bozo");
+    assert_eq!(feed.version, FeedVersion::Unknown);
+}
+
+#[test]
+fn test_parse_invalid_utf8_bytes() {
+    let feed = parse(b"\xFF\xFE").unwrap();
+    assert!(feed.bozo, "invalid UTF-8 bytes must set bozo");
+    assert_eq!(feed.version, FeedVersion::Unknown);
 }
 
 #[test]
