@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Link::banner()` constructor for creating banner image links (project-internal convention)
 - Expose `next_url` in Python bindings via `#[getter]`, `__getattr__`, and `__getitem__`
 - Expose `next_url` in Node.js bindings as `FeedMeta.next_url`
+- Parse `<subtitle>` element at the Atom entry level: `Entry` now exposes `subtitle: Option<String>` and `subtitle_detail: Option<TextConstruct>`, mirroring the existing feed-level subtitle fields (#110)
+- Expose `subtitle` and `subtitle_detail` on `Entry` in Python (PyO3) and Node.js (napi-rs) bindings (#110)
 
 ### Fixed
 - Add `tests/fixtures/**` to the `rust-core` paths-filter group so fixture-only PRs correctly trigger Rust test jobs (#107)
