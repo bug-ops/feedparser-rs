@@ -460,3 +460,133 @@ fn test_rss_category_domain_attribute() {
     assert_eq!(entry_tags[2].term.as_str(), "no-domain");
     assert!(entry_tags[2].scheme.is_none());
 }
+
+#[test]
+fn test_atom_enclosure_full_attributes() {
+    let xml = load_fixture("atom/with-enclosures.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(
+        !feed.bozo,
+        "feed must not be bozo for valid Atom with enclosures"
+    );
+
+    // Entry 0: full enclosure attrs
+    let entry = &feed.entries[0];
+    assert_eq!(entry.enclosures.len(), 1);
+    assert_eq!(
+        entry.enclosures[0].url.as_str(),
+        "http://example.com/ep1.mp3"
+    );
+    assert_eq!(
+        entry.enclosures[0].enclosure_type.as_deref(),
+        Some("audio/mpeg")
+    );
+    assert_eq!(entry.enclosures[0].length, Some(12_345_678));
+
+    // Enclosure link also appears in entry.links (dual population)
+    assert!(
+        entry
+            .links
+            .iter()
+            .any(|l| l.href.as_str() == "http://example.com/ep1.mp3"),
+        "enclosure link must also be in entry.links"
+    );
+
+    // Primary link is the alternate, not the enclosure
+    assert_eq!(entry.link.as_deref(), Some("http://example.com/ep1"));
+}
+
+#[test]
+fn test_atom_enclosure_missing_type() {
+    let xml = load_fixture("atom/with-enclosures.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo);
+
+    // Entry 1: enclosure with no type attr
+    let entry = &feed.entries[1];
+    assert_eq!(entry.enclosures.len(), 1);
+    assert_eq!(
+        entry.enclosures[0].url.as_str(),
+        "http://example.com/ep2.mp3"
+    );
+    assert!(entry.enclosures[0].enclosure_type.is_none());
+    assert_eq!(entry.enclosures[0].length, Some(9_876_543));
+}
+
+#[test]
+fn test_atom_enclosure_missing_length() {
+    let xml = load_fixture("atom/with-enclosures.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo);
+
+    // Entry 2: enclosure with no length attr
+    let entry = &feed.entries[2];
+    assert_eq!(entry.enclosures.len(), 1);
+    assert_eq!(
+        entry.enclosures[0].url.as_str(),
+        "http://example.com/ep3.mp3"
+    );
+    assert_eq!(
+        entry.enclosures[0].enclosure_type.as_deref(),
+        Some("audio/mpeg")
+    );
+    assert!(entry.enclosures[0].length.is_none());
+}
+
+#[test]
+fn test_atom_enclosure_invalid_length() {
+    let xml = load_fixture("atom/with-enclosures.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "invalid length must not set bozo");
+
+    // Entry 3: enclosure with non-numeric length — silently None
+    let entry = &feed.entries[3];
+    assert_eq!(entry.enclosures.len(), 1);
+    assert_eq!(
+        entry.enclosures[0].url.as_str(),
+        "http://example.com/ep4.mp3"
+    );
+    assert!(entry.enclosures[0].length.is_none());
+}
+
+#[test]
+fn test_atom_enclosure_multiple() {
+    let xml = load_fixture("atom/with-enclosures.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo);
+
+    // Entry 4: two enclosure links
+    let entry = &feed.entries[4];
+    assert_eq!(entry.enclosures.len(), 2);
+
+    let mp3 = entry
+        .enclosures
+        .iter()
+        .find(|e| e.url.as_str() == "http://example.com/ep5.mp3")
+        .expect("mp3 enclosure");
+    assert_eq!(mp3.enclosure_type.as_deref(), Some("audio/mpeg"));
+    assert_eq!(mp3.length, Some(5_000_000));
+
+    let pdf = entry
+        .enclosures
+        .iter()
+        .find(|e| e.url.as_str() == "http://example.com/ep5.pdf")
+        .expect("pdf enclosure");
+    assert_eq!(pdf.enclosure_type.as_deref(), Some("application/pdf"));
+    assert_eq!(pdf.length, Some(1_000_000));
+
+    // Both enclosure links appear in entry.links as well
+    assert_eq!(
+        entry
+            .links
+            .iter()
+            .filter(|l| l.rel.as_deref() == Some("enclosure"))
+            .count(),
+        2
+    );
+}

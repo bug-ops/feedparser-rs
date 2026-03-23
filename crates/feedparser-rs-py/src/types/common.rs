@@ -1,3 +1,4 @@
+use super::datetime::optional_datetime_to_struct_time;
 use feedparser_rs::{
     Content as CoreContent, Enclosure as CoreEnclosure, Generator as CoreGenerator,
     Image as CoreImage, Link as CoreLink, Person as CorePerson, Source as CoreSource,
@@ -96,6 +97,21 @@ impl PyLink {
     #[getter]
     fn hreflang(&self) -> Option<&str> {
         self.inner.hreflang.as_deref()
+    }
+
+    #[getter]
+    fn thr_count(&self) -> Option<u32> {
+        self.inner.thr_count
+    }
+
+    #[getter]
+    fn thr_updated(&self) -> Option<String> {
+        self.inner.thr_updated.map(|dt| dt.to_rfc3339())
+    }
+
+    #[getter]
+    fn thr_updated_parsed(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        optional_datetime_to_struct_time(py, &self.inner.thr_updated)
     }
 
     fn __repr__(&self) -> String {

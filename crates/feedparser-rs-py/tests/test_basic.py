@@ -236,5 +236,125 @@ def test_repr_methods():
     assert "Entry" in repr(d.entries[0])
 
 
+ATOM_THREADING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <title>Threading Test</title>
+  <id>tag:example.com,2024:threading</id>
+  <updated>2024-01-15T12:00:00Z</updated>
+  <entry>
+    <title>Full in-reply-to</title>
+    <id>tag:example.com,2024:reply/1</id>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:in-reply-to
+      ref="tag:example.com,2024:post/1"
+      href="https://example.com/post/1"
+      type="text/html"
+      source="https://example.com/feed.xml"/>
+    <thr:total>15</thr:total>
+  </entry>
+  <entry>
+    <title>Multiple in-reply-to</title>
+    <id>tag:example.com,2024:reply/2</id>
+    <updated>2024-01-15T11:00:00Z</updated>
+    <thr:in-reply-to ref="tag:example.com,2024:post/1"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/2"/>
+    <thr:in-reply-to ref="tag:example.com,2024:post/3" href="https://example.com/post/3"/>
+  </entry>
+  <entry>
+    <title>Empty ref</title>
+    <id>tag:example.com,2024:reply/3</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <thr:in-reply-to ref="" href="https://example.com/post/1"/>
+  </entry>
+  <entry>
+    <title>Negative total</title>
+    <id>tag:example.com,2024:reply/4</id>
+    <updated>2024-01-15T13:00:00Z</updated>
+    <thr:total>-5</thr:total>
+  </entry>
+  <entry>
+    <title>Overflow total</title>
+    <id>tag:example.com,2024:reply/5</id>
+    <updated>2024-01-15T14:00:00Z</updated>
+    <thr:total>99999999999999</thr:total>
+  </entry>
+</feed>"""
+
+
+def test_thr_in_reply_to_all_attributes():
+    """Test thr:in-reply-to with all four RFC 4685 attributes via attribute access"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    assert not d.bozo
+    entry = d.entries[0]
+    irts = entry.thr_in_reply_to
+    assert len(irts) == 1
+    irt = irts[0]
+    assert irt["ref"] == "tag:example.com,2024:post/1"
+    assert irt.href == "https://example.com/post/1"
+    assert irt["type"] == "text/html"
+    assert irt.source == "https://example.com/feed.xml"
+    assert entry.thr_total == "15"
+
+
+def test_thr_in_reply_to_dict_access():
+    """Test dict-style access to thr fields for feedparser compatibility"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    entry = d.entries[0]
+    irt = entry["thr_in_reply_to"][0]
+    assert irt["ref"] == "tag:example.com,2024:post/1"
+    assert irt["href"] == "https://example.com/post/1"
+    assert irt["type"] == "text/html"
+    assert irt["source"] == "https://example.com/feed.xml"
+    assert entry["thr_total"] == "15"
+
+
+def test_thr_in_reply_to_hyphen_key():
+    """Test dict-style access with hyphenated key (thr_in-reply-to)"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    entry = d.entries[0]
+    irts = entry["thr_in-reply-to"]
+    assert len(irts) == 1
+    assert irts[0]["ref"] == "tag:example.com,2024:post/1"
+
+
+def test_thr_multiple_in_reply_to():
+    """Test multiple thr:in-reply-to elements on one entry"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    entry = d.entries[1]
+    irts = entry.thr_in_reply_to
+    assert len(irts) == 3
+    assert irts[0]["ref"] == "tag:example.com,2024:post/1"
+    assert irts[1]["ref"] == "tag:example.com,2024:post/2"
+    assert irts[2]["ref"] == "tag:example.com,2024:post/3"
+    assert irts[2].href == "https://example.com/post/3"
+    assert entry.thr_total is None
+
+
+def test_thr_empty_ref_normalized_to_none():
+    """Test that empty-string ref attribute is normalized to None"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    entry = d.entries[2]
+    irts = entry.thr_in_reply_to
+    assert len(irts) == 1
+    irt = irts[0]
+    assert irt["ref"] is None
+    assert irt.href == "https://example.com/post/1"
+
+
+def test_thr_total_negative_returns_none():
+    """Test that negative thr:total returns None"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    entry = d.entries[3]
+    assert entry.thr_total is None
+
+
+def test_thr_total_overflow_returns_none():
+    """Test that u32-overflowing thr:total returns None"""
+    d = feedparser_rs.parse(ATOM_THREADING_XML)
+    entry = d.entries[4]
+    assert entry.thr_total is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

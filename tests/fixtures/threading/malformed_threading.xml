@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <title>Malformed Threading Test Feed</title>
+  <id>tag:example.com,2024:malformed-threading</id>
+  <updated>2024-01-15T12:00:00Z</updated>
+
+  <!-- Entry 1: thr:total with non-numeric content -->
+  <entry>
+    <id>tag:example.com,2024:m/1</id>
+    <title>Non-numeric total</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:total>abc</thr:total>
+  </entry>
+
+  <!-- Entry 2: thr:total with negative value -->
+  <entry>
+    <id>tag:example.com,2024:m/2</id>
+    <title>Negative total</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:total>-5</thr:total>
+  </entry>
+
+  <!-- Entry 3: thr:total with overflow value -->
+  <entry>
+    <id>tag:example.com,2024:m/3</id>
+    <title>Overflow total</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:total>99999999999999</thr:total>
+  </entry>
+
+  <!-- Entry 4: thr:total with empty string -->
+  <entry>
+    <id>tag:example.com,2024:m/4</id>
+    <title>Empty total</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:total></thr:total>
+  </entry>
+
+  <!-- Entry 5: thr:total with whitespace only -->
+  <entry>
+    <id>tag:example.com,2024:m/5</id>
+    <title>Whitespace total</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:total>   </thr:total>
+  </entry>
+
+  <!-- Entry 6: thr:total with valid number surrounded by whitespace -->
+  <entry>
+    <id>tag:example.com,2024:m/6</id>
+    <title>Whitespace-surrounded valid total</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:total>  42  </thr:total>
+  </entry>
+
+  <!-- Entry 7: thr:in-reply-to with empty ref attribute -->
+  <entry>
+    <id>tag:example.com,2024:m/7</id>
+    <title>Empty ref attribute</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:in-reply-to ref="" href="https://example.com/post/1"/>
+  </entry>
+
+  <!-- Entry 8: thr:in-reply-to with all empty attributes -->
+  <entry>
+    <id>tag:example.com,2024:m/8</id>
+    <title>All empty attributes</title>
+    <updated>2024-01-15T10:00:00Z</updated>
+    <thr:in-reply-to ref="" href="" type="" source=""/>
+  </entry>
+</feed>

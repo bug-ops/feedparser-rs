@@ -169,6 +169,12 @@ pub mod namespaces {
     /// Common elements: `transcript`, `chapters`, `soundbite`, `person`
     #[allow(dead_code)] // Future use
     pub const PODCAST: NamespacePrefix = NamespacePrefix::new("podcast:");
+
+    /// Atom Threading Extensions namespace prefix (`thr:`)
+    ///
+    /// Common elements: `in-reply-to`, `total`
+    #[allow(dead_code)] // Future use
+    pub const THR: NamespacePrefix = NamespacePrefix::new("thr:");
 }
 
 #[cfg(test)]

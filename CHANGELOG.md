@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - feat(core): populate `feed.next_url` from Atom/RSS `<link rel="next">` per RFC 5005 (#120)
+- Atom Threading Extensions (RFC 4685) support: parse `thr:in-reply-to` and `thr:total` elements in Atom 1.0, RSS 2.0, and RSS 1.0 feeds (#111)
+  - New `InReplyTo` struct with fields `ref_`, `href`, `type_`, `source` (all `Option`)
+  - New `Entry` fields: `in_reply_to: Vec<InReplyTo>` and `thr_total: Option<u32>`
+  - Tolerant parsing: empty attribute values normalized to `None`; missing `ref` attribute accepted; all-empty `thr:in-reply-to` elements skipped; malformed/negative/overflow `thr:total` silently ignored
+  - Python bindings: `PyInReplyTo` class with attribute and dict-style access; `thr_in_reply_to` and `thr_total` getters on entry (both `thr_in_reply_to` and `thr_in-reply-to` dict keys supported)
+  - Node.js bindings: `InReplyTo` object type with `thrInReplyTo` and `thrTotal` fields on `Entry`
+  - Filed #118 as follow-up for `thr:count` and `thr:updated` on `<link rel="replies">` (RFC 4685 §4)
 - `slash:comments` (integer comment count) and `wfw:commentRss` (comment feed URL) namespace support for RSS and Atom feeds; exposed as `entry.slash_comments: Option<u32>` and `entry.wfw_comment_rss: Option<String>` in core, `entry.slash_comments` / `entry.wfw_commentrss` in Python bindings, and `entry.slashComments` / `entry.wfwCommentRss` in Node.js bindings (#109)
 - JSON Feed 1.1: parse `next_url` feed-level field into `FeedMeta.next_url: Option<String>` (#112)
 - JSON Feed 1.1: parse `banner_image` entry-level field, stored as `Link` with `rel="banner"` in `entry.links` (#112)
@@ -17,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expose `next_url` in Node.js bindings as `FeedMeta.next_url`
 - Parse `<subtitle>` element at the Atom entry level: `Entry` now exposes `subtitle: Option<String>` and `subtitle_detail: Option<TextConstruct>`, mirroring the existing feed-level subtitle fields (#110)
 - Expose `subtitle` and `subtitle_detail` on `Entry` in Python (PyO3) and Node.js (napi-rs) bindings (#110)
+- RFC 4685 Atom Threading Extensions: parse `thr:count` (reply count) and `thr:updated` (last reply datetime) attributes on `<link>` elements; exposed as `link.thr_count: Option<u32>` and `link.thr_updated: Option<DateTime<Utc>>` in core, `link.thr_count` / `link.thr_updated` / `link.thr_updated_parsed` in Python bindings, and `link.thrCount` / `link.thrUpdated` in Node.js bindings (#118)
+- Map Atom `<link rel="enclosure">` to `entry.enclosures` for API parity with Python feedparser; enclosure links are dual-populated into both `entry.links` and `entry.enclosures`, with optional `type` and `length` attributes silently mapped to `None` when absent or invalid (#119)
 
 ### Fixed
 - Parse RSS `<category domain="...">` attribute as `Tag.scheme` (#116)
