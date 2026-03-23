@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- RSS `<author>`, `<managingEditor>`, and `<webMaster>` now parse `email (Name)` and `Name <email>` formats into structured `author_detail` / `publisher_detail` (`Person` with `name` and `email`), matching Python feedparser behavior (#128)
+- `set_author` and `set_publisher` now preserve the person's name in `author_detail.name` instead of removing it; previously `author_detail.name` was always `None`
+
 ## [0.4.8] - 2026-03-23
 
 ### Added
