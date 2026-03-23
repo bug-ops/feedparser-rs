@@ -240,6 +240,32 @@ pub fn is_media_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"media:")
 }
 
+/// Check if element is a Slash namespaced tag
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_slash_tag(b"slash:comments"), Some("comments"));
+/// assert_eq!(is_slash_tag(b"dc:creator"), None);
+/// ```
+#[inline]
+pub fn is_slash_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"slash:")
+}
+
+/// Check if element is a WFW namespaced tag
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_wfw_tag(b"wfw:commentRss"), Some("commentRss"));
+/// assert_eq!(is_wfw_tag(b"dc:creator"), None);
+/// ```
+#[inline]
+pub fn is_wfw_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"wfw:")
+}
+
 /// Check if element is a `GeoRSS` namespaced tag
 ///
 /// # Examples

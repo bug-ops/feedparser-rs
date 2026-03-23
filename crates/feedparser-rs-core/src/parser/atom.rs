@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, media_rss},
+    namespace::{content, dublin_core, media_rss, slash},
     types::{
         Content, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail, ParsedFeed,
         Person, Source, Tag, TextConstruct, TextType,
@@ -14,8 +14,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, read_text, read_text_str,
-    skip_element, skip_to_end,
+    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, is_slash_tag, is_wfw_tag,
+    read_text, read_text_str, skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -455,6 +455,22 @@ fn parse_entry(
                                     *bozo |= had_bozo;
                                     media_rss::handle_entry_element(&media_elem, &text, &mut entry);
                                 }
+                            }
+                            true
+                        } else if let Some(slash_element) = is_slash_tag(tag) {
+                            let slash_elem = slash_element.to_string();
+                            if !is_empty {
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
+                                slash::handle_slash_entry_element(&slash_elem, &text, &mut entry);
+                            }
+                            true
+                        } else if let Some(wfw_element) = is_wfw_tag(tag) {
+                            let wfw_elem = wfw_element.to_string();
+                            if !is_empty {
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
+                                slash::handle_wfw_entry_element(&wfw_elem, &text, &mut entry);
                             }
                             true
                         } else {

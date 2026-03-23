@@ -8,6 +8,8 @@
 /// - **Media RSS** (`media:`) - Multimedia content
 /// - **GeoRSS** (`georss:`) - Geographic location data
 /// - **Creative Commons** (`cc:`) - License information
+/// - **Slash** (`slash:`) - Comment count
+/// - **WFW** (`wfw:`) - Comment RSS URL
 ///
 /// # Usage
 ///
@@ -35,6 +37,8 @@ pub mod dublin_core;
 pub mod georss;
 /// Media RSS specification
 pub mod media_rss;
+/// Slash and WFW namespace (comment count + comment RSS URL)
+pub mod slash;
 /// Syndication Module for RSS 1.0
 pub mod syndication;
 
@@ -75,6 +79,12 @@ pub mod namespaces {
 
     /// Creative Commons (legacy Userland)
     pub const CREATIVE_COMMONS: &str = "http://backend.userland.com/creativeCommonsRssModule";
+
+    /// Slash namespace
+    pub const SLASH: &str = "http://purl.org/rss/1.0/modules/slash/";
+
+    /// WFW (Well-Formed Web) namespace
+    pub const WFW: &str = "http://wellformedweb.org/CommentAPI/";
 }
 
 /// Get namespace URI for a common prefix
@@ -99,6 +109,8 @@ pub fn get_namespace_uri(prefix: &str) -> Option<&'static str> {
         "georss" => Some(namespaces::GEORSS),
         "cc" => Some(namespaces::CC),
         "creativeCommons" => Some(namespaces::CREATIVE_COMMONS),
+        "slash" => Some(namespaces::SLASH),
+        "wfw" => Some(namespaces::WFW),
         _ => None,
     }
 }
@@ -125,6 +137,8 @@ pub fn get_namespace_prefix(uri: &str) -> Option<&'static str> {
         namespaces::GEORSS => Some("georss"),
         namespaces::CC => Some("cc"),
         namespaces::CREATIVE_COMMONS => Some("creativeCommons"),
+        namespaces::SLASH => Some("slash"),
+        namespaces::WFW => Some("wfw"),
         _ => None,
     }
 }

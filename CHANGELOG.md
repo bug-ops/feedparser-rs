@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `slash:comments` (integer comment count) and `wfw:commentRss` (comment feed URL) namespace support for RSS and Atom feeds; exposed as `entry.slash_comments: Option<u32>` and `entry.wfw_comment_rss: Option<String>` in core, `entry.slash_comments` / `entry.wfw_commentrss` in Python bindings, and `entry.slashComments` / `entry.wfwCommentRss` in Node.js bindings (#109)
+
 ### Fixed
 - Add `tests/fixtures/**` to the `rust-core` paths-filter group so fixture-only PRs correctly trigger Rust test jobs (#107)
 - Fix encoding detection for non-UTF-8 feeds: `extract_xml_encoding` now performs a byte-level search for the XML declaration instead of calling `str::from_utf8` on the full search buffer, which failed when non-ASCII bytes appeared within the first 512 bytes (#95)

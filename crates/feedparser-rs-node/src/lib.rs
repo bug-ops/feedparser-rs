@@ -495,6 +495,12 @@ pub struct Entry {
     pub itunes: Option<ItunesEntryMeta>,
     /// Podcast 2.0 episode metadata
     pub podcast: Option<PodcastEntryMeta>,
+    /// Slash namespace: comment count
+    #[napi(js_name = "slashComments")]
+    pub slash_comments: Option<u32>,
+    /// WFW namespace: comment RSS feed URL
+    #[napi(js_name = "wfwCommentRss")]
+    pub wfw_comment_rss: Option<String>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -550,6 +556,8 @@ impl From<CoreEntry> for Entry {
                 .collect(),
             itunes: core.itunes.map(|b| ItunesEntryMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
+            slash_comments: core.slash_comments,
+            wfw_comment_rss: core.wfw_comment_rss,
         }
     }
 }
