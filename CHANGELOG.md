@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `TextConstruct.value` (`title_detail.value`, `summary_detail.value`, `subtitle_detail.value`, `rights_detail.value`) was always empty due to `mem::take` moving the string into the shorthand field; fixed by cloning instead (#136)
+- `TextConstruct.type` now returns MIME types matching Python feedparser: `text/plain`, `text/html`, `application/xhtml+xml` instead of short forms `text`, `html`, `xhtml` (#136)
 - Python binding: `Person.uri` renamed to `Person.href` for feedparser API compatibility; added `__getitem__` for dict-like access (`person['href']`, `person['name']`, `person['email']`) (#126)
 - Node.js binding: `Person.uri` renamed to `Person.href` for feedparser API compatibility (#126)
 - `author_detail.name` (and `publisher_detail.name`) was always `None` due to `Person.name` being moved via `.take()` into the shorthand field instead of cloned; affected `Entry` and `FeedMeta` setters (`set_author`, `set_publisher`) (#127)

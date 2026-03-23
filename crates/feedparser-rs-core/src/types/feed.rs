@@ -276,8 +276,8 @@ impl FeedMeta {
     /// assert_eq!(meta.title.as_deref(), Some("Example Feed"));
     /// ```
     #[inline]
-    pub fn set_title(&mut self, mut text: TextConstruct) {
-        self.title = Some(std::mem::take(&mut text.value));
+    pub fn set_title(&mut self, text: TextConstruct) {
+        self.title = Some(text.value.clone());
         self.title_detail = Some(text);
     }
 
@@ -293,8 +293,8 @@ impl FeedMeta {
     /// assert_eq!(meta.subtitle.as_deref(), Some("A great feed"));
     /// ```
     #[inline]
-    pub fn set_subtitle(&mut self, mut text: TextConstruct) {
-        self.subtitle = Some(std::mem::take(&mut text.value));
+    pub fn set_subtitle(&mut self, text: TextConstruct) {
+        self.subtitle = Some(text.value.clone());
         self.subtitle_detail = Some(text);
     }
 
@@ -310,8 +310,8 @@ impl FeedMeta {
     /// assert_eq!(meta.rights.as_deref(), Some("© 2025 Example"));
     /// ```
     #[inline]
-    pub fn set_rights(&mut self, mut text: TextConstruct) {
-        self.rights = Some(std::mem::take(&mut text.value));
+    pub fn set_rights(&mut self, text: TextConstruct) {
+        self.rights = Some(text.value.clone());
         self.rights_detail = Some(text);
     }
 
