@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.8] - 2026-03-23
+
 ### Added
 - feat(core): populate `feed.next_url` from Atom/RSS `<link rel="next">` per RFC 5005 (#120)
 - Atom Threading Extensions (RFC 4685) support: parse `thr:in-reply-to` and `thr:total` elements in Atom 1.0, RSS 2.0, and RSS 1.0 feeds (#111)
@@ -285,7 +287,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.7...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.8...HEAD
+[0.4.8]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.4...v0.4.5

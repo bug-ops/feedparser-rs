@@ -41,6 +41,9 @@ High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node
 | Syndication | Update schedule (period, frequency, base) |
 | GeoRSS | Geographic location data (point, line, polygon, box) |
 | Creative Commons | License information with `rel="license"` links |
+| Slash | Comment count (`slash:comments`) |
+| WFW | Comment feed URL (`wfw:commentRss`) |
+| Atom Threading (thr:) | In-reply-to, reply count, reply datetime (RFC 4685) |
 
 ## Installation
 
@@ -54,7 +57,7 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.4"
+feedparser-rs = "0.4.8"
 ```
 
 > [!IMPORTANT]
@@ -184,7 +187,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.4", default-features = false }
+feedparser-rs = { version = "0.4.8", default-features = false }
 ```
 
 ## Workspace Structure
