@@ -52,6 +52,20 @@ RSS_FEED_WITH_IMAGE = b"""<?xml version="1.0"?>
 </rss>
 """
 
+RSS_FEED_WITH_SOURCE = b"""<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <title>Test</title>
+    <link>http://example.com/</link>
+    <item>
+      <title>Item with source</title>
+      <link>http://example.com/item</link>
+      <source url="http://source.example.com/rss">Source Feed</source>
+    </item>
+  </channel>
+</rss>
+"""
+
 
 def test_person_getitem():
     result = feedparser_rs.parse(ATOM_FEED)
@@ -163,3 +177,21 @@ def test_enclosure_getitem_unknown_key():
     enc = result.entries[0].enclosures[0]
     with pytest.raises(KeyError):
         _ = enc["nonexistent"]
+
+
+def test_source_getitem():
+    result = feedparser_rs.parse(RSS_FEED_WITH_SOURCE)
+    source = result.entries[0].source
+    assert source is not None
+    # Known keys return None when unpopulated (consistent with feedparser optional fields)
+    assert source["title"] is None
+    assert source["link"] is None
+    assert source["id"] is None
+
+
+def test_source_getitem_unknown_key():
+    result = feedparser_rs.parse(RSS_FEED_WITH_SOURCE)
+    source = result.entries[0].source
+    assert source is not None
+    with pytest.raises(KeyError):
+        _ = source["nonexistent"]
