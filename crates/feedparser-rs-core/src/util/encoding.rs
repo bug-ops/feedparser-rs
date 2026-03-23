@@ -56,24 +56,35 @@ pub fn detect_encoding(data: &[u8]) -> &'static str {
 
 /// Extract encoding from XML declaration
 ///
-/// Parses <?xml version="1.0" encoding="..."?> declaration
+/// Parses <?xml version="1.0" encoding="..."?> declaration.
+///
+/// Operates on raw bytes rather than converting to UTF-8 first, so it works
+/// correctly even when non-ASCII bytes appear before the first 512 bytes of
+/// content (e.g. ISO-8859-1 titles that begin within 512 bytes of the start).
+/// The XML declaration itself is always ASCII, so a byte-level search is safe.
 fn extract_xml_encoding(data: &[u8]) -> Option<&'static str> {
-    let search_len = data.len().min(512);
-    let search_data = &data[..search_len];
+    // Only scan the opening portion of the document; the XML declaration must
+    // appear before any non-ASCII content so 512 bytes is more than enough.
+    let search_data = &data[..data.len().min(512)];
 
-    if let Ok(header) = std::str::from_utf8(search_data)
-        && let Some(enc_start) = header.find("encoding=")
-    {
-        let after_eq = &header[enc_start + 9..];
-        let quote = after_eq.chars().next()?;
-        if quote == '"' || quote == '\'' {
-            let quote_end = after_eq[1..].find(quote)?;
-            let encoding_name = &after_eq[1..=quote_end];
-            return normalize_encoding_name(encoding_name);
-        }
+    // Locate b"encoding=" using a byte-level search.
+    let needle = b"encoding=";
+    let enc_pos = search_data
+        .windows(needle.len())
+        .position(|w| w == needle)?;
+
+    let after_eq = &search_data[enc_pos + needle.len()..];
+    let quote = *after_eq.first()?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
     }
 
-    None
+    let value_bytes = &after_eq[1..];
+    let quote_end = value_bytes.iter().position(|&b| b == quote)?;
+    // The encoding name is always ASCII; reject if it contains non-ASCII bytes.
+    let encoding_name = std::str::from_utf8(&value_bytes[..quote_end]).ok()?;
+
+    normalize_encoding_name(encoding_name)
 }
 
 /// Normalize encoding name to `encoding_rs` canonical form
