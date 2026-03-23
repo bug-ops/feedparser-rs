@@ -121,6 +121,17 @@ impl PyLink {
             self.inner.rel.as_deref().unwrap_or("alternate")
         )
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "href" => Ok(Some(self.inner.href.to_string())),
+            "rel" => Ok(self.inner.rel.as_deref().map(str::to_owned)),
+            "type" => Ok(self.inner.link_type.as_deref().map(str::to_owned)),
+            "title" => Ok(self.inner.title.as_deref().map(str::to_owned)),
+            "hreflang" => Ok(self.inner.hreflang.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
 }
 
 #[pyclass(name = "Person", module = "feedparser_rs", from_py_object)]
@@ -204,6 +215,15 @@ impl PyTag {
     fn __repr__(&self) -> String {
         format!("Tag(term='{}')", &self.inner.term)
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "term" => Ok(Some(self.inner.term.to_string())),
+            "scheme" => Ok(self.inner.scheme.as_deref().map(str::to_owned)),
+            "label" => Ok(self.inner.label.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
 }
 
 #[pyclass(name = "Image", module = "feedparser_rs", from_py_object)]
@@ -253,6 +273,18 @@ impl PyImage {
     fn __repr__(&self) -> String {
         format!("Image(url='{}')", &self.inner.url)
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "href" => Ok(Some(self.inner.url.to_string())),
+            "title" => Ok(self.inner.title.as_deref().map(str::to_owned)),
+            "link" => Ok(self.inner.link.as_deref().map(str::to_owned)),
+            "description" => Ok(self.inner.description.as_deref().map(str::to_owned)),
+            "width" => Ok(self.inner.width.map(|v| v.to_string())),
+            "height" => Ok(self.inner.height.map(|v| v.to_string())),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
 }
 
 #[pyclass(name = "Enclosure", module = "feedparser_rs", from_py_object)]
@@ -291,6 +323,15 @@ impl PyEnclosure {
             &self.inner.url,
             self.inner.enclosure_type.as_deref().unwrap_or("unknown")
         )
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "href" => Ok(Some(self.inner.url.to_string())),
+            "type" => Ok(self.inner.enclosure_type.as_deref().map(str::to_owned)),
+            "length" => Ok(self.inner.length.map(|v| v.to_string())),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
     }
 }
 
@@ -336,6 +377,16 @@ impl PyContent {
             &self.inner.value.chars().take(50).collect::<String>()
         )
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "value" => Ok(Some(self.inner.value.clone())),
+            "type" => Ok(self.inner.content_type.as_deref().map(str::to_owned)),
+            "language" => Ok(self.inner.language.as_deref().map(str::to_owned)),
+            "base" => Ok(self.inner.base.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
 }
 
 #[pyclass(name = "Generator", module = "feedparser_rs", from_py_object)]
@@ -374,6 +425,15 @@ impl PyGenerator {
             self.inner.version.as_deref().unwrap_or("unknown")
         )
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "name" => Ok(Some(self.inner.value.clone())),
+            "href" => Ok(self.inner.uri.as_deref().map(str::to_owned)),
+            "version" => Ok(self.inner.version.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
 }
 
 #[pyclass(name = "Source", module = "feedparser_rs", from_py_object)]
@@ -410,6 +470,15 @@ impl PySource {
             format!("Source(title='{}')", title)
         } else {
             "Source()".to_string()
+        }
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "title" => Ok(self.inner.title.as_deref().map(str::to_owned)),
+            "link" => Ok(self.inner.link.as_deref().map(str::to_owned)),
+            "id" => Ok(self.inner.id.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
 }
