@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Entry Subtitle Test Feed</title>
+  <link href="http://example.com"/>
+  <updated>2024-12-14T10:00:00Z</updated>
+  <id>http://example.com/feed</id>
+  <subtitle>Feed-level subtitle</subtitle>
+
+  <entry>
+    <title>My Post</title>
+    <link href="http://example.com/entry1"/>
+    <id>http://example.com/entry1</id>
+    <updated>2024-12-14T09:00:00Z</updated>
+    <subtitle type="html">A longer &lt;em&gt;teaser&lt;/em&gt; description</subtitle>
+    <summary>Plain text summary</summary>
+  </entry>
+
+  <entry>
+    <title>Text Subtitle Entry</title>
+    <link href="http://example.com/entry2"/>
+    <id>http://example.com/entry2</id>
+    <updated>2024-12-14T08:00:00Z</updated>
+    <subtitle>Plain text subtitle without type attribute</subtitle>
+  </entry>
+
+  <entry>
+    <title>No Subtitle Entry</title>
+    <link href="http://example.com/entry3"/>
+    <id>http://example.com/entry3</id>
+    <updated>2024-12-14T07:00:00Z</updated>
+    <summary>Only a summary, no subtitle</summary>
+  </entry>
+</feed>
