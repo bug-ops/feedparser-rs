@@ -419,6 +419,49 @@ fn test_atom_entry_subtitle_does_not_affect_feed_subtitle() {
 }
 
 #[test]
+fn test_rss_category_domain_attribute() {
+    let xml = load_fixture("rss/rss20-category-domain.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "Valid feed must not be bozo");
+
+    // Feed-level categories
+    let feed_tags = &feed.feed.tags;
+    assert_eq!(feed_tags.len(), 2);
+
+    let tag_with_domain = &feed_tags[0];
+    assert_eq!(tag_with_domain.term.as_str(), "music");
+    assert_eq!(
+        tag_with_domain.scheme.as_deref(),
+        Some("http://www.sixapart.com/ns/types#")
+    );
+
+    let tag_plain = &feed_tags[1];
+    assert_eq!(tag_plain.term.as_str(), "plain-term");
+    assert!(tag_plain.scheme.is_none());
+
+    // Entry-level categories
+    let entry = &feed.entries[0];
+    let entry_tags = &entry.tags;
+    assert_eq!(entry_tags.len(), 3);
+
+    assert_eq!(entry_tags[0].term.as_str(), "Technology");
+    assert_eq!(
+        entry_tags[0].scheme.as_deref(),
+        Some("http://example.com/topics")
+    );
+
+    assert_eq!(entry_tags[1].term.as_str(), "Rust");
+    assert_eq!(
+        entry_tags[1].scheme.as_deref(),
+        Some("http://example.com/topics")
+    );
+
+    assert_eq!(entry_tags[2].term.as_str(), "no-domain");
+    assert!(entry_tags[2].scheme.is_none());
+}
+
+#[test]
 fn test_atom_enclosure_full_attributes() {
     let xml = load_fixture("atom/with-enclosures.xml");
     let feed = parse(&xml).unwrap();
