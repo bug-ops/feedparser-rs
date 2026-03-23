@@ -1,5 +1,6 @@
 use super::generics::{FromAttributes, ParseFrom};
-use crate::util::text::bytes_to_string;
+use crate::util::{date::parse_date, text::bytes_to_string};
+use chrono::{DateTime, Utc};
 use compact_str::CompactString;
 use serde_json::Value;
 use std::ops::Deref;
@@ -440,6 +441,10 @@ pub struct Link {
     pub length: Option<u64>,
     /// Language of the linked resource (stored inline for lang codes ≤24 bytes)
     pub hreflang: Option<SmallString>,
+    /// RFC 4685 §4: number of replies at the IRI
+    pub thr_count: Option<u32>,
+    /// RFC 4685 §4: when the reply resource was last modified
+    pub thr_updated: Option<DateTime<Utc>>,
 }
 
 impl Link {
@@ -453,6 +458,8 @@ impl Link {
             title: None,
             length: None,
             hreflang: None,
+            thr_count: None,
+            thr_updated: None,
         }
     }
 
@@ -472,6 +479,8 @@ impl Link {
             title: None,
             length: None,
             hreflang: None,
+            thr_count: None,
+            thr_updated: None,
         }
     }
 
@@ -485,6 +494,8 @@ impl Link {
             title: None,
             length: None,
             hreflang: None,
+            thr_count: None,
+            thr_updated: None,
         }
     }
 
@@ -762,6 +773,8 @@ impl FromAttributes for Link {
         let mut title = None;
         let mut hreflang = None;
         let mut length = None;
+        let mut thr_count = None;
+        let mut thr_updated = None;
 
         for attr in attrs {
             if attr.value.len() > max_attr_length {
@@ -774,6 +787,12 @@ impl FromAttributes for Link {
                 b"title" => title = Some(bytes_to_string(&attr.value)),
                 b"hreflang" => hreflang = Some(bytes_to_string(&attr.value)),
                 b"length" => length = bytes_to_string(&attr.value).parse().ok(),
+                b"thr:count" => {
+                    thr_count = bytes_to_string(&attr.value).trim().parse::<u32>().ok();
+                }
+                b"thr:updated" => {
+                    thr_updated = parse_date(bytes_to_string(&attr.value).trim());
+                }
                 _ => {}
             }
         }
@@ -787,6 +806,8 @@ impl FromAttributes for Link {
             title,
             length,
             hreflang: hreflang.map(std::convert::Into::into),
+            thr_count,
+            thr_updated,
         })
     }
 }

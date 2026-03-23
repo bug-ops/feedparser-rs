@@ -650,6 +650,10 @@ pub struct Link {
     pub length: Option<i64>,
     /// Language of the linked resource
     pub hreflang: Option<String>,
+    /// RFC 4685 §4: number of replies at the IRI
+    pub thr_count: Option<u32>,
+    /// RFC 4685 §4: when the reply resource was last modified (RFC 3339)
+    pub thr_updated: Option<String>,
 }
 
 impl From<CoreLink> for Link {
@@ -661,6 +665,8 @@ impl From<CoreLink> for Link {
             title: core.title,
             length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
             hreflang: core.hreflang.map(|s| s.to_string()),
+            thr_count: core.thr_count,
+            thr_updated: core.thr_updated.map(|dt| dt.to_rfc3339()),
         }
     }
 }
