@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `slash:comments` (integer comment count) and `wfw:commentRss` (comment feed URL) namespace support for RSS and Atom feeds; exposed as `entry.slash_comments: Option<u32>` and `entry.wfw_comment_rss: Option<String>` in core, `entry.slash_comments` / `entry.wfw_commentrss` in Python bindings, and `entry.slashComments` / `entry.wfwCommentRss` in Node.js bindings (#109)
+- JSON Feed 1.1: parse `next_url` feed-level field into `FeedMeta.next_url: Option<String>` (#112)
+- JSON Feed 1.1: parse `banner_image` entry-level field, stored as `Link` with `rel="banner"` in `entry.links` (#112)
+- `Link::banner()` constructor for creating banner image links (project-internal convention)
+- Expose `next_url` in Python bindings via `#[getter]`, `__getattr__`, and `__getitem__`
+- Expose `next_url` in Node.js bindings as `FeedMeta.next_url`
 - Parse `<subtitle>` element at the Atom entry level: `Entry` now exposes `subtitle: Option<String>` and `subtitle_detail: Option<TextConstruct>`, mirroring the existing feed-level subtitle fields (#110)
 - Expose `subtitle` and `subtitle_detail` on `Entry` in Python (PyO3) and Node.js (napi-rs) bindings (#110)
 
