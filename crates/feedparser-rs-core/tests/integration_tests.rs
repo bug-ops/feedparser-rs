@@ -590,3 +590,53 @@ fn test_atom_enclosure_multiple() {
         2
     );
 }
+
+#[test]
+fn test_text_construct_value_populated() {
+    let xml = load_fixture("atom/entry-subtitle.xml");
+    let feed = parse(&xml).unwrap();
+
+    // subtitle_detail.value must equal subtitle string for html type
+    let entry = &feed.entries[0];
+    let detail = entry.subtitle_detail.as_ref().unwrap();
+    assert_eq!(detail.content_type, TextType::Html);
+    assert_eq!(
+        detail.value,
+        entry.subtitle.as_deref().unwrap_or(""),
+        "subtitle_detail.value must equal subtitle"
+    );
+
+    // subtitle_detail.value must equal subtitle string for plain text type
+    let entry2 = &feed.entries[1];
+    let detail2 = entry2.subtitle_detail.as_ref().unwrap();
+    assert_eq!(detail2.content_type, TextType::Text);
+    assert_eq!(
+        detail2.value,
+        entry2.subtitle.as_deref().unwrap_or(""),
+        "subtitle_detail.value must equal subtitle for text type"
+    );
+}
+
+#[test]
+fn test_atom_title_and_summary_detail_value() {
+    let xml = load_fixture("atom/basic.xml");
+    let feed = parse(&xml).unwrap();
+
+    let entry = &feed.entries[0];
+
+    // title_detail.value must equal title
+    let title_detail = entry.title_detail.as_ref().unwrap();
+    assert_eq!(
+        title_detail.value,
+        entry.title.as_deref().unwrap_or(""),
+        "title_detail.value must equal title"
+    );
+
+    // summary_detail.value must equal summary
+    let summary_detail = entry.summary_detail.as_ref().unwrap();
+    assert_eq!(
+        summary_detail.value,
+        entry.summary.as_deref().unwrap_or(""),
+        "summary_detail.value must equal summary"
+    );
+}

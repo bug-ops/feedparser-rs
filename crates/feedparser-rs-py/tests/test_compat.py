@@ -590,11 +590,11 @@ def test_dict_access_detail_fields():
 
     # _detail fields should work with dict access
     assert feed["feed"]["subtitle_detail"] is not None
-    assert feed["feed"]["subtitle_detail"].type == "html"
+    assert feed["feed"]["subtitle_detail"].type == "text/html"
 
     assert feed["feed"]["rights_detail"] is not None
     assert feed["feed"]["copyright_detail"] is not None
-    assert feed["feed"]["copyright_detail"].type == "text"
+    assert feed["feed"]["copyright_detail"].type == "text/plain"
 
     entry = feed["entries"][0]
     assert entry["summary_detail"] is not None

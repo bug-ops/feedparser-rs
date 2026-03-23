@@ -29,9 +29,9 @@ impl PyTextConstruct {
     #[pyo3(name = "type")]
     fn content_type(&self) -> &str {
         match self.inner.content_type {
-            TextType::Text => "text",
-            TextType::Html => "html",
-            TextType::Xhtml => "xhtml",
+            TextType::Text => "text/plain",
+            TextType::Html => "text/html",
+            TextType::Xhtml => "application/xhtml+xml",
         }
     }
 
