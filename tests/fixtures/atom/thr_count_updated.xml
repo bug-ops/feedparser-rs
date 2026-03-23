@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:thr="http://purl.org/syndication/thread/1.0">
+  <title>Threading Test</title>
+  <link href="http://example.com/"/>
+  <id>urn:uuid:test-thr</id>
+  <updated>2024-01-15T12:00:00Z</updated>
+  <entry>
+    <title>Post with both thr attrs</title>
+    <id>urn:uuid:entry-1</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <link rel="replies"
+          type="application/atom+xml"
+          href="http://example.com/post/1/replies"
+          thr:count="10"
+          thr:updated="2024-01-15T12:00:00Z"/>
+    <link rel="alternate" href="http://example.com/post/1"/>
+  </entry>
+  <entry>
+    <title>Post with only thr:count</title>
+    <id>urn:uuid:entry-2</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <link rel="replies"
+          href="http://example.com/post/2/replies"
+          thr:count="5"/>
+    <link rel="alternate" href="http://example.com/post/2"/>
+  </entry>
+  <entry>
+    <title>Post with only thr:updated</title>
+    <id>urn:uuid:entry-3</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <link rel="replies"
+          href="http://example.com/post/3/replies"
+          thr:updated="2024-01-10T08:00:00Z"/>
+    <link rel="alternate" href="http://example.com/post/3"/>
+  </entry>
+  <entry>
+    <title>Post with zero replies</title>
+    <id>urn:uuid:entry-4</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <link rel="replies"
+          href="http://example.com/post/4/replies"
+          thr:count="0"/>
+    <link rel="alternate" href="http://example.com/post/4"/>
+  </entry>
+  <entry>
+    <title>Post with malformed thr attrs</title>
+    <id>urn:uuid:entry-5</id>
+    <updated>2024-01-15T12:00:00Z</updated>
+    <link rel="replies"
+          href="http://example.com/post/5/replies"
+          thr:count="abc"
+          thr:updated="not-a-date"/>
+    <link rel="alternate" href="http://example.com/post/5"/>
+  </entry>
+</feed>

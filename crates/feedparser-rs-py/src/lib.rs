@@ -36,6 +36,7 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::podcast::PyPodcastChapters>()?;
     m.add_class::<types::podcast::PyPodcastSoundbite>()?;
     m.add_class::<types::podcast::PyPodcastEntryMeta>()?;
+    m.add_class::<types::thread::PyInReplyTo>()?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

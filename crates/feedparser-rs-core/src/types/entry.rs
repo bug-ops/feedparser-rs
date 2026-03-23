@@ -4,6 +4,7 @@ use super::{
     },
     generics::LimitedCollectionExt,
     podcast::{ItunesEntryMeta, PodcastEntryMeta, PodcastPerson, PodcastTranscript},
+    thread::InReplyTo,
 };
 use chrono::{DateTime, Utc};
 
@@ -82,6 +83,13 @@ pub struct Entry {
     pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
+    /// Atom Threading Extensions: entries this is a reply to (thr:in-reply-to)
+    pub in_reply_to: Vec<InReplyTo>,
+    /// Atom Threading Extensions: total response count (thr:total)
+    ///
+    /// Stored as u32 in Rust for type safety. Python binding converts
+    /// to string to match Python feedparser's API.
+    pub thr_total: Option<u32>,
     /// Slash namespace: comment count (`slash:comments`)
     pub slash_comments: Option<u32>,
     /// WFW namespace: comment RSS feed URL (`wfw:commentRss`)
@@ -121,6 +129,8 @@ impl Entry {
             media_content: Vec::with_capacity(1),
             podcast_transcripts: Vec::with_capacity(2),
             podcast_persons: Vec::with_capacity(4),
+            // Most entries reply to at most one parent
+            in_reply_to: Vec::with_capacity(1),
             ..Default::default()
         }
     }

@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, media_rss, slash},
+    namespace::{content, dublin_core, media_rss, slash, threading},
     types::{
         Content, Enclosure, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail,
         ParsedFeed, Person, Source, Tag, TextConstruct, TextType,
@@ -14,8 +14,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, is_slash_tag, is_wfw_tag,
-    read_text, read_text_str, skip_element, skip_to_end,
+    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, is_slash_tag, is_thr_tag,
+    is_wfw_tag, read_text, read_text_str, skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -277,6 +277,12 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
+                        } else if is_thr_tag(tag).is_some() {
+                            // Atom Threading Extensions - feed-level thr: elements are unusual; skip
+                            if !is_empty {
+                                skip_element(reader, &mut buf, limits, *depth)?;
+                            }
+                            true
                         } else {
                             false
                         };
@@ -468,6 +474,35 @@ fn parse_entry(
                                     let (text, had_bozo) = read_text(reader, buf, limits)?;
                                     *bozo |= had_bozo;
                                     media_rss::handle_entry_element(&media_elem, &text, &mut entry);
+                                }
+                            }
+                            true
+                        } else if let Some(thr_element) = is_thr_tag(tag) {
+                            // Atom Threading Extensions (RFC 4685)
+                            match thr_element {
+                                "in-reply-to" => {
+                                    if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+                                        element.attributes().flatten(),
+                                        limits.max_attribute_length,
+                                    ) {
+                                        // Shares max_links_per_entry limit; split if needed later
+                                        entry
+                                            .in_reply_to
+                                            .try_push_limited(reply, limits.max_links_per_entry);
+                                    }
+                                    if !is_empty {
+                                        skip_element(reader, buf, limits, *depth)?;
+                                    }
+                                }
+                                "total" if !is_empty => {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    threading::handle_total(&text, &mut entry);
+                                }
+                                _ => {
+                                    if !is_empty {
+                                        skip_element(reader, buf, limits, *depth)?;
+                                    }
                                 }
                             }
                             true
@@ -1038,5 +1073,218 @@ mod tests {
             feed.entries[0].link.as_deref(),
             Some("https://example.com/entry/1")
         );
+    }
+
+    #[test]
+    fn test_thr_count_and_updated_happy_path() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies"
+                  thr:count="10" thr:updated="2024-01-15T12:00:00Z"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, Some(10));
+        assert!(replies_link.thr_updated.is_some());
+    }
+
+    #[test]
+    fn test_thr_count_zero() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies" thr:count="0"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, Some(0));
+    }
+
+    #[test]
+    fn test_thr_count_whitespace_trimmed() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies"
+                  thr:count=" 10 " thr:updated=" 2024-01-15T12:00:00Z "/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, Some(10));
+        assert!(replies_link.thr_updated.is_some());
+    }
+
+    #[test]
+    fn test_thr_attrs_missing_yields_none() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, None);
+        assert!(replies_link.thr_updated.is_none());
+    }
+
+    #[test]
+    fn test_thr_count_malformed_no_bozo() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies"
+                  thr:count="abc" thr:updated="not-a-date"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo, "malformed thr: attrs must not set bozo");
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, None);
+        assert!(replies_link.thr_updated.is_none());
+    }
+
+    #[test]
+    fn test_thr_count_negative_no_bozo() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies" thr:count="-5"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, None);
+    }
+
+    #[test]
+    fn test_thr_count_overflow_no_bozo() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="replies" href="http://example.com/replies"
+                  thr:count="99999999999"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let replies_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("replies"))
+            .expect("replies link");
+        assert_eq!(replies_link.thr_count, None);
+    }
+
+    #[test]
+    fn test_thr_count_on_non_replies_link() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:thr="http://purl.org/syndication/thread/1.0">
+          <title>Test</title>
+          <id>urn:uuid:test</id>
+          <updated>2024-01-15T12:00:00Z</updated>
+          <entry>
+            <title>Post</title>
+            <id>urn:uuid:entry-1</id>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link rel="alternate" href="http://example.com/post" thr:count="5"/>
+          </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let alt_link = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("alternate"))
+            .expect("alternate link");
+        assert_eq!(alt_link.thr_count, Some(5));
     }
 }
