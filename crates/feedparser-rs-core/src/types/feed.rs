@@ -28,8 +28,12 @@ pub struct FeedMeta {
     pub subtitle_detail: Option<TextConstruct>,
     /// Last update date
     pub updated: Option<DateTime<Utc>>,
+    /// Original update date string as found in the feed (timezone preserved)
+    pub updated_str: Option<String>,
     /// Initial publication date (RSS pubDate, Atom published)
     pub published: Option<DateTime<Utc>>,
+    /// Original publication date string as found in the feed (timezone preserved)
+    pub published_str: Option<String>,
     /// Primary author name (stored inline for names ≤24 bytes)
     pub author: Option<super::common::SmallString>,
     /// Detailed author information

@@ -432,7 +432,10 @@ fn parse_channel_standard(
         b"pubDate" => {
             let text = read_text_str(reader, buf, limits)?;
             match parse_date(&text) {
-                Some(dt) => feed.feed.published = Some(dt),
+                Some(dt) => {
+                    feed.feed.published = Some(dt);
+                    feed.feed.published_str = Some(text);
+                }
                 None if !text.is_empty() => {
                     feed.bozo = true;
                     feed.bozo_exception = Some("Invalid pubDate format".to_string());
@@ -956,6 +959,7 @@ fn parse_item_standard(
         b"pubDate" => {
             let text = read_text_str(reader, buf, limits)?;
             entry.published = parse_date(&text);
+            entry.published_str = Some(text);
         }
         b"author" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;

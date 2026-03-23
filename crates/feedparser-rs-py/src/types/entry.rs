@@ -92,8 +92,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn published(&self) -> Option<String> {
-        self.inner.published.map(|dt| dt.to_rfc3339())
+    fn published(&self) -> Option<&str> {
+        self.inner.published_str.as_deref()
     }
 
     #[getter]
@@ -102,8 +102,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn updated(&self) -> Option<String> {
-        self.inner.updated.map(|dt| dt.to_rfc3339())
+    fn updated(&self) -> Option<&str> {
+        self.inner.updated_str.as_deref()
     }
 
     #[getter]

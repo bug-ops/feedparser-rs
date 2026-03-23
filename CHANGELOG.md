@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Core/bindings: `updated` and `published` string fields now preserve the original timezone string from the feed instead of normalizing to UTC; `*_parsed` fields remain correctly normalized (#140)
 - Python/Node.js bindings: rename `Enclosure.url` → `href`, `Image.url` → `href`, `Image.description` → `subtitle` for feedparser API compatibility (#130)
 - RSS `<author>`, `<managingEditor>`, and `<webMaster>` now parse `email (Name)` and `Name <email>` formats into structured `author_detail` / `publisher_detail` (`Person` with `name` and `email`), matching Python feedparser behavior (#128)
 - Python binding: `Person.uri` renamed to `Person.href` for feedparser API compatibility; added `__getitem__` for dict-like access (`person['href']`, `person['name']`, `person['email']`) (#126)
