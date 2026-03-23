@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Atom 0.3 `<modified>` and `<issued>` elements are now mapped to `updated` and `published` fields respectively (#91)
 
 ### Tests
+- Add integration tests for all 16 previously untested `ParserLimits` fields (#94): `max_links_per_feed`, `max_links_per_entry`, `max_authors`, `max_contributors`, `max_tags`, `max_content_blocks`, `max_enclosures`, `max_namespaces`, `max_text_length`, `max_feed_size_bytes`, `max_attribute_length`, `max_podcast_soundbites`, `max_podcast_transcripts`, `max_podcast_funding`, `max_podcast_persons`, `max_value_recipients`
 - Add integration test fixture and tests for Atom 0.3 feed parsing (#91)
 - Expand date parsing unit tests to cover all 27 format strings and 2 special cases (#92)
 - Add end-to-end integration tests for GeoRSS (`georss:point`, `georss:polygon`, feed-level geo, invalid coordinates) and Creative Commons (`creativeCommons:license`, `cc:license`) namespace parsing (#93)
