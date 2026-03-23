@@ -351,8 +351,8 @@ impl FeedMeta {
     /// assert_eq!(meta.author.as_deref(), Some("John Doe"));
     /// ```
     #[inline]
-    pub fn set_author(&mut self, mut person: Person) {
-        self.author = person.name.take();
+    pub fn set_author(&mut self, person: Person) {
+        self.author.clone_from(&person.name);
         self.author_detail = Some(person);
     }
 
@@ -368,8 +368,8 @@ impl FeedMeta {
     /// assert_eq!(meta.publisher.as_deref(), Some("ACME Corp"));
     /// ```
     #[inline]
-    pub fn set_publisher(&mut self, mut person: Person) {
-        self.publisher = person.name.take();
+    pub fn set_publisher(&mut self, person: Person) {
+        self.publisher.clone_from(&person.name);
         self.publisher_detail = Some(person);
     }
 
