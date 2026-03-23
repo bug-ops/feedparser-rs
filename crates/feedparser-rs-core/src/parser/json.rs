@@ -137,6 +137,13 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     {
         feed.ttl = Some(0);
     }
+
+    if let Some(next_url) = json.get("next_url").and_then(|v| v.as_str())
+        && !next_url.is_empty()
+        && next_url.len() <= limits.max_text_length
+    {
+        feed.next_url = Some(next_url.to_string());
+    }
 }
 
 fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
@@ -188,6 +195,14 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
             Link::enclosure(image, Some("image/*".into())),
             limits.max_entries,
         );
+    }
+
+    if let Some(banner) = json.get("banner_image").and_then(|v| v.as_str())
+        && !banner.is_empty()
+    {
+        let _ = entry
+            .links
+            .try_push_limited(Link::banner(banner), limits.max_entries);
     }
 
     if let Some(date_str) = json.get("date_published").and_then(|v| v.as_str()) {
@@ -491,5 +506,172 @@ mod tests {
         assert_eq!(truncate_to_length("hello", 10), "hello");
         assert_eq!(truncate_to_length("hello world", 5), "hello");
         assert_eq!(truncate_to_length("", 10), "");
+    }
+
+    #[test]
+    fn test_parse_json_feed_next_url() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "next_url": "https://example.com/feed.json?page=2",
+            "items": []
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert_eq!(
+            feed.feed.next_url.as_deref(),
+            Some("https://example.com/feed.json?page=2")
+        );
+        assert!(!feed.bozo);
+    }
+
+    #[test]
+    fn test_parse_json_feed_next_url_absent() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": []
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert!(feed.feed.next_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_json_feed_next_url_empty_string() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "next_url": "",
+            "items": []
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert!(feed.feed.next_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_json_feed_next_url_null() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "next_url": null,
+            "items": []
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert!(feed.feed.next_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_next_url_respects_text_limit() {
+        let long_url = "https://example.com/".to_string() + &"a".repeat(10_000);
+        let json = format!(
+            r#"{{
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "Test",
+                "next_url": "{long_url}",
+                "items": []
+            }}"#
+        );
+
+        let limits = ParserLimits {
+            max_text_length: 100,
+            ..ParserLimits::default()
+        };
+        let feed = parse_json_feed_with_limits(json.as_bytes(), limits).unwrap();
+        assert!(feed.feed.next_url.is_none());
+    }
+
+    #[test]
+    fn test_parse_item_banner_image() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [
+                {
+                    "id": "1",
+                    "banner_image": "https://example.com/banner.jpg"
+                }
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        let banner = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("banner"));
+        assert!(banner.is_some());
+        assert_eq!(
+            banner.unwrap().href.as_str(),
+            "https://example.com/banner.jpg"
+        );
+    }
+
+    #[test]
+    fn test_parse_item_banner_image_absent() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [{"id": "1"}]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        let banner = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("banner"));
+        assert!(banner.is_none());
+    }
+
+    #[test]
+    fn test_parse_item_banner_image_empty_string() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [{"id": "1", "banner_image": ""}]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        let banner = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("banner"));
+        assert!(banner.is_none());
+    }
+
+    #[test]
+    fn test_parse_item_image_and_banner_image() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [
+                {
+                    "id": "1",
+                    "image": "https://example.com/image.jpg",
+                    "banner_image": "https://example.com/banner.jpg"
+                }
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        let enclosure = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("enclosure"));
+        let banner = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("banner"));
+        assert!(enclosure.is_some());
+        assert!(banner.is_some());
+        assert_eq!(
+            enclosure.unwrap().href.as_str(),
+            "https://example.com/image.jpg"
+        );
+        assert_eq!(
+            banner.unwrap().href.as_str(),
+            "https://example.com/banner.jpg"
+        );
     }
 }
