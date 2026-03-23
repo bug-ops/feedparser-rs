@@ -591,3 +591,93 @@ def test_geo_location_repr():
     # Should show actual coordinates for Point, not just count
     assert "45.256" in repr_str
     assert "-71.92" in repr_str
+
+
+def test_person_href_attribute():
+    """Test Person.href attribute (feedparser API compatibility: uri field exposed as href)"""
+    xml = b"""<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>Test</title>
+        <author>
+            <name>John Doe</name>
+            <email>john@example.com</email>
+            <uri>https://example.com/johndoe</uri>
+        </author>
+        <entry>
+            <title>Entry</title>
+            <id>urn:test:1</id>
+        </entry>
+    </feed>
+    """
+
+    result = feedparser_rs.parse(xml)
+    author = result.feed.author_detail
+
+    assert author is not None
+    assert author.name == "John Doe"
+    assert author.email == "john@example.com"
+    assert author.href == "https://example.com/johndoe"
+
+
+def test_person_getitem():
+    """Test Person dict-like access via __getitem__ (feedparser API compatibility)"""
+    xml = b"""<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>Test</title>
+        <author>
+            <name>Jane Doe</name>
+            <email>jane@example.com</email>
+            <uri>https://example.com/jane</uri>
+        </author>
+        <entry>
+            <title>Entry</title>
+            <id>urn:test:2</id>
+        </entry>
+    </feed>
+    """
+
+    result = feedparser_rs.parse(xml)
+    author = result.feed.author_detail
+
+    assert author is not None
+    assert author["name"] == "Jane Doe"
+    assert author["email"] == "jane@example.com"
+    assert author["href"] == "https://example.com/jane"
+
+
+def test_person_getitem_missing_key():
+    """Test Person __getitem__ raises KeyError for unknown keys"""
+    import pytest
+
+    xml = b"""<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>Test</title>
+        <author><name>Alice</name></author>
+        <entry><title>E</title><id>urn:test:3</id></entry>
+    </feed>
+    """
+
+    result = feedparser_rs.parse(xml)
+    author = result.feed.author_detail
+
+    assert author is not None
+    with pytest.raises(KeyError):
+        _ = author["nonexistent"]
+
+
+def test_person_href_none_when_no_uri():
+    """Test Person.href is None when no URI is present"""
+    xml = b"""<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>Test</title>
+        <author><name>No URI Person</name></author>
+        <entry><title>E</title><id>urn:test:4</id></entry>
+    </feed>
+    """
+
+    result = feedparser_rs.parse(xml)
+    author = result.feed.author_detail
+
+    assert author is not None
+    assert author.href is None
+    assert author["href"] is None
