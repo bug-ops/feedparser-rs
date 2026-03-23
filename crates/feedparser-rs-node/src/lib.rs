@@ -431,6 +431,10 @@ pub struct Entry {
     pub link: Option<String>,
     /// All links associated with this entry
     pub links: Vec<Link>,
+    /// Entry subtitle (Atom §4.2.12 at entry level)
+    pub subtitle: Option<String>,
+    /// Detailed subtitle with metadata
+    pub subtitle_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -511,6 +515,8 @@ impl From<CoreEntry> for Entry {
             title_detail: core.title_detail.map(TextConstruct::from),
             link: core.link,
             links: core.links.into_iter().map(Link::from).collect(),
+            subtitle: core.subtitle,
+            subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),

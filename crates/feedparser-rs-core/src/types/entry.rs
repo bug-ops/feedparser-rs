@@ -20,6 +20,10 @@ pub struct Entry {
     pub link: Option<String>,
     /// All links associated with this entry
     pub links: Vec<Link>,
+    /// Entry subtitle (Atom §4.2.12 at entry level)
+    pub subtitle: Option<String>,
+    /// Detailed subtitle with metadata
+    pub subtitle_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -136,6 +140,23 @@ impl Entry {
     pub fn set_title(&mut self, mut text: TextConstruct) {
         self.title = Some(std::mem::take(&mut text.value));
         self.title_detail = Some(text);
+    }
+
+    /// Sets subtitle field with `TextConstruct`, storing both simple and detailed versions
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::{Entry, TextConstruct};
+    ///
+    /// let mut entry = Entry::default();
+    /// entry.set_subtitle(TextConstruct::text("A teaser"));
+    /// assert_eq!(entry.subtitle.as_deref(), Some("A teaser"));
+    /// ```
+    #[inline]
+    pub fn set_subtitle(&mut self, mut text: TextConstruct) {
+        self.subtitle = Some(std::mem::take(&mut text.value));
+        self.subtitle_detail = Some(text);
     }
 
     /// Sets summary field with `TextConstruct`, storing both simple and detailed versions

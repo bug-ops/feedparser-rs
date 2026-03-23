@@ -7,7 +7,7 @@
     clippy::panic
 )]
 
-use feedparser_rs::{FeedVersion, detect_format, parse};
+use feedparser_rs::{FeedVersion, TextType, detect_format, parse};
 
 /// Helper function to load test fixtures
 fn load_fixture(path: &str) -> Vec<u8> {
@@ -326,4 +326,46 @@ fn test_feed_with_standard_entities_no_bozo() {
         !result.bozo,
         "Feed with only standard entities should not set bozo"
     );
+}
+
+#[test]
+fn test_atom_entry_subtitle_html() {
+    let xml = load_fixture("atom/entry-subtitle.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "Valid feed must not set bozo");
+    assert_eq!(feed.entries.len(), 3);
+
+    // First entry: html subtitle with entities
+    let entry = &feed.entries[0];
+    assert_eq!(
+        entry.subtitle.as_deref(),
+        Some("A longer<em>teaser</em>description")
+    );
+    let detail = entry.subtitle_detail.as_ref().unwrap();
+    assert_eq!(detail.content_type, TextType::Html);
+    // summary is independent from subtitle
+    assert_eq!(entry.summary.as_deref(), Some("Plain text summary"));
+
+    // Second entry: subtitle without type attr defaults to "text"
+    let entry2 = &feed.entries[1];
+    assert_eq!(
+        entry2.subtitle.as_deref(),
+        Some("Plain text subtitle without type attribute")
+    );
+    let detail2 = entry2.subtitle_detail.as_ref().unwrap();
+    assert_eq!(detail2.content_type, TextType::Text);
+
+    // Third entry: no subtitle
+    let entry3 = &feed.entries[2];
+    assert!(entry3.subtitle.is_none());
+    assert!(entry3.subtitle_detail.is_none());
+}
+
+#[test]
+fn test_atom_entry_subtitle_does_not_affect_feed_subtitle() {
+    let xml = load_fixture("atom/entry-subtitle.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert_eq!(feed.feed.subtitle.as_deref(), Some("Feed-level subtitle"));
 }

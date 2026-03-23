@@ -56,6 +56,19 @@ impl PyEntry {
     }
 
     #[getter]
+    fn subtitle(&self) -> Option<&str> {
+        self.inner.subtitle.as_deref()
+    }
+
+    #[getter]
+    fn subtitle_detail(&self) -> Option<PyTextConstruct> {
+        self.inner
+            .subtitle_detail
+            .as_ref()
+            .map(|tc| PyTextConstruct::from_core(tc.clone()))
+    }
+
+    #[getter]
     fn summary(&self) -> Option<&str> {
         self.inner.summary.as_deref()
     }
@@ -407,6 +420,20 @@ impl PyEntry {
                 .unbind()),
             "title_detail" => {
                 if let Some(ref tc) = self.inner.title_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "subtitle" => Ok(self
+                .inner
+                .subtitle
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "subtitle_detail" => {
+                if let Some(ref tc) = self.inner.subtitle_detail {
                     Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
                 } else {
                     Ok(py.None())
