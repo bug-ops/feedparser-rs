@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 - Add integration test fixture and tests for Atom 0.3 feed parsing (#91)
+- Expand date parsing unit tests to cover all 27 format strings and 2 special cases (#92)
 
 ## [0.4.7] - 2026-03-21
 
