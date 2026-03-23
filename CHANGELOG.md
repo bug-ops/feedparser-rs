@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Atom Threading Extensions (RFC 4685) support: parse `thr:in-reply-to` and `thr:total` elements in Atom 1.0, RSS 2.0, and RSS 1.0 feeds (#111)
+  - New `InReplyTo` struct with fields `ref_`, `href`, `type_`, `source` (all `Option`)
+  - New `Entry` fields: `in_reply_to: Vec<InReplyTo>` and `thr_total: Option<u32>`
+  - Tolerant parsing: empty attribute values normalized to `None`; missing `ref` attribute accepted; all-empty `thr:in-reply-to` elements skipped; malformed/negative/overflow `thr:total` silently ignored
+  - Python bindings: `PyInReplyTo` class with attribute and dict-style access; `thr_in_reply_to` and `thr_total` getters on entry (both `thr_in_reply_to` and `thr_in-reply-to` dict keys supported)
+  - Node.js bindings: `InReplyTo` object type with `thrInReplyTo` and `thrTotal` fields on `Entry`
+  - Filed #118 as follow-up for `thr:count` and `thr:updated` on `<link rel="replies">` (RFC 4685 §4)
 - `slash:comments` (integer comment count) and `wfw:commentRss` (comment feed URL) namespace support for RSS and Atom feeds; exposed as `entry.slash_comments: Option<u32>` and `entry.wfw_comment_rss: Option<String>` in core, `entry.slash_comments` / `entry.wfw_commentrss` in Python bindings, and `entry.slashComments` / `entry.wfwCommentRss` in Node.js bindings (#109)
 - JSON Feed 1.1: parse `next_url` feed-level field into `FeedMeta.next_url: Option<String>` (#112)
 - JSON Feed 1.1: parse `banner_image` entry-level field, stored as `Link` with `rel="banner"` in `entry.links` (#112)

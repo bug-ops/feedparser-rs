@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, media_rss, slash},
+    namespace::{content, dublin_core, media_rss, slash, threading},
     types::{
         Content, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail, ParsedFeed,
         Person, Source, Tag, TextConstruct, TextType,
@@ -14,8 +14,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, is_slash_tag, is_wfw_tag,
-    read_text, read_text_str, skip_element, skip_to_end,
+    extract_xml_base, init_feed, is_content_tag, is_dc_tag, is_media_tag, is_slash_tag, is_thr_tag,
+    is_wfw_tag, read_text, read_text_str, skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -277,6 +277,12 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
+                        } else if is_thr_tag(tag).is_some() {
+                            // Atom Threading Extensions - feed-level thr: elements are unusual; skip
+                            if !is_empty {
+                                skip_element(reader, &mut buf, limits, *depth)?;
+                            }
+                            true
                         } else {
                             false
                         };
@@ -458,6 +464,35 @@ fn parse_entry(
                                     let (text, had_bozo) = read_text(reader, buf, limits)?;
                                     *bozo |= had_bozo;
                                     media_rss::handle_entry_element(&media_elem, &text, &mut entry);
+                                }
+                            }
+                            true
+                        } else if let Some(thr_element) = is_thr_tag(tag) {
+                            // Atom Threading Extensions (RFC 4685)
+                            match thr_element {
+                                "in-reply-to" => {
+                                    if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+                                        element.attributes().flatten(),
+                                        limits.max_attribute_length,
+                                    ) {
+                                        // Shares max_links_per_entry limit; split if needed later
+                                        entry
+                                            .in_reply_to
+                                            .try_push_limited(reply, limits.max_links_per_entry);
+                                    }
+                                    if !is_empty {
+                                        skip_element(reader, buf, limits, *depth)?;
+                                    }
+                                }
+                                "total" if !is_empty => {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    threading::handle_total(&text, &mut entry);
+                                }
+                                _ => {
+                                    if !is_empty {
+                                        skip_element(reader, buf, limits, *depth)?;
+                                    }
                                 }
                             }
                             true

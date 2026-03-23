@@ -8,5 +8,6 @@ pub mod media;
 pub mod parsed_feed;
 pub mod podcast;
 pub mod syndication;
+pub mod thread;
 
 pub use parsed_feed::PyParsedFeed;

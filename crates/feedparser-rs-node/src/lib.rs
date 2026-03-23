@@ -7,17 +7,17 @@ use std::collections::HashMap;
 use feedparser_rs::{
     self as core, Content as CoreContent, Enclosure as CoreEnclosure, Entry as CoreEntry,
     FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage,
-    ItunesCategory as CoreItunesCategory, ItunesEntryMeta as CoreItunesEntryMeta,
-    ItunesFeedMeta as CoreItunesFeedMeta, ItunesOwner as CoreItunesOwner, Link as CoreLink,
-    MediaContent as CoreMediaContent, MediaThumbnail as CoreMediaThumbnail,
-    ParsedFeed as CoreParsedFeed, ParserLimits, Person as CorePerson,
-    PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
-    PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
-    PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
-    PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
-    PodcastValueRecipient as CorePodcastValueRecipient, Source as CoreSource,
-    SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag, TextConstruct as CoreTextConstruct,
-    TextType,
+    InReplyTo as CoreInReplyTo, ItunesCategory as CoreItunesCategory,
+    ItunesEntryMeta as CoreItunesEntryMeta, ItunesFeedMeta as CoreItunesFeedMeta,
+    ItunesOwner as CoreItunesOwner, Link as CoreLink, MediaContent as CoreMediaContent,
+    MediaThumbnail as CoreMediaThumbnail, ParsedFeed as CoreParsedFeed, ParserLimits,
+    Person as CorePerson, PodcastChapters as CorePodcastChapters,
+    PodcastEntryMeta as CorePodcastEntryMeta, PodcastFunding as CorePodcastFunding,
+    PodcastMeta as CorePodcastMeta, PodcastPerson as CorePodcastPerson,
+    PodcastSoundbite as CorePodcastSoundbite, PodcastTranscript as CorePodcastTranscript,
+    PodcastValue as CorePodcastValue, PodcastValueRecipient as CorePodcastValueRecipient,
+    Source as CoreSource, SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag,
+    TextConstruct as CoreTextConstruct, TextType,
 };
 
 /// Default maximum feed size (100 MB) - prevents DoS attacks
@@ -421,6 +421,32 @@ impl From<CoreFeedMeta> for FeedMeta {
     }
 }
 
+/// Atom Threading Extensions in-reply-to reference (RFC 4685)
+#[napi(object)]
+pub struct InReplyTo {
+    /// IRI of the entry being replied to (ref attribute)
+    #[napi(js_name = "ref")]
+    pub ref_field: Option<String>,
+    /// URL where the referenced entry can be found
+    pub href: Option<String>,
+    /// MIME type of the linked resource
+    #[napi(js_name = "type")]
+    pub type_field: Option<String>,
+    /// IRI of the feed containing the referenced entry
+    pub source: Option<String>,
+}
+
+impl From<CoreInReplyTo> for InReplyTo {
+    fn from(core: CoreInReplyTo) -> Self {
+        Self {
+            ref_field: core.ref_.map(|s| s.to_string()),
+            href: core.href.map(|s| s.to_string()),
+            type_field: core.type_.map(|s| s.to_string()),
+            source: core.source.map(|s| s.to_string()),
+        }
+    }
+}
+
 /// Feed entry/item
 #[napi(object)]
 pub struct Entry {
@@ -502,6 +528,12 @@ pub struct Entry {
     pub itunes: Option<ItunesEntryMeta>,
     /// Podcast 2.0 episode metadata
     pub podcast: Option<PodcastEntryMeta>,
+    /// Atom Threading Extensions: in-reply-to references (RFC 4685)
+    #[napi(js_name = "thrInReplyTo")]
+    pub thr_in_reply_to: Vec<InReplyTo>,
+    /// Atom Threading Extensions: total reply count (RFC 4685)
+    #[napi(js_name = "thrTotal")]
+    pub thr_total: Option<u32>,
     /// Slash namespace: comment count
     #[napi(js_name = "slashComments")]
     pub slash_comments: Option<u32>,
@@ -565,6 +597,8 @@ impl From<CoreEntry> for Entry {
                 .collect(),
             itunes: core.itunes.map(|b| ItunesEntryMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
+            thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),
+            thr_total: core.thr_total,
             slash_comments: core.slash_comments,
             wfw_comment_rss: core.wfw_comment_rss,
         }
