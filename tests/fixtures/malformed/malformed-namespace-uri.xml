@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<rss version="2.0"
+     xmlns:dc="not-a-uri-!!!-{}&lt;&gt;"
+     xmlns:itunes="javascript:alert(1)">
+  <channel>
+    <title>Test</title>
+    <dc:creator>Author</dc:creator>
+    <itunes:author>Podcast Author</itunes:author>
+  </channel>
+</rss>
