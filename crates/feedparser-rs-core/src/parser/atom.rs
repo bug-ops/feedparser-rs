@@ -363,6 +363,10 @@ fn parse_entry(
                         let text = read_text_str(reader, buf, limits)?;
                         entry.published = parse_date(&text);
                     }
+                    b"subtitle" if !is_empty => {
+                        let text = parse_text_construct(reader, buf, &element, limits)?;
+                        entry.set_subtitle(text);
+                    }
                     b"summary" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits)?;
                         entry.set_summary(text);
