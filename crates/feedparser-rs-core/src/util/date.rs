@@ -325,14 +325,51 @@ mod tests {
     }
 
     #[test]
-    fn test_all_new_formats() {
-        let test_cases = vec![("2024", 2024, 1, 1), ("2024-12", 2024, 12, 1)];
+    fn test_all_format_strings() {
+        // (input, expected_year, expected_month, expected_day)
+        let cases: &[(&str, i32, u32, u32)] = &[
+            // ISO 8601 / RFC 3339 variants
+            ("2024-12-14T10:30:45.123+00:00", 2024, 12, 14),
+            ("2024-12-14T10:30:45+00:00", 2024, 12, 14),
+            ("2024-12-14T10:30:45.123Z", 2024, 12, 14),
+            ("2024-12-14T10:30:45Z", 2024, 12, 14),
+            ("2024-12-14T10:30:45", 2024, 12, 14),
+            ("2024-12-14 10:30:45", 2024, 12, 14),
+            ("2024-12-14", 2024, 12, 14),
+            // W3C Date-Time variants
+            ("2024-12-14 10:30:45+00:00", 2024, 12, 14),
+            ("2024/12/14 10:30:45", 2024, 12, 14),
+            ("2024/12/14", 2024, 12, 14),
+            // RFC 822 variants
+            ("14 Dec 2024 10:30:45", 2024, 12, 14),
+            ("14 Dec 2024", 2024, 12, 14),
+            ("14 December 2024 10:30:45", 2024, 12, 14),
+            ("14 December 2024", 2024, 12, 14),
+            // US date formats
+            ("December 14, 2024 10:30:45", 2024, 12, 14),
+            ("December 14, 2024", 2024, 12, 14),
+            ("Dec 14, 2024 10:30:45", 2024, 12, 14),
+            ("Dec 14, 2024", 2024, 12, 14),
+            ("12/14/2024 10:30:45", 2024, 12, 14),
+            ("12/14/2024", 2024, 12, 14),
+            ("12-14-2024", 2024, 12, 14),
+            // EU date formats
+            ("14.12.2024 10:30:45", 2024, 12, 14),
+            ("14.12.2024", 2024, 12, 14),
+            ("14/12/2024 10:30:45", 2024, 12, 14),
+            ("14/12/2024", 2024, 12, 14),
+            ("14-Dec-2024", 2024, 12, 14),
+            ("14-December-2024", 2024, 12, 14),
+            // Special cases
+            ("2024", 2024, 1, 1),
+            ("2024-12", 2024, 12, 1),
+        ];
 
-        for (date_str, year, month, day) in test_cases {
-            let dt = parse_date(date_str).unwrap_or_else(|| panic!("Failed to parse: {date_str}"));
-            assert_eq!(dt.year(), year, "Year mismatch for: {date_str}");
-            assert_eq!(dt.month(), month, "Month mismatch for: {date_str}");
-            assert_eq!(dt.day(), day, "Day mismatch for: {date_str}");
+        for &(input, year, month, day) in cases {
+            let dt = parse_date(input).unwrap_or_else(|| panic!("Failed to parse: {input}"));
+            assert_eq!(dt.year(), year, "Year mismatch for: {input}");
+            assert_eq!(dt.month(), month, "Month mismatch for: {input}");
+            assert_eq!(dt.day(), day, "Day mismatch for: {input}");
         }
     }
 }

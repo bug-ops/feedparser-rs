@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Tests
+
+- Expand date parsing unit tests to cover all 27 format strings and 2 special cases (#92)
+
 ## [0.4.7] - 2026-03-21
 
 ### Dependencies
