@@ -290,9 +290,9 @@ def test_thr_in_reply_to_all_attributes():
     irts = entry.thr_in_reply_to
     assert len(irts) == 1
     irt = irts[0]
-    assert getattr(irt, "ref") == "tag:example.com,2024:post/1"
+    assert irt["ref"] == "tag:example.com,2024:post/1"
     assert irt.href == "https://example.com/post/1"
-    assert getattr(irt, "type") == "text/html"
+    assert irt["type"] == "text/html"
     assert irt.source == "https://example.com/feed.xml"
     assert entry.thr_total == "15"
 
@@ -324,9 +324,9 @@ def test_thr_multiple_in_reply_to():
     entry = d.entries[1]
     irts = entry.thr_in_reply_to
     assert len(irts) == 3
-    assert getattr(irts[0], "ref") == "tag:example.com,2024:post/1"
-    assert getattr(irts[1], "ref") == "tag:example.com,2024:post/2"
-    assert getattr(irts[2], "ref") == "tag:example.com,2024:post/3"
+    assert irts[0]["ref"] == "tag:example.com,2024:post/1"
+    assert irts[1]["ref"] == "tag:example.com,2024:post/2"
+    assert irts[2]["ref"] == "tag:example.com,2024:post/3"
     assert irts[2].href == "https://example.com/post/3"
     assert entry.thr_total is None
 
@@ -338,7 +338,7 @@ def test_thr_empty_ref_normalized_to_none():
     irts = entry.thr_in_reply_to
     assert len(irts) == 1
     irt = irts[0]
-    assert getattr(irt, "ref") is None
+    assert irt["ref"] is None
     assert irt.href == "https://example.com/post/1"
 
 
