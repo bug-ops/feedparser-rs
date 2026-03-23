@@ -247,6 +247,11 @@ impl PyFeedMeta {
             .map(|g| PyGeoLocation::from_core(g.clone()))
     }
 
+    #[getter]
+    fn next_url(&self) -> Option<&str> {
+        self.inner.next_url.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "FeedMeta(title='{}', link='{}')",
@@ -594,6 +599,13 @@ impl PyFeedMeta {
                     Ok(py.None())
                 }
             }
+            "next_url" => Ok(self
+                .inner
+                .next_url
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             // Check for deprecated field name aliases
             _ => {
                 if let Some(new_names) = FEED_FIELD_MAP.get(key) {

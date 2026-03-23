@@ -494,6 +494,16 @@ impl Link {
         Self::new(href, "related")
     }
 
+    /// Create a banner image link (JSON Feed `banner_image`, project-internal convention)
+    ///
+    /// Note: `rel="banner"` is not a standard link relation. It is used here as a project
+    /// convention to store JSON Feed `banner_image` in the existing `Link` type. Consumers
+    /// must search `entry.links` for `rel="banner"` to retrieve this field.
+    #[inline]
+    pub fn banner(href: impl Into<Url>) -> Self {
+        Self::new(href, "banner")
+    }
+
     /// Set MIME type (builder pattern)
     #[inline]
     #[must_use]

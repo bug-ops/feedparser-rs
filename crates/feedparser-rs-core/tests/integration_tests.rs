@@ -329,6 +329,54 @@ fn test_feed_with_standard_entities_no_bozo() {
 }
 
 #[test]
+fn test_parse_json_feed_next_url_banner_fixture() {
+    let json = load_fixture("json/next-url-banner.json");
+    let result = parse(&json);
+
+    assert!(result.is_ok(), "Failed to parse next-url-banner fixture");
+    let feed = result.unwrap();
+
+    assert_eq!(feed.version, FeedVersion::JsonFeed11);
+    assert!(!feed.bozo);
+
+    // Verify next_url is parsed
+    assert_eq!(
+        feed.feed.next_url.as_deref(),
+        Some("https://example.com/feed.json?page=2")
+    );
+
+    // Entry 0: has banner_image
+    let banner = feed.entries[0]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("banner"));
+    assert!(banner.is_some(), "Entry 0 must have a banner link");
+    assert_eq!(
+        banner.unwrap().href.as_str(),
+        "https://example.com/banner.jpg"
+    );
+
+    // Entry 1: has both image and banner_image
+    let enclosure = feed.entries[1]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("enclosure"));
+    let banner2 = feed.entries[1]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("banner"));
+    assert!(enclosure.is_some(), "Entry 1 must have an enclosure link");
+    assert!(banner2.is_some(), "Entry 1 must have a banner link");
+
+    // Entry 2: no banner_image
+    let no_banner = feed.entries[2]
+        .links
+        .iter()
+        .find(|l| l.rel.as_deref() == Some("banner"));
+    assert!(no_banner.is_none(), "Entry 2 must not have a banner link");
+}
+
+#[test]
 fn test_atom_entry_subtitle_html() {
     let xml = load_fixture("atom/entry-subtitle.xml");
     let feed = parse(&xml).unwrap();
