@@ -301,6 +301,34 @@ fn parse_channel_extension(
     depth: &mut usize,
     is_empty: bool,
 ) -> Result<()> {
+    if tag == b"atom:link" || tag == b"atom10:link" {
+        let mut href = String::new();
+        let mut rel: Option<String> = None;
+        let mut link_type: Option<String> = None;
+        for (key, value) in attrs {
+            match key.as_slice() {
+                b"href" => href = truncate_to_length(value, limits.max_attribute_length),
+                b"rel" => rel = Some(truncate_to_length(value, limits.max_attribute_length)),
+                b"type" => link_type = Some(truncate_to_length(value, limits.max_attribute_length)),
+                _ => {}
+            }
+        }
+        if !href.is_empty() {
+            let link = Link {
+                href: href.clone().into(),
+                rel: rel.as_deref().map(Into::into),
+                link_type: link_type.map(Into::into),
+                ..Default::default()
+            };
+            if feed.feed.next_url.is_none() && rel.as_deref() == Some("next") {
+                feed.feed.next_url = Some(href);
+            }
+            feed.feed
+                .links
+                .try_push_limited(link, limits.max_links_per_feed);
+        }
+        return Ok(());
+    }
     let mut handled = parse_channel_itunes(reader, buf, tag, attrs, feed, limits, depth, is_empty)?;
     if !handled {
         handled = parse_channel_podcast(reader, buf, tag, attrs, feed, limits, is_empty)?;
@@ -2606,5 +2634,31 @@ mod tests {
         assert_eq!(value.method, "keysend");
         assert_eq!(value.suggested.as_deref(), Some("0.00000005000"));
         assert_eq!(value.recipients.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_rss_feed_next_url_atom_link() {
+        let xml = include_bytes!("../../../../tests/fixtures/rss-pagination.xml");
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.feed.next_url.as_deref(),
+            Some("http://example.com/feed?page=2")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_feed_next_url_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>No Pagination</title>
+                <link>http://example.com/</link>
+                <description>Feed without pagination</description>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.next_url.is_none());
     }
 }

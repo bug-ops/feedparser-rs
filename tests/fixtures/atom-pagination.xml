@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Pagination Test</title>
+  <link href="http://example.com/" rel="alternate"/>
+  <link href="http://example.com/feed?page=2" rel="next"/>
+  <link href="http://example.com/feed" rel="self"/>
+  <id>urn:uuid:test-pagination</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <title>Entry 1</title>
+    <link href="http://example.com/1"/>
+    <id>urn:uuid:entry-1</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+  </entry>
+</feed>

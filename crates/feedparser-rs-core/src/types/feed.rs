@@ -80,7 +80,7 @@ pub struct FeedMeta {
     pub syndication: Option<Box<SyndicationMeta>>,
     /// Geographic location from `GeoRSS` namespace (feed level)
     pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
-    /// JSON Feed `next_url` for pagination (JSON Feed 1.1)
+    /// Pagination URL for the next page of results (JSON Feed `next_url`, RFC 5005 `<link rel="next">`)
     pub next_url: Option<String>,
 }
 
