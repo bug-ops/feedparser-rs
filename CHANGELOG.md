@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Fix encoding detection for non-UTF-8 feeds: `extract_xml_encoding` now performs a byte-level search for the XML declaration instead of calling `str::from_utf8` on the full search buffer, which failed when non-ASCII bytes appeared within the first 512 bytes (#95)
+- `parse()` and `parse_with_limits()` now detect and convert non-UTF-8 feeds (ISO-8859-1, Windows-1252, UTF-16 LE/BE, UTF-8 BOM) to UTF-8 before parsing, and set `feed.encoding` to the detected encoding label (#95)
+
+### Tests
+- Add integration tests for non-UTF-8 feed parsing: ISO-8859-1, Windows-1252, UTF-8 BOM, and UTF-16 LE BOM feeds (#95)
+
 ## [0.4.7] - 2026-03-21
 
 ### Dependencies
