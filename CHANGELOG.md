@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Core/bindings: `updated` and `published` string fields now preserve the original timezone string from the feed instead of normalizing to UTC; `*_parsed` fields remain correctly normalized (#140)
+- Map RSS 2.0 `<copyright>` channel element to `feed.rights` (#144)
 - Parse Atom `<rights>` at entry level into `entry.rights` and `entry.rights_detail`; map `dc:rights` on entries to `entry.rights` (when not already set by Atom) and `entry.dc_rights`; expose `rights`, `rights_detail`, `copyright`, `copyright_detail` in Python bindings and `rights`, `rightsDetail` in Node.js bindings (#139)
 - `TextConstruct.value` (`title_detail.value`, `summary_detail.value`, `subtitle_detail.value`, `rights_detail.value`) was always empty due to `mem::take` moving the string into the shorthand field; fixed by cloning instead (#136)
 - `TextConstruct.type` now returns MIME types matching Python feedparser: `text/plain`, `text/html`, `application/xhtml+xml` instead of short forms `text`, `html`, `xhtml` (#136)
