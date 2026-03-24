@@ -285,7 +285,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn where_(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+    #[pyo3(name = "where")]
+    fn where_field(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner
             .r#where
             .as_deref()

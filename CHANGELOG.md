@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dc:date` now takes precedence over `pubDate`-promoted `updated` field when both are present
 - Core: RSS `entry.guidislink` is now `false` when an explicit `<link>` element is present in the item, regardless of `isPermaLink` attribute value; element order (`<guid>` before or after `<link>`) no longer affects the result (#231)
 - Core: Atom `entry.guidislink` is now `Some(false)` when `<id>` is present (was always `None`), matching Python feedparser behavior (#256)
+- Python: all nested struct types (Image, Enclosure, Link, Person, TextConstruct, Generator, Tag, Source, Content, MediaThumbnail, MediaContent, ItunesFeedMeta, ItunesEntryMeta, GeoLocation) now implement the full dict protocol: `get()`, `keys()`, `values()`, `items()`, `dict()`, `in` operator, and `__getitem__` (#264, #222)
+- Python: geo location field renamed from `where_` to `where` to match Python feedparser API (`entry.where`, `feed.where`) (#249)
 
 ## [0.5.0] - 2026-03-24
 

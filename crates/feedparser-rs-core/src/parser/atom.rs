@@ -2671,6 +2671,7 @@ mod tests {
         assert_eq!(feed.entries[0].author.as_deref(), Some("Dave"));
     }
 
+
     #[test]
     fn test_atom_entry_guidislink_is_false_when_id_present() {
         // Atom entries with <id> must have guidislink=Some(false)
