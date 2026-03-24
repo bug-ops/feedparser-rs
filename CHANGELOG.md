@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: `entry.language` populated from JSON Feed `item.language` (#227)
 - Core, Python, Node.js bindings: `enclosure.title` populated from JSON Feed attachment `title` (#196)
 - Core, Python, Node.js bindings: `enclosure.duration` populated from JSON Feed attachment `duration_in_seconds` as raw string (#196)
+- Core, Python, Node.js bindings: `Person.avatar` field populated from JSON Feed author `avatar` URL (#210)
 
 ### Fixed
 
@@ -51,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: XHTML serializer now correctly re-emits entity references (`&amp;`, `&lt;`, `&gt;`) that quick-xml emits as `GeneralRef` events; previously they were silently dropped producing bare `&` / `<` in output (#215)
 - Core, Python, Node.js bindings: Atom 0.3 `<created>` element now maps to `entry.created` / `entry.created_str` (raw date string) consistent with `published_str` / `updated_str`; previously the field was always `None` (#301)
 - Core: date parser now handles ASCTIME format `Www Mmm [D]D HH:MM:SS YYYY` with optional space-padded single-digit day (e.g. `Mon Jan  6 12:30:00 2025`) (#258)
+- Core: JSON Feed `icon` correctly maps to `feed.image` (large timeline image) and `favicon` to `feed.icon` (small browser icon); previously the mapping was reversed (#323)
 - Core: `Entry.created_str` field added to preserve raw Atom 0.3 `<created>` date string (#301)
 - Core: `media:content` attributes `bitrate`, `channels`, `samplingrate`, and `framerate` are now parsed and exposed as strings on `MediaContent`, matching Python feedparser behavior (#294, #253)
 - Core, Python, Node.js bindings: `media:thumbnail` elements nested inside `<media:content>` are now collected into `entry.media_thumbnail` alongside top-level thumbnails, matching Python feedparser behavior (#270)

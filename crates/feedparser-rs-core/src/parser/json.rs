@@ -758,4 +758,41 @@ mod tests {
         assert_eq!(enc.title.as_deref(), Some("Episode 1"));
         assert_eq!(enc.duration.as_deref(), Some("7200"));
     }
+
+    #[test]
+    fn test_parse_author_avatar() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "authors": [
+                {
+                    "name": "Jane Doe",
+                    "url": "https://example.com/jane",
+                    "avatar": "https://example.com/jane/avatar.png"
+                }
+            ],
+            "items": [
+                {
+                    "id": "1",
+                    "authors": [
+                        {
+                            "name": "John Doe",
+                            "avatar": "https://example.com/john/avatar.jpg"
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert_eq!(
+            feed.feed.authors[0].avatar.as_deref(),
+            Some("https://example.com/jane/avatar.png")
+        );
+        assert_eq!(
+            feed.entries[0].authors[0].avatar.as_deref(),
+            Some("https://example.com/john/avatar.jpg")
+        );
+        assert!(!feed.bozo);
+    }
 }

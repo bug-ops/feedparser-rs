@@ -533,6 +533,8 @@ pub struct Person {
     pub email: Option<Email>,
     /// Person's URI/website
     pub uri: Option<String>,
+    /// Person's avatar image URL (JSON Feed only)
+    pub avatar: Option<String>,
 }
 
 impl Person {
@@ -554,6 +556,7 @@ impl Person {
             name: Some(name.as_ref().into()),
             email: None,
             uri: None,
+            avatar: None,
         }
     }
 
@@ -1097,6 +1100,7 @@ impl ParseFrom<&Value> for Person {
                 .map(std::convert::Into::into),
             email: None, // JSON Feed doesn't have email field
             uri: obj.get("url").and_then(Value::as_str).map(String::from),
+            avatar: obj.get("avatar").and_then(Value::as_str).map(String::from),
         })
     }
 }

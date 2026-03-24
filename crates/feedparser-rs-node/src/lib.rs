@@ -866,6 +866,8 @@ pub struct Person {
     pub email: Option<String>,
     /// Person's URI/website
     pub href: Option<String>,
+    /// Person's avatar image URL (JSON Feed only)
+    pub avatar: Option<String>,
 }
 
 impl From<CorePerson> for Person {
@@ -874,6 +876,7 @@ impl From<CorePerson> for Person {
             name: core.name.map(|s| s.to_string()),
             email: core.email.map(|e| e.into_inner()),
             href: core.uri,
+            avatar: core.avatar,
         }
     }
 }
