@@ -8,6 +8,7 @@
 [![codecov](https://codecov.io/gh/bug-ops/feedparser-rs/graph/badge.svg)](https://codecov.io/gh/bug-ops/feedparser-rs)
 [![MSRV](https://img.shields.io/badge/MSRV-1.88.0-blue)](https://blog.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-MIT)
+[![Hypercommit](https://img.shields.io/badge/Hypercommit-DB2475)](https://hypercommit.com/feedparser-rs)
 
 High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node.js bindings. A drop-in replacement for Python [feedparser](https://github.com/kurtmckee/feedparser) that is 90-100x faster.
 
