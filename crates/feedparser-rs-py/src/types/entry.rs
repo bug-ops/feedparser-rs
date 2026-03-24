@@ -1,14 +1,47 @@
 use feedparser_rs::Entry as CoreEntry;
+use feedparser_rs::namespace::georss::GeoLocation as CoreGeoLocation;
 use pyo3::exceptions::{PyAttributeError, PyKeyError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 use super::common::{PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct};
 use super::compat::ENTRY_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
-use super::geo::PyGeoLocation;
 use super::media::{PyMediaContent, PyMediaThumbnail};
 use super::podcast::{PyItunesEntryMeta, PyPodcastEntryMeta, PyPodcastPerson, PyPodcastTranscript};
 use super::thread::PyInReplyTo;
+
+/// Convert a [`CoreGeoLocation`] to a Python dict matching the Python feedparser `where` format:
+/// `{'type': 'Point', 'coordinates': (lon, lat)}` (GeoJSON coordinate order).
+fn geo_location_to_py_dict(py: Python<'_>, geo: &CoreGeoLocation) -> PyResult<Py<PyAny>> {
+    use feedparser_rs::namespace::georss::GeoType;
+    let dict = PyDict::new(py);
+    let type_str = match geo.geo_type {
+        GeoType::Point => "Point",
+        GeoType::Line => "LineString",
+        GeoType::Polygon => "Polygon",
+        GeoType::Box => "Box",
+    };
+    dict.set_item("type", type_str)?;
+    match geo.geo_type {
+        GeoType::Point => {
+            if let Some(&(lat, lon)) = geo.coordinates.first() {
+                dict.set_item("coordinates", (lon, lat))?;
+            } else {
+                dict.set_item("coordinates", py.None())?;
+            }
+        }
+        _ => {
+            let coords: Vec<(f64, f64)> = geo
+                .coordinates
+                .iter()
+                .map(|&(lat, lon)| (lon, lat))
+                .collect();
+            dict.set_item("coordinates", coords)?;
+        }
+    }
+    Ok(dict.into_any().unbind())
+}
 
 #[pyclass(name = "Entry", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
@@ -252,11 +285,12 @@ impl PyEntry {
     }
 
     #[getter]
-    fn geo(&self) -> Option<PyGeoLocation> {
+    fn where_(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
         self.inner
-            .geo
+            .r#where
             .as_deref()
-            .map(|g| PyGeoLocation::from_core(g.clone()))
+            .map(|g| geo_location_to_py_dict(py, g))
+            .transpose()
     }
 
     #[getter]
@@ -408,7 +442,7 @@ impl PyEntry {
             "podcast_transcripts",
             "podcast_persons",
             "license",
-            "geo",
+            "where",
             "dc_creator",
             "dc_date",
             "dc_date_parsed",
@@ -827,9 +861,9 @@ impl PyEntry {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
-            "geo" => {
-                if let Some(ref g) = self.inner.geo {
-                    Ok(Py::new(py, PyGeoLocation::from_core(g.as_ref().clone()))?.into_any())
+            "where" | "where_" => {
+                if let Some(ref g) = self.inner.r#where {
+                    Ok(geo_location_to_py_dict(py, g.as_ref())?)
                 } else {
                     Ok(py.None())
                 }
