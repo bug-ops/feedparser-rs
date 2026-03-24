@@ -25,6 +25,10 @@ pub struct Entry {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Rights/copyright statement
+    pub rights: Option<String>,
+    /// Detailed rights with metadata
+    pub rights_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -167,6 +171,13 @@ impl Entry {
     pub fn set_subtitle(&mut self, text: TextConstruct) {
         self.subtitle = Some(text.value.clone());
         self.subtitle_detail = Some(text);
+    }
+
+    /// Sets rights field with `TextConstruct`, storing both simple and detailed versions
+    #[inline]
+    pub fn set_rights(&mut self, mut text: TextConstruct) {
+        self.rights = Some(std::mem::take(&mut text.value));
+        self.rights_detail = Some(text);
     }
 
     /// Sets summary field with `TextConstruct`, storing both simple and detailed versions
