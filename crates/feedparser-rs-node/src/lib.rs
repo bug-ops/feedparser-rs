@@ -680,8 +680,8 @@ pub struct Link {
     pub link_type: Option<String>,
     /// Human-readable link title
     pub title: Option<String>,
-    /// Length of the linked resource in bytes
-    pub length: Option<i64>,
+    /// Length of the linked resource in bytes (raw string value, as in Python feedparser)
+    pub length: Option<String>,
     /// Language of the linked resource
     pub hreflang: Option<String>,
     /// RFC 4685 §4: number of replies at the IRI
@@ -700,7 +700,7 @@ impl From<CoreLink> for Link {
             rel: core.rel.map(|s| s.to_string()),
             link_type: core.link_type.map(|t| t.to_string()),
             title: core.title,
-            length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
+            length: core.length,
             hreflang: core.hreflang.map(|s| s.to_string()),
             thr_count: core.thr_count,
             thr_updated: core.thr_updated.as_ref().map(|dt| dt.to_rfc3339()),
@@ -786,8 +786,8 @@ impl From<CoreImage> for Image {
 pub struct Enclosure {
     /// Enclosure URL
     pub href: String,
-    /// File size in bytes
-    pub length: Option<i64>,
+    /// File size in bytes (raw string value, as in Python feedparser)
+    pub length: Option<String>,
     /// MIME type
     #[napi(js_name = "type")]
     pub enclosure_type: Option<String>,
@@ -797,7 +797,7 @@ impl From<CoreEnclosure> for Enclosure {
     fn from(core: CoreEnclosure) -> Self {
         Self {
             href: core.url.into_inner(),
-            length: core.length.map(|l| i64::try_from(l).unwrap_or(i64::MAX)),
+            length: core.length,
             enclosure_type: core.enclosure_type.map(|t| t.to_string()),
         }
     }
@@ -916,10 +916,10 @@ pub struct MediaThumbnail {
     ///
     /// Note: URL from untrusted feed input. Validate before fetching.
     pub url: String,
-    /// Width in pixels
-    pub width: Option<u32>,
-    /// Height in pixels
-    pub height: Option<u32>,
+    /// Width in pixels (raw string value, as in Python feedparser)
+    pub width: Option<String>,
+    /// Height in pixels (raw string value, as in Python feedparser)
+    pub height: Option<String>,
 }
 
 impl From<CoreMediaThumbnail> for MediaThumbnail {
@@ -946,10 +946,10 @@ pub struct MediaContent {
     pub medium: Option<String>,
     /// File size in bytes (converted from u64 with i64::MAX cap)
     pub filesize: Option<i64>,
-    /// Width in pixels
-    pub width: Option<u32>,
-    /// Height in pixels
-    pub height: Option<u32>,
+    /// Width in pixels (raw string value, as in Python feedparser)
+    pub width: Option<String>,
+    /// Height in pixels (raw string value, as in Python feedparser)
+    pub height: Option<String>,
     /// Duration in seconds (converted from u64 with i64::MAX cap)
     pub duration: Option<i64>,
 }

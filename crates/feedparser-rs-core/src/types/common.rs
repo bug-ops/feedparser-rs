@@ -437,8 +437,8 @@ pub struct Link {
     pub link_type: Option<MimeType>,
     /// Human-readable link title
     pub title: Option<String>,
-    /// Length of the linked resource in bytes
-    pub length: Option<u64>,
+    /// Length of the linked resource in bytes (raw string value, as in Python feedparser)
+    pub length: Option<String>,
     /// Language of the linked resource (stored inline for lang codes ≤24 bytes)
     pub hreflang: Option<SmallString>,
     /// RFC 4685 §4: number of replies at the IRI
@@ -603,8 +603,8 @@ pub struct Image {
 pub struct Enclosure {
     /// Enclosure URL
     pub url: Url,
-    /// File size in bytes
-    pub length: Option<u64>,
+    /// File size in bytes (raw string value, as in Python feedparser)
+    pub length: Option<String>,
     /// MIME type
     pub enclosure_type: Option<MimeType>,
 }
@@ -734,10 +734,10 @@ pub struct MediaThumbnail {
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub url: Url,
-    /// Thumbnail width in pixels
-    pub width: Option<u32>,
-    /// Thumbnail height in pixels
-    pub height: Option<u32>,
+    /// Thumbnail width in pixels (raw string value, as in Python feedparser)
+    pub width: Option<String>,
+    /// Thumbnail height in pixels (raw string value, as in Python feedparser)
+    pub height: Option<String>,
 }
 
 /// Media RSS content
@@ -756,10 +756,10 @@ pub struct MediaContent {
     pub medium: Option<String>,
     /// File size in bytes
     pub filesize: Option<u64>,
-    /// Media width in pixels
-    pub width: Option<u32>,
-    /// Media height in pixels
-    pub height: Option<u32>,
+    /// Media width in pixels (raw string value, as in Python feedparser)
+    pub width: Option<String>,
+    /// Media height in pixels (raw string value, as in Python feedparser)
+    pub height: Option<String>,
     /// Duration in seconds (for audio/video)
     pub duration: Option<u64>,
 }
@@ -788,7 +788,7 @@ impl FromAttributes for Link {
                 b"type" => link_type = Some(bytes_to_string(&attr.value)),
                 b"title" => title = Some(bytes_to_string(&attr.value)),
                 b"hreflang" => hreflang = Some(bytes_to_string(&attr.value)),
-                b"length" => length = bytes_to_string(&attr.value).parse().ok(),
+                b"length" => length = Some(bytes_to_string(&attr.value)),
                 b"thr:count" => {
                     thr_count = bytes_to_string(&attr.value).trim().parse::<u32>().ok();
                 }
@@ -868,7 +868,7 @@ impl FromAttributes for Enclosure {
 
             match attr.key.as_ref() {
                 b"url" => url = Some(bytes_to_string(&attr.value)),
-                b"length" => length = bytes_to_string(&attr.value).parse().ok(),
+                b"length" => length = Some(bytes_to_string(&attr.value)),
                 b"type" => enclosure_type = Some(bytes_to_string(&attr.value)),
                 _ => {}
             }
@@ -898,8 +898,8 @@ impl FromAttributes for MediaThumbnail {
 
             match attr.key.as_ref() {
                 b"url" => url = Some(bytes_to_string(&attr.value)),
-                b"width" => width = bytes_to_string(&attr.value).parse().ok(),
-                b"height" => height = bytes_to_string(&attr.value).parse().ok(),
+                b"width" => width = Some(bytes_to_string(&attr.value)),
+                b"height" => height = Some(bytes_to_string(&attr.value)),
                 _ => {}
             }
         }
@@ -935,8 +935,8 @@ impl FromAttributes for MediaContent {
                 b"type" => content_type = Some(bytes_to_string(&attr.value)),
                 b"medium" => medium = Some(bytes_to_string(&attr.value)),
                 b"fileSize" => filesize = bytes_to_string(&attr.value).parse().ok(),
-                b"width" => width = bytes_to_string(&attr.value).parse().ok(),
-                b"height" => height = bytes_to_string(&attr.value).parse().ok(),
+                b"width" => width = Some(bytes_to_string(&attr.value)),
+                b"height" => height = Some(bytes_to_string(&attr.value)),
                 b"duration" => duration = bytes_to_string(&attr.value).parse().ok(),
                 _ => {}
             }
@@ -981,7 +981,10 @@ impl ParseFrom<&Value> for Enclosure {
         let url = obj.get("url").and_then(Value::as_str)?;
         Some(Self {
             url: Url::new(url),
-            length: obj.get("size_in_bytes").and_then(Value::as_u64),
+            length: obj
+                .get("size_in_bytes")
+                .and_then(Value::as_u64)
+                .map(|v| v.to_string()),
             enclosure_type: obj
                 .get("mime_type")
                 .and_then(Value::as_str)
@@ -1083,7 +1086,7 @@ mod tests {
         let enclosure = Enclosure::parse_from(&json).unwrap();
         assert_eq!(enclosure.url, "https://example.com/file.mp3");
         assert_eq!(enclosure.enclosure_type.as_deref(), Some("audio/mpeg"));
-        assert_eq!(enclosure.length, Some(12345));
+        assert_eq!(enclosure.length.as_deref(), Some("12345"));
     }
 
     #[test]

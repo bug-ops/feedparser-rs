@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Core, Python, Node.js bindings: `Link.length`, `Enclosure.length`, `MediaContent.width`, `MediaContent.height`, `MediaThumbnail.width`, and `MediaThumbnail.height` now return `str` (raw XML attribute value) instead of an integer, matching Python feedparser behavior; non-numeric values are preserved as-is rather than silently dropped (#173)
 - Python and Node.js bindings: `entry.slash_comments` now returns a string (e.g. `'42'`) instead of an integer, matching Python feedparser behavior and the existing `thr_total` string convention (#168)
 - Core: truncated or unclosed XML feeds (RSS 2.0, Atom, RSS 1.0) now set `bozo=true` with `bozo_exception="Feed is truncated or has unclosed XML elements"`; previously the parsers silently ignored EOF without inspecting whether open elements remained unclosed (#165)
 - Populate `ParsedFeed.namespaces` HashMap from `xmlns:` declarations on root elements (`<rss>`, `<channel>`, `<feed>`, `<rdf:RDF>`); default namespace `xmlns=""` uses key `""`, prefixed namespaces `xmlns:dc=""` use the prefix as key; enforces `max_namespaces` and `max_attribute_length` limits with bozo flag on overflow (#163)

@@ -100,8 +100,8 @@ fn test_rss_with_media_rss() {
     // Media thumbnails
     assert_eq!(entry.media_thumbnail.len(), 1);
     assert_eq!(entry.media_thumbnail[0].url, "http://example.com/thumb.jpg");
-    assert_eq!(entry.media_thumbnail[0].width, Some(120));
-    assert_eq!(entry.media_thumbnail[0].height, Some(90));
+    assert_eq!(entry.media_thumbnail[0].width.as_deref(), Some("120"));
+    assert_eq!(entry.media_thumbnail[0].height.as_deref(), Some("90"));
 
     // Media content
     assert_eq!(entry.media_content.len(), 1);
@@ -111,8 +111,8 @@ fn test_rss_with_media_rss() {
         Some("video/mp4")
     );
     assert_eq!(entry.media_content[0].filesize, Some(1_024_000));
-    assert_eq!(entry.media_content[0].width, Some(1920));
-    assert_eq!(entry.media_content[0].height, Some(1080));
+    assert_eq!(entry.media_content[0].width.as_deref(), Some("1920"));
+    assert_eq!(entry.media_content[0].height.as_deref(), Some("1080"));
     assert_eq!(entry.media_content[0].duration, Some(600));
 }
 

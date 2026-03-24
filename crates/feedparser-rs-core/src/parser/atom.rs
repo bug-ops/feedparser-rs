@@ -399,7 +399,7 @@ fn parse_entry(
                                 entry.enclosures.try_push_limited(
                                     Enclosure {
                                         url: link.href.clone(),
-                                        length: link.length,
+                                        length: link.length.clone(),
                                         enclosure_type: link.link_type.clone(),
                                     },
                                     limits.max_enclosures,
