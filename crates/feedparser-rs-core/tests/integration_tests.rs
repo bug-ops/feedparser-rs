@@ -689,3 +689,55 @@ fn test_rss20_entity_whitespace_preserved() {
     // &amp; entity with adjacent spaces
     assert_eq!(feed.entries[4].summary.as_deref(), Some("foo & bar"));
 }
+
+#[test]
+fn test_atom_content_xhtml_type_normalization() {
+    let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Feed</title>
+  <id>urn:test:xhtml-normalization</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <title>Entry</title>
+    <id>urn:test:entry1</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></content>
+  </entry>
+  <entry>
+    <title>Entry 2</title>
+    <id>urn:test:entry2</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;Hello&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <title>Entry 3</title>
+    <id>urn:test:entry3</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="text">plain text</content>
+  </entry>
+</feed>"#;
+
+    let feed = parse(xml).unwrap();
+    assert_eq!(feed.entries.len(), 3);
+
+    let xhtml_type = feed.entries[0].content[0].content_type.as_deref();
+    assert_eq!(
+        xhtml_type,
+        Some("application/xhtml+xml"),
+        "xhtml should normalize to application/xhtml+xml"
+    );
+
+    let html_type = feed.entries[1].content[0].content_type.as_deref();
+    assert_eq!(
+        html_type,
+        Some("text/html"),
+        "html should normalize to text/html"
+    );
+
+    let text_type = feed.entries[2].content[0].content_type.as_deref();
+    assert_eq!(
+        text_type,
+        Some("text/plain"),
+        "text should normalize to text/plain"
+    );
+}
