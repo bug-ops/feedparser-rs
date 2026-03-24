@@ -209,8 +209,9 @@ fn parse_feed_element(
                 // Use name() instead of local_name() to preserve namespace prefixes
                 match element.name().as_ref() {
                     b"title" if !is_empty => {
-                        let text =
-                            parse_text_construct(reader, &mut buf, &element, limits, feed_lang)?;
+                        let text = parse_text_construct(
+                            reader, &mut buf, &element, limits, feed_lang, base_ctx,
+                        )?;
                         feed.feed.set_title(text);
                     }
                     b"link" => {
@@ -240,8 +241,9 @@ fn parse_feed_element(
                         }
                     }
                     b"subtitle" | b"tagline" if !is_empty => {
-                        let text =
-                            parse_text_construct(reader, &mut buf, &element, limits, feed_lang)?;
+                        let text = parse_text_construct(
+                            reader, &mut buf, &element, limits, feed_lang, base_ctx,
+                        )?;
                         feed.feed.set_subtitle(text);
                     }
                     b"id" if !is_empty => {
@@ -304,8 +306,9 @@ fn parse_feed_element(
                         feed.feed.logo = Some(base_ctx.resolve_safe(&url));
                     }
                     b"rights" | b"copyright" if !is_empty => {
-                        let text =
-                            parse_text_construct(reader, &mut buf, &element, limits, feed_lang)?;
+                        let text = parse_text_construct(
+                            reader, &mut buf, &element, limits, feed_lang, base_ctx,
+                        )?;
                         feed.feed.set_rights(text);
                     }
                     b"entry" if !is_empty => {
@@ -639,7 +642,9 @@ fn parse_entry(
                 // Use name() instead of local_name() to preserve namespace prefixes
                 match element.name().as_ref() {
                     b"title" if !is_empty => {
-                        let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
+                        let text = parse_text_construct(
+                            reader, buf, &element, limits, entry_lang, base_ctx,
+                        )?;
                         entry.set_title(text);
                     }
                     b"link" => {
@@ -696,29 +701,37 @@ fn parse_entry(
                         entry.created_str = Some(text);
                     }
                     b"subtitle" | b"tagline" if !is_empty => {
-                        let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
+                        let text = parse_text_construct(
+                            reader, buf, &element, limits, entry_lang, base_ctx,
+                        )?;
                         entry.set_subtitle(text);
                     }
                     b"rights" | b"copyright" if !is_empty => {
-                        let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
+                        let text = parse_text_construct(
+                            reader, buf, &element, limits, entry_lang, base_ctx,
+                        )?;
                         entry.set_rights(text);
                     }
                     b"summary" if !is_empty => {
-                        let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
+                        let text = parse_text_construct(
+                            reader, buf, &element, limits, entry_lang, base_ctx,
+                        )?;
                         entry.set_summary(text);
                     }
                     b"content" => {
                         // Handle both inline content (<content>...</content>) and
                         // out-of-line content (<content src="..." />, RFC 4287 §4.1.3.2).
                         if is_empty {
-                            if let Some(content) = parse_content_empty(&element, limits, entry_lang)
+                            if let Some(content) =
+                                parse_content_empty(&element, limits, entry_lang, base_ctx)
                             {
                                 entry
                                     .content
                                     .try_push_limited(content, limits.max_content_blocks);
                             }
                         } else {
-                            let content = parse_content(reader, buf, &element, limits, entry_lang)?;
+                            let content =
+                                parse_content(reader, buf, &element, limits, entry_lang, base_ctx)?;
                             entry
                                 .content
                                 .try_push_limited(content, limits.max_content_blocks);
@@ -770,7 +783,13 @@ fn parse_entry(
                             if !is_empty {
                                 let (text, had_bozo) = read_text(reader, buf, limits)?;
                                 *bozo |= had_bozo;
-                                content::handle_entry_element(&content_elem, &text, &mut entry);
+                                content::handle_entry_element(
+                                    &content_elem,
+                                    &text,
+                                    &mut entry,
+                                    entry_lang,
+                                    base_ctx.base(),
+                                );
                             }
                             true
                         } else if let Some(media_element) = is_media_tag(tag) {
@@ -1111,20 +1130,36 @@ fn parse_text_construct(
     e: &quick_xml::events::BytesStart,
     limits: &ParserLimits,
     lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
 ) -> Result<TextConstruct> {
     let mut content_type = TextType::Text;
+    let mut elem_base: Option<String> = None;
+    let mut elem_lang: Option<String> = None;
 
     for attr in e.attributes().flatten() {
         if attr.value.len() > limits.max_attribute_length {
             continue;
         }
-        if attr.key.as_ref() == b"type" {
-            match attr.value.as_ref() {
+        match attr.key.as_ref() {
+            b"type" => match attr.value.as_ref() {
                 b"text" => content_type = TextType::Text,
                 b"html" => content_type = TextType::Html,
                 b"xhtml" => content_type = TextType::Xhtml,
                 _ => {}
+            },
+            b"xml:base" | b"base" => {
+                if let Ok(v) = attr.unescape_value()
+                    && !v.is_empty()
+                {
+                    elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
+                }
             }
+            b"xml:lang" | b"lang" => {
+                if let Ok(v) = attr.unescape_value() {
+                    elem_lang = Some(v.to_string());
+                }
+            }
+            _ => {}
         }
     }
 
@@ -1133,11 +1168,18 @@ fn parse_text_construct(
         _ => read_text_str(reader, buf, limits)?,
     };
 
+    // Element-level xml:lang overrides parent lang; empty string clears it (XML spec)
+    let effective_lang = match &elem_lang {
+        Some(l) if l.is_empty() => None,
+        Some(l) => Some(l.as_str()),
+        None => lang,
+    };
+
     Ok(TextConstruct {
         value,
         content_type,
-        language: lang.map(Into::into),
-        base: None,
+        language: effective_lang.filter(|s| !s.is_empty()).map(Into::into),
+        base: elem_base.or_else(|| base_ctx.base().map(ToString::to_string)),
     })
 }
 
@@ -1222,10 +1264,13 @@ fn parse_content(
     e: &quick_xml::events::BytesStart,
     limits: &ParserLimits,
     lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
 ) -> Result<Content> {
     let mut content_type = None;
     let mut is_xhtml = false;
     let mut src = None;
+    let mut elem_base: Option<String> = None;
+    let mut elem_lang: Option<String> = None;
 
     for attr in e.attributes().flatten() {
         if attr.value.len() > limits.max_attribute_length {
@@ -1245,9 +1290,29 @@ fn parse_content(
                 content_type = Some(normalized.into());
             }
             b"src" => src = Some(bytes_to_string(&attr.value)),
+            b"xml:base" | b"base" => {
+                if let Ok(v) = attr.unescape_value()
+                    && !v.is_empty()
+                {
+                    elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
+                }
+            }
+            b"xml:lang" | b"lang" => {
+                if let Ok(v) = attr.unescape_value() {
+                    elem_lang = Some(v.to_string());
+                }
+            }
             _ => {}
         }
     }
+
+    // Element-level xml:lang overrides parent lang; empty string clears it (XML spec)
+    let effective_lang = match &elem_lang {
+        Some(l) if l.is_empty() => None,
+        Some(l) => Some(l.as_str()),
+        None => lang,
+    };
+    let effective_base = elem_base.or_else(|| base_ctx.base().map(ToString::to_string));
 
     // RFC 4287 §4.1.3.2: when src is present, content is out-of-line; value is empty.
     if src.is_some() {
@@ -1255,8 +1320,8 @@ fn parse_content(
         return Ok(Content {
             value: String::new(),
             content_type,
-            language: lang.map(Into::into),
-            base: None,
+            language: effective_lang.filter(|s| !s.is_empty()).map(Into::into),
+            base: effective_base,
             src,
         });
     }
@@ -1270,8 +1335,8 @@ fn parse_content(
     Ok(Content {
         value,
         content_type,
-        language: lang.map(Into::into),
-        base: None,
+        language: effective_lang.filter(|s| !s.is_empty()).map(Into::into),
+        base: effective_base,
         src: None,
     })
 }
@@ -1411,9 +1476,12 @@ fn parse_content_empty(
     e: &quick_xml::events::BytesStart,
     limits: &ParserLimits,
     lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
 ) -> Option<Content> {
     let mut content_type = None;
     let mut src = None;
+    let mut elem_base: Option<String> = None;
+    let mut elem_lang: Option<String> = None;
 
     for attr in e.attributes().flatten() {
         if attr.value.len() > limits.max_attribute_length {
@@ -1430,15 +1498,34 @@ fn parse_content_empty(
                 content_type = Some(normalized.into());
             }
             b"src" => src = Some(bytes_to_string(&attr.value)),
+            b"xml:base" | b"base" => {
+                if let Ok(v) = attr.unescape_value()
+                    && !v.is_empty()
+                {
+                    elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
+                }
+            }
+            b"xml:lang" | b"lang" => {
+                if let Ok(v) = attr.unescape_value() {
+                    elem_lang = Some(v.to_string());
+                }
+            }
             _ => {}
         }
     }
 
+    let effective_lang = match &elem_lang {
+        Some(l) if l.is_empty() => None,
+        Some(l) => Some(l.as_str()),
+        None => lang,
+    };
+    let effective_base = elem_base.or_else(|| base_ctx.base().map(ToString::to_string));
+
     src.map(|src_val| Content {
         value: String::new(),
         content_type,
-        language: lang.map(Into::into),
-        base: None,
+        language: effective_lang.filter(|s| !s.is_empty()).map(Into::into),
+        base: effective_base,
         src: Some(src_val),
     })
 }
@@ -3303,6 +3390,175 @@ mod tests {
         assert_eq!(
             itunes.categories[0].subcategory.as_deref(),
             Some("Software How-To")
+        );
+    }
+
+    #[test]
+    fn test_atom_base_propagates_to_text_constructs() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:base="http://example.com/" xml:lang="en">
+  <title>Test Feed</title>
+  <entry>
+    <id>1</id>
+    <title>Entry Title</title>
+    <summary>Entry Summary</summary>
+    <updated>2024-01-01T00:00:00Z</updated>
+  </entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+        assert_eq!(
+            entry.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("en")
+        );
+        assert_eq!(
+            entry.title_detail.as_ref().unwrap().base.as_deref(),
+            Some("http://example.com/")
+        );
+        assert_eq!(
+            entry.summary_detail.as_ref().unwrap().language.as_deref(),
+            Some("en")
+        );
+        assert_eq!(
+            entry.summary_detail.as_ref().unwrap().base.as_deref(),
+            Some("http://example.com/")
+        );
+    }
+
+    #[test]
+    fn test_atom_entry_level_lang_overrides_feed_lang() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+  <title>Feed</title>
+  <entry xml:lang="fr">
+    <id>1</id>
+    <title>Titre</title>
+    <updated>2024-01-01T00:00:00Z</updated>
+  </entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.entries[0]
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
+            Some("fr")
+        );
+    }
+
+    #[test]
+    fn test_atom_feed_level_lang_on_title() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="de" xml:base="http://example.com/">
+  <title>Feed Titel</title>
+  <subtitle>Untertitel</subtitle>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.feed.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("de")
+        );
+        assert_eq!(
+            feed.feed.title_detail.as_ref().unwrap().base.as_deref(),
+            Some("http://example.com/")
+        );
+    }
+
+    #[test]
+    fn test_atom_no_lang_yields_none() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>No Lang Feed</title>
+  <entry>
+    <id>1</id>
+    <title>Entry</title>
+    <updated>2024-01-01T00:00:00Z</updated>
+  </entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.title_detail.as_ref().unwrap().language.is_none());
+        assert!(feed.feed.title_detail.as_ref().unwrap().base.is_none());
+        assert!(
+            feed.entries[0]
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_atom_element_level_empty_lang_clears_inherited() {
+        // xml:lang="" on a text construct clears the parent-inherited language (XML spec).
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+  <title xml:lang="">Cleared Lang Title</title>
+  <entry>
+    <id>1</id>
+    <title xml:lang="">Cleared Entry Title</title>
+    <summary>Inherited Summary</summary>
+    <updated>2024-01-01T00:00:00Z</updated>
+  </entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        // Element-level xml:lang="" must clear the inherited "en"
+        assert!(
+            feed.feed.title_detail.as_ref().unwrap().language.is_none(),
+            "feed title with xml:lang=\"\" should have None language"
+        );
+        assert!(
+            feed.entries[0]
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .is_none(),
+            "entry title with xml:lang=\"\" should have None language"
+        );
+        // summary has no xml:lang override -> inherits feed-level "en"
+        assert_eq!(
+            feed.entries[0]
+                .summary_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
+            Some("en"),
+            "entry summary without xml:lang override should inherit feed lang"
+        );
+    }
+
+    #[test]
+    fn test_atom_entry_level_empty_lang_clears_inherited() {
+        // xml:lang="" on <entry> clears feed-level inherited lang for all its children.
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="de">
+  <title>Feed</title>
+  <entry xml:lang="">
+    <id>1</id>
+    <title>Entry</title>
+    <updated>2024-01-01T00:00:00Z</updated>
+  </entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        // Entry with xml:lang="" should not inherit "de" from feed
+        assert!(
+            feed.entries[0]
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .is_none(),
+            "entry title under xml:lang=\"\" entry should have None language"
         );
     }
 }

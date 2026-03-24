@@ -12,13 +12,14 @@ use crate::{
     error::{FeedError, Result},
     namespace::{content, dublin_core, georss, syndication, threading},
     types::{Entry, FeedVersion, Image, ParsedFeed, TextConstruct, TextType},
+    util::base_url::BaseUrlContext,
 };
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
-    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, init_feed,
-    is_content_tag, is_dc_tag, is_geo_tag, is_georss_tag, is_syn_tag, is_thr_tag, read_text,
-    read_text_str, skip_element,
+    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_base,
+    extract_xml_lang, init_feed, is_content_tag, is_dc_tag, is_geo_tag, is_georss_tag, is_syn_tag,
+    is_thr_tag, read_text, read_text_str, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -72,6 +73,8 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     let mut feed = init_feed(FeedVersion::Rss10, limits.max_entries);
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
+    let mut rdf_lang: Option<String> = None;
+    let mut base_ctx = BaseUrlContext::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -84,6 +87,12 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                 // Handle RDF root element - continue to parse children
                 if name.as_ref() == b"RDF" || full_name.as_ref() == b"rdf:RDF" {
                     extract_namespaces(&e, &mut feed, &limits);
+                    // Extract xml:lang and xml:base from <rdf:RDF> root
+                    rdf_lang =
+                        extract_xml_lang(&e, limits.max_attribute_length).filter(|s| !s.is_empty());
+                    if let Some(xml_base) = extract_xml_base(&e, limits.max_attribute_length) {
+                        base_ctx.update_base(&xml_base);
+                    }
                 } else if name.as_ref() == b"channel" {
                     // Extract rdf:about as feed ID
                     for attr in e.attributes().flatten() {
@@ -123,6 +132,15 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                         }
                     });
 
+                    // Extract item-level xml:lang (falls back to rdf_lang) and xml:base
+                    let item_lang_owned =
+                        extract_xml_lang(&e, limits.max_attribute_length).filter(|s| !s.is_empty());
+                    let effective_item_lang = item_lang_owned.as_deref().or(rdf_lang.as_deref());
+                    let item_base_owned = extract_xml_base(&e, limits.max_attribute_length);
+                    let item_base_ctx = item_base_owned
+                        .as_deref()
+                        .map_or_else(|| base_ctx.child(), |b| base_ctx.child_with_base(b));
+
                     // Check entry limit (inline to avoid borrow issues)
                     if feed.entries.is_at_limit(limits.max_entries) {
                         feed.bozo = true;
@@ -142,6 +160,8 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                         &mut depth,
                         item_id,
                         &mut item_bozo,
+                        effective_item_lang,
+                        &item_base_ctx,
                     ) {
                         Ok(entry) => {
                             if item_bozo && !feed.bozo {
@@ -287,6 +307,7 @@ fn parse_channel(
 }
 
 /// Parse <item> element (entry)
+#[allow(clippy::too_many_arguments)]
 fn parse_item(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -294,6 +315,8 @@ fn parse_item(
     depth: &mut usize,
     item_id: Option<String>,
     bozo: &mut bool,
+    lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
     entry.id = item_id.map(std::convert::Into::into);
@@ -316,7 +339,13 @@ fn parse_item(
                     b"title" => {
                         let (text, had_bozo) = read_text(reader, buf, limits)?;
                         *bozo |= had_bozo;
-                        entry.title = Some(text);
+                        entry.title = Some(text.clone());
+                        entry.title_detail = Some(TextConstruct {
+                            value: text,
+                            content_type: TextType::Text,
+                            language: lang.filter(|s| !s.is_empty()).map(Into::into),
+                            base: base_ctx.base().map(ToString::to_string),
+                        });
                     }
                     b"link" => {
                         let link_text = read_text_str(reader, buf, limits)?;
@@ -329,8 +358,8 @@ fn parse_item(
                         entry.summary_detail = Some(TextConstruct {
                             value: desc,
                             content_type: TextType::Html,
-                            language: None,
-                            base: None,
+                            language: lang.filter(|s| !s.is_empty()).map(Into::into),
+                            base: base_ctx.base().map(ToString::to_string),
                         });
                     }
                     _ => {
@@ -345,7 +374,13 @@ fn parse_item(
                             let content_elem = content_element.to_string();
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
-                            content::handle_entry_element(&content_elem, &text, &mut entry);
+                            content::handle_entry_element(
+                                &content_elem,
+                                &text,
+                                &mut entry,
+                                lang,
+                                base_ctx.base(),
+                            );
                         } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
                             let georss_elem = georss_element.to_string();
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -824,5 +859,76 @@ mod tests {
 <RDF><channel><title>T</title><link>http://x.com</link><description>D</description></channel></RDF>"#;
         let feed = parse_rss10(xml).unwrap();
         assert!(feed.namespaces.is_empty());
+    }
+
+    #[test]
+    fn test_rss10_xml_lang_from_rdf_root_propagates_to_items() {
+        let xml = br#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/"
+         xml:lang="de">
+  <channel rdf:about="http://example.com/">
+    <title>Test Feed</title>
+    <link>http://example.com/</link>
+    <description>Beschreibung</description>
+  </channel>
+  <item rdf:about="http://example.com/1">
+    <title>Artikel</title>
+    <link>http://example.com/1</link>
+    <description>Inhalt</description>
+  </item>
+</rdf:RDF>"#;
+        let feed = parse_rss10(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+        assert_eq!(
+            entry.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("de")
+        );
+        assert_eq!(
+            entry.summary_detail.as_ref().unwrap().language.as_deref(),
+            Some("de")
+        );
+    }
+
+    #[test]
+    fn test_rss10_item_xml_lang_overrides_rdf_lang() {
+        let xml = br#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/"
+         xml:lang="de">
+  <channel rdf:about="http://example.com/"><title>T</title><link>http://example.com/</link><description>D</description></channel>
+  <item rdf:about="http://example.com/1" xml:lang="fr">
+    <title>Titre</title>
+    <link>http://example.com/1</link>
+    <description>Contenu</description>
+  </item>
+</rdf:RDF>"#;
+        let feed = parse_rss10(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+        assert_eq!(
+            entry.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("fr")
+        );
+    }
+
+    #[test]
+    fn test_rss10_no_xml_lang_yields_none() {
+        let xml = br#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/">
+  <channel rdf:about="http://example.com/"><title>T</title><link>http://example.com/</link><description>D</description></channel>
+  <item rdf:about="http://example.com/1">
+    <title>Title</title>
+    <link>http://example.com/1</link>
+    <description>Summary</description>
+  </item>
+</rdf:RDF>"#;
+        let feed = parse_rss10(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+        assert!(entry.title_detail.as_ref().unwrap().language.is_none());
+        assert!(entry.summary_detail.as_ref().unwrap().language.is_none());
     }
 }
