@@ -119,10 +119,9 @@ def test_georss_point():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.geo is not None
-    assert entry.geo.geo_type == "point"
-    assert entry.geo.coordinates == [(45.256, -71.92)]
-    assert entry.geo.srs_name is None
+    assert entry.where_ is not None
+    assert entry.where_["type"] == "Point"
+    assert entry.where_["coordinates"] == (-71.92, 45.256)  # GeoJSON (lon, lat)
 
 
 def test_georss_line():
@@ -142,9 +141,9 @@ def test_georss_line():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.geo is not None
-    assert entry.geo.geo_type == "line"
-    assert entry.geo.coordinates == [(45.256, -71.92), (46.456, -72.12)]
+    assert entry.where_ is not None
+    assert entry.where_["type"] == "LineString"
+    assert entry.where_["coordinates"] == [(-71.92, 45.256), (-72.12, 46.456)]  # GeoJSON (lon, lat)
 
 
 def test_georss_polygon():
@@ -164,11 +163,11 @@ def test_georss_polygon():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.geo is not None
-    assert entry.geo.geo_type == "polygon"
-    assert len(entry.geo.coordinates) == 5
-    assert entry.geo.coordinates[0] == (45.0, -71.0)
-    assert entry.geo.coordinates[4] == (45.0, -71.0)  # Closed polygon
+    assert entry.where_ is not None
+    assert entry.where_["type"] == "Polygon"
+    assert len(entry.where_["coordinates"]) == 5
+    assert entry.where_["coordinates"][0] == (-71.0, 45.0)   # GeoJSON (lon, lat)
+    assert entry.where_["coordinates"][4] == (-71.0, 45.0)   # Closed polygon
 
 
 def test_georss_box():
@@ -188,11 +187,11 @@ def test_georss_box():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.geo is not None
-    assert entry.geo.geo_type == "box"
-    assert len(entry.geo.coordinates) == 2
-    assert entry.geo.coordinates[0] == (42.943, -71.032)
-    assert entry.geo.coordinates[1] == (43.039, -69.856)
+    assert entry.where_ is not None
+    assert entry.where_["type"] == "Box"
+    assert len(entry.where_["coordinates"]) == 2
+    assert entry.where_["coordinates"][0] == (-71.032, 42.943)  # GeoJSON (lon, lat)
+    assert entry.where_["coordinates"][1] == (-69.856, 43.039)
 
 
 def test_georss_srs_name():
@@ -212,11 +211,11 @@ def test_georss_srs_name():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.geo is not None
+    assert entry.where_ is not None
     # Note: srsName parsing may not be implemented yet
-    # Just verify the basic geo structure works
-    assert entry.geo.geo_type == "point"
-    assert entry.geo.coordinates == [(45.256, -71.92)]
+    # Just verify the basic where structure works
+    assert entry.where_["type"] == "Point"
+    assert entry.where_["coordinates"] == (-71.92, 45.256)  # GeoJSON (lon, lat)
 
 
 def test_dublin_core_creator():
@@ -516,7 +515,7 @@ def test_none_values_for_missing_objects():
     entry = result.entries[0]
 
     # Single objects should be None when missing
-    assert entry.geo is None
+    assert entry.where_ is None
     assert entry.dc_creator is None
     assert entry.dc_date is None
     assert entry.dc_date_parsed is None
@@ -570,7 +569,7 @@ def test_media_content_repr():
 
 
 def test_geo_location_repr():
-    """Test GeoLocation __repr__"""
+    """Test where field returns GeoJSON-shaped dict"""
     xml = b"""<?xml version="1.0"?>
     <rss version="2.0" xmlns:georss="http://www.georss.org/georss">
         <channel>
@@ -583,14 +582,12 @@ def test_geo_location_repr():
     """
 
     result = feedparser_rs.parse(xml)
-    geo = result.entries[0].geo
+    where = result.entries[0].where_
 
-    repr_str = repr(geo)
-    assert "GeoLocation" in repr_str
-    assert "point" in repr_str
-    # Should show actual coordinates for Point, not just count
-    assert "45.256" in repr_str
-    assert "-71.92" in repr_str
+    assert isinstance(where, dict)
+    assert where["type"] == "Point"
+    # Coordinates in GeoJSON order: (lon, lat)
+    assert where["coordinates"] == (-71.92, 45.256)
 
 
 def test_person_href_attribute():
