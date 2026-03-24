@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Atom feeds with `type="xhtml"` content now preserve inner HTML markup; the outer `<div xmlns="...xhtml">` wrapper is stripped per RFC 4287 §3.1.1.3; applies to `content`, `summary`, `title`, `rights`, and `subtitle` fields; previously all tags were stripped leaving bare concatenated text (#169)
 - Atom `<content type="xhtml">` now normalizes the `content_type` field to `"application/xhtml+xml"`; `"html"` normalizes to `"text/html"` and `"text"` to `"text/plain"`, matching Python feedparser MIME type output (#170)
 - Python and Node.js bindings: `entry.slash_comments` now returns a string (e.g. `'42'`) instead of an integer, matching Python feedparser behavior and the existing `thr_total` string convention (#168)
 - Core: truncated or unclosed XML feeds (RSS 2.0, Atom, RSS 1.0) now set `bozo=true` with `bozo_exception="Feed is truncated or has unclosed XML elements"`; previously the parsers silently ignored EOF without inspecting whether open elements remained unclosed (#165)
