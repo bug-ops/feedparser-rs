@@ -68,7 +68,7 @@ def test_media_content():
     assert video.filesize == 1048576
     assert video.width == "1920"
     assert video.height == "1080"
-    assert video.duration == 300
+    assert video.duration == "300"
 
     # Audio with minimal attributes
     audio = entry.media_content[1]

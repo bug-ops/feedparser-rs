@@ -367,14 +367,30 @@ export interface MediaContent {
   url: string
   /** MIME type */
   type?: string
+  /** Medium type: "image", "video", "audio", "document", "executable" */
+  medium?: string
   /** File size in bytes (converted from u64 with i64::MAX cap) */
   filesize?: number
-  /** Width in pixels */
-  width?: number
-  /** Height in pixels */
-  height?: number
-  /** Duration in seconds (converted from u64 with i64::MAX cap) */
-  duration?: number
+  /** Width in pixels (raw string value) */
+  width?: string
+  /** Height in pixels (raw string value) */
+  height?: string
+  /** Duration (raw string value) */
+  duration?: string
+  /** Bitrate in kilobits per second (raw string value) */
+  bitrate?: string
+  /** Language of the media */
+  lang?: string
+  /** Number of audio channels (raw string value) */
+  channels?: string
+  /** Codec used to produce the media */
+  codec?: string
+  /** Expression type: "full", "sample", "nonstop" */
+  expression?: string
+  /** Whether this is the default media object (raw string value) */
+  isdefault?: string
+  /** Sampling rate in kHz (raw string value) */
+  samplingrate?: string
 }
 
 /** Media RSS thumbnail */

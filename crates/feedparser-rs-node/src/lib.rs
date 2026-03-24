@@ -962,8 +962,22 @@ pub struct MediaContent {
     pub width: Option<String>,
     /// Height in pixels (raw string value, as in Python feedparser)
     pub height: Option<String>,
-    /// Duration in seconds (converted from u64 with i64::MAX cap)
-    pub duration: Option<i64>,
+    /// Duration (raw string value, as in Python feedparser)
+    pub duration: Option<String>,
+    /// Bitrate in kilobits per second (raw string value)
+    pub bitrate: Option<String>,
+    /// Language of the media
+    pub lang: Option<String>,
+    /// Number of audio channels (raw string value)
+    pub channels: Option<String>,
+    /// Codec used to produce the media
+    pub codec: Option<String>,
+    /// Expression type: "full", "sample", "nonstop"
+    pub expression: Option<String>,
+    /// Whether this is the default media object (raw string value)
+    pub isdefault: Option<String>,
+    /// Sampling rate in kHz (raw string value)
+    pub samplingrate: Option<String>,
 }
 
 impl From<CoreMediaContent> for MediaContent {
@@ -975,7 +989,14 @@ impl From<CoreMediaContent> for MediaContent {
             filesize: core.filesize.map(|f| i64::try_from(f).unwrap_or(i64::MAX)),
             width: core.width,
             height: core.height,
-            duration: core.duration.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
+            duration: core.duration,
+            bitrate: core.bitrate,
+            lang: core.lang,
+            channels: core.channels,
+            codec: core.codec,
+            expression: core.expression,
+            isdefault: core.isdefault,
+            samplingrate: core.samplingrate,
         }
     }
 }
