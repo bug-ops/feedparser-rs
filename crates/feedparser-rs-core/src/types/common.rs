@@ -718,10 +718,24 @@ pub struct Generator {
 pub struct Source {
     /// Source title
     pub title: Option<String>,
-    /// Source link
-    pub link: Option<String>,
-    /// Source ID
+    /// Primary source URL (renamed from `link` for Python feedparser API compatibility)
+    pub href: Option<String>,
+    /// Source unique identifier
     pub id: Option<String>,
+    /// All links from the source element
+    pub links: Vec<Link>,
+    /// Last update date (Atom `<updated>`)
+    pub updated: Option<DateTime<Utc>>,
+    /// Original update date string (timezone preserved)
+    pub updated_str: Option<String>,
+    /// Rights/copyright statement (Atom `<rights>`)
+    pub rights: Option<String>,
+    /// Whether `<id>` was used as the link.
+    ///
+    /// `Some(true)` when `<id>` looks like a URL and no explicit `<link>` was present.
+    /// `Some(false)` when `<id>` is present but a `<link>` was also present, or `<id>` is not a URL.
+    /// `None` for RSS sources (RSS `<source>` has no `<id>`).
+    pub guidislink: Option<bool>,
 }
 
 /// Media RSS thumbnail

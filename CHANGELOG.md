@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `entry.source.link` renamed to `entry.source.href` in core Rust type and Node.js bindings for Python feedparser API compatibility; Python binding retains `source.link` as an alias for `source.href` (#240)
+
+### Added
+
+- Core, Python, Node.js bindings: `entry.source` now exposes `links` (all link elements), `updated`/`updated_parsed`, `rights`, and `guidislink` fields for Atom `<source>` elements, matching Python feedparser (#242, #214)
+- Core: `entry.source.guidislink` is `Some(true)` when the Atom `<source>` `<id>` looks like a URL and no explicit `<link>` is present; `Some(false)` when an explicit `<link>` is present or the id is not a URL; `None` for RSS sources
+
 ## [0.5.0] - 2026-03-24
 
 ### Fixed

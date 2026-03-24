@@ -830,8 +830,14 @@ fn parse_atom_source(
     depth: &mut usize,
 ) -> Result<Source> {
     let mut title = None;
-    let mut link = None;
+    let mut href = None;
+    let mut first_link_href: Option<String> = None;
     let mut id = None;
+    let mut links = Vec::new();
+    let mut updated = None;
+    let mut updated_str = None;
+    let mut rights = None;
+    let mut has_explicit_link = false;
 
     loop {
         match reader.read_event_into(buf) {
@@ -849,18 +855,33 @@ fn parse_atom_source(
                 match element.name().as_ref() {
                     b"title" if !is_empty => title = Some(read_text_str(reader, buf, limits)?),
                     b"link" => {
-                        if let Some(l) = Link::from_attributes(
+                        if let Some(link) = Link::from_attributes(
                             element.attributes().flatten(),
                             limits.max_attribute_length,
-                        ) && link.is_none()
-                        {
-                            link = Some(l.href.to_string());
+                        ) {
+                            // Track first alternate rel for href; fall back to first link seen.
+                            if link.rel.as_deref() == Some("alternate") && href.is_none() {
+                                href = Some(link.href.to_string());
+                            }
+                            if first_link_href.is_none() {
+                                first_link_href = Some(link.href.to_string());
+                            }
+                            has_explicit_link = true;
+                            links.push(link);
                         }
                         if !is_empty {
                             skip_to_end(reader, buf, b"link")?;
                         }
                     }
                     b"id" if !is_empty => id = Some(read_text_str(reader, buf, limits)?),
+                    b"updated" | b"modified" if !is_empty => {
+                        let text = read_text_str(reader, buf, limits)?;
+                        updated = parse_date(&text);
+                        updated_str = Some(text);
+                    }
+                    b"rights" if !is_empty => {
+                        rights = Some(read_text_str(reader, buf, limits)?);
+                    }
                     _ if !is_empty => skip_element(reader, buf, limits, *depth)?,
                     _ => {}
                 }
@@ -874,7 +895,37 @@ fn parse_atom_source(
         buf.clear();
     }
 
-    Ok(Source { title, link, id })
+    // Fall back to first link of any rel if no alternate was found
+    if href.is_none() {
+        href = first_link_href;
+    }
+
+    // Compute guidislink per Python feedparser semantics:
+    // - None when no <id> present
+    // - Some(true) when <id> looks like a URL and no explicit <link> present
+    // - Some(false) otherwise
+    let guidislink = id.as_deref().map(|id_val| {
+        let id_is_url = id_val.starts_with("http://")
+            || id_val.starts_with("https://")
+            || id_val.starts_with("ftp://");
+        id_is_url && !has_explicit_link
+    });
+
+    // When guidislink is true, populate href from the id value (matching Python feedparser)
+    if guidislink == Some(true) {
+        href.clone_from(&id);
+    }
+
+    Ok(Source {
+        title,
+        href,
+        id,
+        links,
+        updated,
+        updated_str,
+        rights,
+        guidislink,
+    })
 }
 
 #[cfg(test)]
@@ -1144,7 +1195,142 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.id.as_deref(), Some("source-id-here"));
-        assert_eq!(source.link.as_deref(), Some("http://x.com/"));
+        assert_eq!(source.href.as_deref(), Some("http://x.com/"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_updated() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source Feed</title>
+                    <id>urn:source</id>
+                    <updated>2025-01-12T00:00:00Z</updated>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert!(source.updated.is_some());
+        assert_eq!(source.updated_str.as_deref(), Some("2025-01-12T00:00:00Z"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_rights() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source Feed</title>
+                    <rights>Copyright 2025</rights>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.rights.as_deref(), Some("Copyright 2025"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_links() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source</title>
+                    <link href="http://a.com/" rel="alternate"/>
+                    <link href="http://a.com/feed" rel="self"/>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.links.len(), 2);
+        assert_eq!(source.href.as_deref(), Some("http://a.com/"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_guidislink_true() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source</title>
+                    <id>http://example.com/feed</id>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.guidislink, Some(true));
+        assert_eq!(source.href.as_deref(), Some("http://example.com/feed"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_guidislink_false_with_link() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source</title>
+                    <id>http://example.com/feed</id>
+                    <link href="http://other.com/"/>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.guidislink, Some(false));
+        assert_eq!(source.href.as_deref(), Some("http://other.com/"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_guidislink_urn_id() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source</title>
+                    <id>urn:uuid:60a76c80-d399-11d9</id>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.guidislink, Some(false));
+        assert!(source.href.is_none());
+    }
+
+    #[test]
+    fn test_parse_atom_source_no_id() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <id>e1</id>
+                <source>
+                    <title>Source</title>
+                    <link href="http://a.com/"/>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert!(source.guidislink.is_none());
+        assert_eq!(source.href.as_deref(), Some("http://a.com/"));
     }
 
     #[test]
