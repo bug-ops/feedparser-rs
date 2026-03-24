@@ -23,7 +23,6 @@ classifiers = [
     "Programming Language :: Rust",
     "Topic :: Text Processing :: Markup :: XML",
 ]
-
 [project.urls]
 Homepage = "https://github.com/bug-ops/feedparser-rs"
 Documentation = "https://github.com/bug-ops/feedparser-rs#readme"
@@ -38,6 +37,7 @@ module-name = "feedparser_rs._feedparser_rs"
 dev = [
     "pytest>=9.0,<10",
     "ruff>=0.9,<1",
+    "feedparser>=6.0.12",
 ]
 
 [tool.ruff]
