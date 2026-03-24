@@ -424,6 +424,39 @@ def test_podcast_person():
     assert person2.href is None
 
 
+def test_podcast_person_dict_protocol():
+    """Test PodcastPerson dict protocol: __getitem__, get, keys, values, items (#300)."""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Podcast</title>
+            <item>
+                <title>Episode</title>
+                <podcast:person role="host" group="cast" img="https://example.com/img.jpg" href="https://example.com/alice">Alice</podcast:person>
+            </item>
+        </channel>
+    </rss>
+    """
+    result = feedparser_rs.parse(xml)
+    person = result.entries[0].podcast_persons[0]
+
+    assert person["name"] == "Alice"
+    assert person["role"] == "host"
+    assert person["group"] == "cast"
+    assert person["img"] == "https://example.com/img.jpg"
+    assert person["href"] == "https://example.com/alice"
+
+    assert person.get("name") == "Alice"
+    assert person.get("nonexistent") is None
+    assert person.get("nonexistent", "fallback") == "fallback"
+
+    assert set(person.keys()) == {"name", "role", "group", "img", "href"}
+    values = person.values()
+    assert "Alice" in values
+    items = dict(person.items())
+    assert items["name"] == "Alice"
+
+
 def test_dual_access_podcast_transcripts():
     """Test entry.podcast_transcripts direct access (entry.podcast.transcript when parser supports)"""
     xml = b"""<?xml version="1.0"?>

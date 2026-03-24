@@ -714,6 +714,38 @@ impl PyFeedMeta {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
+            "itunes_block" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.block)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_complete" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.complete.map(|b| if b { "yes" } else { "no" }))
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_type" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.podcast_type.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_new-feed-url" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.new_feed_url.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "podcast" => {
                 if let Some(ref p) = self.inner.podcast {
                     Ok(Py::new(py, PyPodcastMeta::from_core(p.as_ref().clone()))?.into_any())
@@ -735,6 +767,31 @@ impl PyFeedMeta {
                     Ok(py.None())
                 }
             }
+            // Flat sy_* keys for Python feedparser compatibility
+            "sy_updateperiod" => Ok(self
+                .inner
+                .syndication
+                .as_ref()
+                .and_then(|s| s.update_period.as_ref().map(|p| p.as_str()))
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "sy_updatefrequency" => Ok(self
+                .inner
+                .syndication
+                .as_ref()
+                .and_then(|s| s.update_frequency.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "sy_updatebase" => Ok(self
+                .inner
+                .syndication
+                .as_ref()
+                .and_then(|s| s.update_base.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "dc_creator" => Ok(self
                 .inner
                 .dc_creator

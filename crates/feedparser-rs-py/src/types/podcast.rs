@@ -541,6 +541,50 @@ impl PyPodcastPerson {
             self.inner.role.as_deref().unwrap_or("unknown")
         )
     }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<pyo3::Py<pyo3::PyAny>> {
+        use pyo3::IntoPyObjectExt;
+        match key {
+            "name" => self.inner.name.as_str().into_py_any(py),
+            "role" => self.inner.role.as_deref().into_py_any(py),
+            "group" => self.inner.group.as_deref().into_py_any(py),
+            "img" => self.inner.img.as_deref().into_py_any(py),
+            "href" => self.inner.href.as_deref().into_py_any(py),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(
+        &self,
+        py: Python<'_>,
+        key: &str,
+        default: Option<pyo3::Py<pyo3::PyAny>>,
+    ) -> PyResult<pyo3::Py<pyo3::PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["name", "role", "group", "img", "href"]
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<pyo3::Py<pyo3::PyAny>>> {
+        self.keys()
+            .into_iter()
+            .map(|key| self.__getitem__(py, key))
+            .collect()
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, pyo3::Py<pyo3::PyAny>)>> {
+        self.keys()
+            .into_iter()
+            .map(|key| Ok((key.to_string(), self.__getitem__(py, key)?)))
+            .collect()
+    }
 }
 
 #[pyclass(name = "PodcastChapters", module = "feedparser_rs", from_py_object)]
