@@ -319,6 +319,10 @@ pub struct FeedMeta {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Feed summary (populated from itunes:summary when present)
+    pub summary: Option<String>,
+    /// Detailed summary with metadata
+    pub summary_detail: Option<TextConstruct>,
     /// Last update date (original string from feed, timezone preserved)
     pub updated: Option<String>,
     /// Parsed last update date as milliseconds since epoch
@@ -404,6 +408,8 @@ impl From<CoreFeedMeta> for FeedMeta {
             links: core.links.into_iter().map(Link::from).collect(),
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
+            summary: core.summary,
+            summary_detail: core.summary_detail.map(TextConstruct::from),
             updated: core.updated_str,
             updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
             published: core.published_str,
@@ -1087,8 +1093,8 @@ pub struct ItunesFeedMeta {
     /// Podcast type (episodic/serial)
     #[napi(js_name = "podcastType")]
     pub podcast_type: Option<String>,
-    /// Podcast completion status
-    pub complete: Option<bool>,
+    /// Podcast completion status (raw XML text value, e.g., "Yes", "No")
+    pub complete: Option<String>,
     /// New feed URL for migrated podcasts
     ///
     /// Note: URL from untrusted feed input. Validate before fetching.

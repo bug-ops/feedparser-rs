@@ -35,9 +35,8 @@ pub struct ItunesFeedMeta {
     pub podcast_type: Option<String>,
     /// Podcast completion status (itunes:complete)
     ///
-    /// Set to true if podcast is complete and no new episodes will be published.
-    /// Value is "Yes" in the feed for true.
-    pub complete: Option<bool>,
+    /// Raw XML text value from the feed (e.g., "Yes", "No").
+    pub complete: Option<String>,
     /// New feed URL for migrated podcasts (itunes:new-feed-url)
     ///
     /// Indicates the podcast has moved to a new feed location.
@@ -711,12 +710,12 @@ mod tests {
     #[test]
     fn test_itunes_feed_meta_new_fields() {
         let meta = ItunesFeedMeta {
-            complete: Some(true),
+            complete: Some("Yes".to_string()),
             new_feed_url: Some("https://example.com/new-feed.xml".to_string().into()),
             ..Default::default()
         };
 
-        assert_eq!(meta.complete, Some(true));
+        assert_eq!(meta.complete.as_deref(), Some("Yes"));
         assert_eq!(
             meta.new_feed_url.as_deref(),
             Some("https://example.com/new-feed.xml")

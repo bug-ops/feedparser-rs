@@ -5,9 +5,9 @@ use crate::{
     error::{FeedError, Result},
     namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
-        Content, Enclosure, Entry, FeedVersion, Generator, Image, ItunesCategory, ItunesEntryMeta,
-        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
-        Source, Tag, TextConstruct, TextType, parse_explicit,
+        Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
+        ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail,
+        ParsedFeed, Person, Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
@@ -105,6 +105,8 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                     feed.bozo = true;
                     feed.bozo_exception = Some(e.to_string());
                 }
+                // Post-process: iTunes subtitle/summary always win (order-independent)
+                apply_itunes_feed_promotions(&mut feed.feed);
                 // #274: promote feed.id → feed.link when no explicit link was found
                 if feed.feed.link.is_none()
                     && let Some(id) = feed.feed.id.as_deref()
@@ -132,6 +134,51 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
     }
 
     Ok(feed)
+}
+
+/// Apply iTunes subtitle/summary promotions to feed-level fields.
+///
+/// Called after all XML elements have been parsed. Atom uses a single-loop model so
+/// itunes: and standard elements appear in document order — post-processing ensures
+/// promotion is order-independent. Empty/whitespace-only values do not override valid data.
+fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
+    // Clone to avoid simultaneous immutable + mutable borrow on `feed`.
+    let subtitle = feed.itunes.as_ref().and_then(|it| it.subtitle.clone());
+    let summary = feed.itunes.as_ref().and_then(|it| it.summary.clone());
+
+    if let Some(ref s) = subtitle
+        && !s.trim().is_empty()
+    {
+        feed.set_subtitle(TextConstruct::text(s));
+    }
+    if let Some(ref s) = summary
+        && !s.trim().is_empty()
+    {
+        feed.set_summary(TextConstruct::text(s));
+        if feed.subtitle.is_none() {
+            feed.set_subtitle(TextConstruct::text(s));
+        }
+    }
+}
+
+/// Apply iTunes subtitle/summary promotions to entry-level fields.
+///
+/// Called after all XML elements in an entry have been parsed.
+fn apply_itunes_entry_promotions(entry: &mut Entry) {
+    // Clone to avoid simultaneous immutable + mutable borrow on `entry`.
+    let subtitle = entry.itunes.as_ref().and_then(|it| it.subtitle.clone());
+    let summary = entry.itunes.as_ref().and_then(|it| it.summary.clone());
+
+    if let Some(ref s) = subtitle
+        && !s.trim().is_empty()
+    {
+        entry.set_subtitle(TextConstruct::text(s));
+    }
+    if let Some(ref s) = summary
+        && !s.trim().is_empty()
+    {
+        entry.set_summary(TextConstruct::text(s));
+    }
 }
 
 /// Parse <feed> element
@@ -306,6 +353,8 @@ fn parse_feed_element(
                                 promote_entry_id_to_link(&mut entry);
                                 // #275: fallback entry.updated from entry.published
                                 promote_entry_published_to_updated(&mut entry);
+                                // Post-process: iTunes subtitle/summary promotion (order-independent)
+                                apply_itunes_entry_promotions(&mut entry);
                                 feed.entries.push(entry);
                             }
                             Err(e) => {
@@ -395,9 +444,6 @@ fn parse_feed_element(
                             true
                         } else if is_itunes_tag(tag, b"subtitle") && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
-                            if feed.feed.subtitle.is_none() {
-                                feed.feed.set_subtitle(TextConstruct::text(&text));
-                            }
                             let itunes = feed
                                 .feed
                                 .itunes
@@ -406,9 +452,6 @@ fn parse_feed_element(
                             true
                         } else if is_itunes_tag(tag, b"summary") && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
-                            if feed.feed.subtitle.is_none() {
-                                feed.feed.set_subtitle(TextConstruct::text(&text));
-                            }
                             let itunes = feed
                                 .feed
                                 .itunes
@@ -449,7 +492,7 @@ fn parse_feed_element(
                                 .feed
                                 .itunes
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.complete = Some(text.trim().eq_ignore_ascii_case("Yes"));
+                            itunes.complete = Some(text.trim().to_string());
                             true
                         } else if is_itunes_tag(tag, b"new-feed-url") && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
@@ -803,9 +846,6 @@ fn parse_entry(
                         } else if is_itunes_tag(tag, b"summary") && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
-                            if entry.summary.is_none() {
-                                entry.set_summary(TextConstruct::text(&text));
-                            }
                             let itunes = entry
                                 .itunes
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
@@ -2614,7 +2654,7 @@ mod tests {
             Some("https://example.com/cover.jpg")
         );
         assert_eq!(itunes.podcast_type.as_deref(), Some("serial"));
-        assert_eq!(itunes.complete, Some(true));
+        assert_eq!(itunes.complete.as_deref(), Some("Yes"));
         assert_eq!(
             itunes.new_feed_url.as_deref(),
             Some("https://example.com/new.xml")
@@ -2869,5 +2909,134 @@ mod tests {
 
         let feed = parse_atom10(xml).unwrap();
         assert_eq!(feed.entries[0].author.as_deref(), Some("John Smith"));
+    }
+
+    // =========================================================================
+    // Regression tests for #257, #281 (Atom-specific)
+    // =========================================================================
+
+    // TC-281-3: Atom itunes:complete 'Yes' returns raw string
+    #[test]
+    fn test_tc_281_3_atom_itunes_complete_raw_string() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>P</title>
+            <itunes:complete>Yes</itunes:complete>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().complete.as_deref(),
+            Some("Yes")
+        );
+    }
+
+    // TC-257-9: Atom entry itunes:subtitle promotes to entry.subtitle
+    #[test]
+    fn test_tc_257_9_atom_entry_itunes_subtitle_promotes() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Feed</title>
+            <entry>
+                <title>E</title>
+                <id>urn:test:1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <itunes:subtitle>Atom episode subtitle</itunes:subtitle>
+            </entry>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(entry.subtitle.as_deref(), Some("Atom episode subtitle"));
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().subtitle.as_deref(),
+            Some("Atom episode subtitle")
+        );
+    }
+
+    // TC-257-10: Atom feed: itunes:subtitle overrides <subtitle> regardless of order
+    #[test]
+    fn test_tc_257_10_atom_itunes_subtitle_overrides_subtitle() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Feed</title>
+            <subtitle>Atom subtitle</subtitle>
+            <itunes:subtitle>iTunes subtitle</itunes:subtitle>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("iTunes subtitle"),
+            "Post-processing must override standard <subtitle> with itunes:subtitle"
+        );
+    }
+
+    // TC-257-11: Atom feed: itunes:subtitle before <subtitle> — post-processing still wins
+    #[test]
+    fn test_tc_257_11_atom_itunes_subtitle_before_subtitle_post_processing_wins() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Feed</title>
+            <itunes:subtitle>iTunes subtitle</itunes:subtitle>
+            <subtitle>Atom subtitle</subtitle>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("iTunes subtitle"),
+            "Reversed order — post-processing guarantees iTunes wins"
+        );
+    }
+
+    // TC-257: Atom itunes:summary populates feed.summary
+    #[test]
+    fn test_tc_257_atom_itunes_summary_populates_feed_summary() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Feed</title>
+            <subtitle>Atom subtitle</subtitle>
+            <itunes:summary>Podcast summary</itunes:summary>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.feed.summary.as_deref(), Some("Podcast summary"));
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("Atom subtitle"));
+    }
+
+    // TC-257-12A: Atom — empty itunes:subtitle does NOT override valid <subtitle>
+    #[test]
+    fn test_tc_257_12a_atom_empty_itunes_subtitle_no_override() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Feed</title>
+            <subtitle>Valid Atom subtitle</subtitle>
+            <itunes:subtitle></itunes:subtitle>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("Valid Atom subtitle"),
+            "Empty itunes:subtitle must not override valid Atom <subtitle>"
+        );
+    }
+
+    // TC-257-12B: Atom — itunes:subtitle only present (no <subtitle>) sets feed.subtitle
+    #[test]
+    fn test_tc_257_12b_atom_itunes_subtitle_only_no_regression() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Feed</title>
+            <itunes:subtitle>Only iTunes subtitle</itunes:subtitle>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("Only iTunes subtitle"),
+            "itunes:subtitle must set feed.subtitle when no native <subtitle> present"
+        );
     }
 }
