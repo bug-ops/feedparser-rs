@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: `media:content` attributes `bitrate`, `channels`, `samplingrate`, and `framerate` are now parsed and exposed as strings on `MediaContent`, matching Python feedparser behavior (#294, #253)
 - Core, Python, Node.js bindings: `media:thumbnail` elements nested inside `<media:content>` are now collected into `entry.media_thumbnail` alongside top-level thumbnails, matching Python feedparser behavior (#270)
 - Python bindings: `bitrate`, `channels`, `samplingrate`, `framerate`, `lang`, `codec`, `expression`, and `isdefault` attributes are now accessible via `MediaContent.__getitem__` / `__contains__` / `keys` / `values` dict protocol (#294)
+- Core: `feed.publisher` flat field is now populated with the raw `<webMaster>` string (e.g. `"webmaster@example.com (Web Master)"`) matching how `feed.author` is populated from `<managingEditor>`; previously `feed.publisher` was `None` (#277, #218)
 - Core: `itunes:owner` in RSS feeds now promotes to `feed.publisher_detail` (name + email) if no publisher is already set; existing publisher from `<webMaster>` is not overridden (#280)
 - Core: `itunes:owner` was already parsed in Atom feeds with both `<itunes:name>` and `<itunes:email>` children; no change needed (#266)
 - Core: `itunes:explicit` values `"false"`, `"no"`, `"clean"` now return `None` (not `Some(false)`); only `"yes"`, `"true"`, `"explicit"` return `Some(true)` — matches Python feedparser behavior (#206)
