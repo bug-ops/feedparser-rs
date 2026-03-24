@@ -239,7 +239,7 @@ fn parse_feed_element(
                             skip_to_end(reader, &mut buf, b"link")?;
                         }
                     }
-                    b"subtitle" if !is_empty => {
+                    b"subtitle" | b"tagline" if !is_empty => {
                         let text =
                             parse_text_construct(reader, &mut buf, &element, limits, feed_lang)?;
                         feed.feed.set_subtitle(text);
@@ -303,7 +303,7 @@ fn parse_feed_element(
                         let url = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.logo = Some(base_ctx.resolve_safe(&url));
                     }
-                    b"rights" if !is_empty => {
+                    b"rights" | b"copyright" if !is_empty => {
                         let text =
                             parse_text_construct(reader, &mut buf, &element, limits, feed_lang)?;
                         feed.feed.set_rights(text);
@@ -695,11 +695,11 @@ fn parse_entry(
                         entry.created = parse_date(&text);
                         entry.created_str = Some(text);
                     }
-                    b"subtitle" if !is_empty => {
+                    b"subtitle" | b"tagline" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
                         entry.set_subtitle(text);
                     }
-                    b"rights" if !is_empty => {
+                    b"rights" | b"copyright" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
                         entry.set_rights(text);
                     }
@@ -1648,6 +1648,24 @@ fn parse_atom_itunes_category(
         }
     }
 
+    feed.feed.tags.try_push_limited(
+        Tag {
+            term: text.as_str().into(),
+            scheme: None,
+            label: Some(text.as_str().into()),
+        },
+        limits.max_tags,
+    );
+    if let Some(ref sub) = subcategory {
+        feed.feed.tags.try_push_limited(
+            Tag {
+                term: sub.as_str().into(),
+                scheme: None,
+                label: Some(sub.as_str().into()),
+            },
+            limits.max_tags,
+        );
+    }
     let itunes = feed
         .feed
         .itunes
@@ -3212,6 +3230,59 @@ mod tests {
             feed.feed.subtitle.as_deref(),
             Some("Only iTunes subtitle"),
             "itunes:subtitle must set feed.subtitle when no native <subtitle> present"
+        );
+    }
+
+    #[test]
+    fn test_atom03_tagline_maps_to_subtitle() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://purl.org/atom/ns#" version="0.3">
+            <title>Test Feed</title>
+            <tagline>My tagline</tagline>
+            <modified>2004-01-01T00:00:00Z</modified>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.version, FeedVersion::Atom03);
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("My tagline"));
+    }
+
+    #[test]
+    fn test_atom03_copyright_maps_to_rights() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://purl.org/atom/ns#" version="0.3">
+            <title>Test Feed</title>
+            <copyright>CC BY 4.0</copyright>
+            <modified>2004-01-01T00:00:00Z</modified>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.version, FeedVersion::Atom03);
+        assert_eq!(feed.feed.rights.as_deref(), Some("CC BY 4.0"));
+    }
+
+    #[test]
+    fn test_atom_itunes_category_maps_to_tags() {
+        let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Podcast Feed</title>
+            <itunes:category text="Technology">
+                <itunes:category text="Software How-To"/>
+            </itunes:category>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(
+            feed.feed.tags.iter().any(|t| t.term == "Technology"),
+            "Technology category must appear in tags"
+        );
+        assert!(
+            feed.feed.tags.iter().any(|t| t.term == "Software How-To"),
+            "Software How-To subcategory must appear in tags"
+        );
+        let itunes = feed.feed.itunes.as_ref().unwrap();
+        assert_eq!(itunes.categories[0].text, "Technology");
+        assert_eq!(
+            itunes.categories[0].subcategory.as_deref(),
+            Some("Software How-To")
         );
     }
 }

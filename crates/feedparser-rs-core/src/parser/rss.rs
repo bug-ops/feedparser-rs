@@ -824,7 +824,7 @@ fn parse_itunes_category(
         .unwrap_or_default();
 
     // Parse potential nested subcategory (only if not an empty element)
-    let mut subcategory_text = None;
+    let mut subcategory_text: Option<String> = None;
     if !is_empty {
         let mut nesting = 0;
         loop {
@@ -876,6 +876,24 @@ fn parse_itunes_category(
         }
     }
 
+    feed.feed.tags.try_push_limited(
+        Tag {
+            term: category_text.as_str().into(),
+            scheme: None,
+            label: Some(category_text.as_str().into()),
+        },
+        limits.max_tags,
+    );
+    if let Some(ref sub) = subcategory_text {
+        feed.feed.tags.try_push_limited(
+            Tag {
+                term: sub.as_str().into(),
+                scheme: None,
+                label: Some(sub.as_str().into()),
+            },
+            limits.max_tags,
+        );
+    }
     let itunes = feed
         .feed
         .itunes
@@ -4978,6 +4996,36 @@ mod tests {
         assert_eq!(
             feed.feed.podcast.as_ref().unwrap().medium.as_deref(),
             Some("music")
+        );
+    }
+
+    #[test]
+    fn test_rss_itunes_category_maps_to_tags() {
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <link>http://example.com</link>
+                <description>A podcast</description>
+                <itunes:category text="Technology">
+                    <itunes:category text="Software How-To"/>
+                </itunes:category>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(
+            feed.feed.tags.iter().any(|t| t.term == "Technology"),
+            "Technology category must appear in tags"
+        );
+        assert!(
+            feed.feed.tags.iter().any(|t| t.term == "Software How-To"),
+            "Software How-To subcategory must appear in tags"
+        );
+        let itunes = feed.feed.itunes.as_ref().unwrap();
+        assert_eq!(itunes.categories[0].text, "Technology");
+        assert_eq!(
+            itunes.categories[0].subcategory.as_deref(),
+            Some("Software How-To")
         );
     }
 }

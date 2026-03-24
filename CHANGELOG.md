@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Core: `itunes:category` elements at channel/feed level are now mapped to `feed.tags` (term and label set to category text, scheme None), matching Python feedparser behavior (#204)
+- Core: Atom 0.3 `<tagline>` is now mapped to `feed.subtitle`/`feed.subtitle_detail` and `<copyright>` to `feed.rights`/`feed.rights_detail` (#203)
 - Core: RSS `<generator>` now populates `feed.generator_detail` with `name` set (matching Python feedparser behavior); previously only `feed.generator` was set (#254)
 - Core: `slash:hit_parade` is now parsed from RSS entries into `entry.slash_hit_parade`; also fixed `extract_ns_local_name` to allow underscores in namespace-local tag names (#244)
 - Core, Python, Node.js bindings: RSS 2.0 optional channel elements `<cloud>`, `<textInput>`, `<skipHours>`, `<skipDays>` are now parsed and exposed as `feed.cloud`, `feed.textinput`, `feed.skiphours`, `feed.skipdays` (#200)
