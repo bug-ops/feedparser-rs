@@ -51,7 +51,7 @@ fn test_atom_feed_author_detail_name_not_none() {
     let feed = parse(ATOM_FEED_LEVEL_AUTHOR).expect("parse failed");
     assert!(!feed.bozo, "valid feed must not set bozo");
     let meta = &feed.feed;
-    assert_eq!(meta.author.as_deref(), Some("Jane Doe"));
+    assert_eq!(meta.author.as_deref(), Some("Jane Doe (jane@example.com)"));
     let detail = meta
         .author_detail
         .as_ref()
@@ -69,7 +69,7 @@ fn test_atom_entry_author_detail_name_not_none() {
     let feed = parse(ATOM_ENTRY_LEVEL_AUTHOR).expect("parse failed");
     assert!(!feed.bozo, "valid feed must not set bozo");
     let entry = &feed.entries[0];
-    assert_eq!(entry.author.as_deref(), Some("Jane Doe"));
+    assert_eq!(entry.author.as_deref(), Some("Jane Doe (jane@example.com)"));
     let detail = entry
         .author_detail
         .as_ref()

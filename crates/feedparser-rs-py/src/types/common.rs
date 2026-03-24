@@ -370,6 +370,12 @@ impl PyContent {
         self.inner.base.as_deref()
     }
 
+    /// Out-of-line content URL (Atom `<content src="...">`, RFC 4287 §4.1.3.2)
+    #[getter]
+    fn src(&self) -> Option<&str> {
+        self.inner.src.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "Content(type='{}', value='{}')",
@@ -384,6 +390,7 @@ impl PyContent {
             "type" => Ok(self.inner.content_type.as_deref().map(str::to_owned)),
             "language" => Ok(self.inner.language.as_deref().map(str::to_owned)),
             "base" => Ok(self.inner.base.as_deref().map(str::to_owned)),
+            "src" => Ok(self.inner.src.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
@@ -469,10 +476,16 @@ impl PySource {
         self.inner.href.as_deref()
     }
 
-    /// Alias for `href` for backward compatibility.
+    /// Primary source URL: Atom `<source><link href="..."/>` or RSS `<source url="...">` fallback.
     #[getter]
     fn link(&self) -> Option<&str> {
-        self.inner.href.as_deref()
+        self.inner.link.as_deref().or(self.inner.href.as_deref())
+    }
+
+    /// Source author flat string (Atom `<source><author>`)
+    #[getter]
+    fn author(&self) -> Option<&str> {
+        self.inner.author.as_deref()
     }
 
     #[getter]
@@ -535,10 +548,17 @@ impl PySource {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
-            // `link` is an alias for `href` for Python feedparser dict-style compat
             "link" => Ok(self
                 .inner
-                .href
+                .link
+                .as_deref()
+                .or(self.inner.href.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "author" => Ok(self
+                .inner
+                .author
                 .as_deref()
                 .into_pyobject(py)?
                 .into_any()

@@ -569,11 +569,22 @@ fn parse_entry(
                         let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
                         entry.set_summary(text);
                     }
-                    b"content" if !is_empty => {
-                        let content = parse_content(reader, buf, &element, limits, entry_lang)?;
-                        entry
-                            .content
-                            .try_push_limited(content, limits.max_content_blocks);
+                    b"content" => {
+                        // Handle both inline content (<content>...</content>) and
+                        // out-of-line content (<content src="..." />, RFC 4287 §4.1.3.2).
+                        if is_empty {
+                            if let Some(content) = parse_content_empty(&element, limits, entry_lang)
+                            {
+                                entry
+                                    .content
+                                    .try_push_limited(content, limits.max_content_blocks);
+                            }
+                        } else {
+                            let content = parse_content(reader, buf, &element, limits, entry_lang)?;
+                            entry
+                                .content
+                                .try_push_limited(content, limits.max_content_blocks);
+                        }
                     }
                     b"author" if !is_empty => {
                         if let Ok(person) = parse_person(reader, buf, limits, depth) {
@@ -945,23 +956,40 @@ fn parse_content(
 ) -> Result<Content> {
     let mut content_type = None;
     let mut is_xhtml = false;
+    let mut src = None;
 
     for attr in e.attributes().flatten() {
         if attr.value.len() > limits.max_attribute_length {
             continue;
         }
-        if attr.key.as_ref() == b"type" {
-            if attr.value.as_ref() == b"xhtml" {
-                is_xhtml = true;
+        match attr.key.as_ref() {
+            b"type" => {
+                if attr.value.as_ref() == b"xhtml" {
+                    is_xhtml = true;
+                }
+                let normalized = match attr.value.as_ref() {
+                    b"xhtml" => "application/xhtml+xml".to_string(),
+                    b"html" => "text/html".to_string(),
+                    b"text" => "text/plain".to_string(),
+                    _ => bytes_to_string(&attr.value),
+                };
+                content_type = Some(normalized.into());
             }
-            let normalized = match attr.value.as_ref() {
-                b"xhtml" => "application/xhtml+xml".to_string(),
-                b"html" => "text/html".to_string(),
-                b"text" => "text/plain".to_string(),
-                _ => bytes_to_string(&attr.value),
-            };
-            content_type = Some(normalized.into());
+            b"src" => src = Some(bytes_to_string(&attr.value)),
+            _ => {}
         }
+    }
+
+    // RFC 4287 §4.1.3.2: when src is present, content is out-of-line; value is empty.
+    if src.is_some() {
+        skip_to_end(reader, buf, b"content")?;
+        return Ok(Content {
+            value: String::new(),
+            content_type,
+            language: lang.map(Into::into),
+            base: None,
+            src,
+        });
     }
 
     let value = if is_xhtml {
@@ -975,6 +1003,7 @@ fn parse_content(
         content_type,
         language: lang.map(Into::into),
         base: None,
+        src: None,
     })
 }
 
@@ -1049,6 +1078,45 @@ fn handle_atom_media_group_child(
     }
 }
 
+/// Parse self-closing `<content ... />` elements (out-of-line content with `src` attribute).
+///
+/// Returns `None` when `src` is absent (empty inline content with no body is not useful).
+fn parse_content_empty(
+    e: &quick_xml::events::BytesStart,
+    limits: &ParserLimits,
+    lang: Option<&str>,
+) -> Option<Content> {
+    let mut content_type = None;
+    let mut src = None;
+
+    for attr in e.attributes().flatten() {
+        if attr.value.len() > limits.max_attribute_length {
+            continue;
+        }
+        match attr.key.as_ref() {
+            b"type" => {
+                let normalized = match attr.value.as_ref() {
+                    b"xhtml" => "application/xhtml+xml".to_string(),
+                    b"html" => "text/html".to_string(),
+                    b"text" => "text/plain".to_string(),
+                    _ => bytes_to_string(&attr.value),
+                };
+                content_type = Some(normalized.into());
+            }
+            b"src" => src = Some(bytes_to_string(&attr.value)),
+            _ => {}
+        }
+    }
+
+    src.map(|src_val| Content {
+        value: String::new(),
+        content_type,
+        language: lang.map(Into::into),
+        base: None,
+        src: Some(src_val),
+    })
+}
+
 /// Parse <source> element (renamed to avoid confusion with RSS source)
 fn parse_atom_source(
     reader: &mut Reader<&[u8]>,
@@ -1057,7 +1125,7 @@ fn parse_atom_source(
     depth: &mut usize,
 ) -> Result<Source> {
     let mut title = None;
-    let mut href = None;
+    let mut link = None;
     let mut first_link_href: Option<String> = None;
     let mut id = None;
     let mut links = Vec::new();
@@ -1065,6 +1133,7 @@ fn parse_atom_source(
     let mut updated_str = None;
     let mut rights = None;
     let mut has_explicit_link = false;
+    let mut author = None;
 
     loop {
         match reader.read_event_into(buf) {
@@ -1082,19 +1151,19 @@ fn parse_atom_source(
                 match element.name().as_ref() {
                     b"title" if !is_empty => title = Some(read_text_str(reader, buf, limits)?),
                     b"link" => {
-                        if let Some(link) = Link::from_attributes(
+                        if let Some(lnk) = Link::from_attributes(
                             element.attributes().flatten(),
                             limits.max_attribute_length,
                         ) {
-                            // Track first alternate rel for href; fall back to first link seen.
-                            if link.rel.as_deref() == Some("alternate") && href.is_none() {
-                                href = Some(link.href.to_string());
+                            // Track first alternate rel for link; fall back to first link seen.
+                            if lnk.rel.as_deref() == Some("alternate") && link.is_none() {
+                                link = Some(lnk.href.to_string());
                             }
                             if first_link_href.is_none() {
-                                first_link_href = Some(link.href.to_string());
+                                first_link_href = Some(lnk.href.to_string());
                             }
                             has_explicit_link = true;
-                            links.push(link);
+                            links.push(lnk);
                         }
                         if !is_empty {
                             skip_to_end(reader, buf, b"link")?;
@@ -1108,6 +1177,11 @@ fn parse_atom_source(
                     }
                     b"rights" if !is_empty => {
                         rights = Some(read_text_str(reader, buf, limits)?);
+                    }
+                    b"author" if !is_empty => {
+                        if let Ok(person) = parse_person(reader, buf, limits, depth) {
+                            author = person.flat_string().map(|s| s.to_string());
+                        }
                     }
                     _ if !is_empty => skip_element(reader, buf, limits, *depth)?,
                     _ => {}
@@ -1123,8 +1197,8 @@ fn parse_atom_source(
     }
 
     // Fall back to first link of any rel if no alternate was found
-    if href.is_none() {
-        href = first_link_href;
+    if link.is_none() {
+        link = first_link_href;
     }
 
     // Compute guidislink per Python feedparser semantics:
@@ -1138,14 +1212,16 @@ fn parse_atom_source(
         id_is_url && !has_explicit_link
     });
 
-    // When guidislink is true, populate href from the id value (matching Python feedparser)
+    // When guidislink is true, populate link from the id value (matching Python feedparser)
     if guidislink == Some(true) {
-        href.clone_from(&id);
+        link.clone_from(&id);
     }
 
     Ok(Source {
         title,
-        href,
+        href: None,
+        link,
+        author,
         id,
         links,
         updated,
@@ -1317,7 +1393,10 @@ mod tests {
         </feed>"#;
 
         let feed = parse_atom10(xml).unwrap();
-        assert_eq!(feed.feed.author.as_deref(), Some("John Doe"));
+        assert_eq!(
+            feed.feed.author.as_deref(),
+            Some("John Doe (john@example.com)")
+        );
         assert_eq!(feed.feed.authors.len(), 1);
         assert_eq!(
             feed.feed.authors[0].email.as_deref(),
@@ -1526,7 +1605,7 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.id.as_deref(), Some("source-id-here"));
-        assert_eq!(source.href.as_deref(), Some("http://x.com/"));
+        assert_eq!(source.link.as_deref(), Some("http://x.com/"));
     }
 
     #[test]
@@ -1584,7 +1663,7 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.links.len(), 2);
-        assert_eq!(source.href.as_deref(), Some("http://a.com/"));
+        assert_eq!(source.link.as_deref(), Some("http://a.com/"));
     }
 
     #[test]
@@ -1603,7 +1682,7 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.guidislink, Some(true));
-        assert_eq!(source.href.as_deref(), Some("http://example.com/feed"));
+        assert_eq!(source.link.as_deref(), Some("http://example.com/feed"));
     }
 
     #[test]
@@ -1623,7 +1702,7 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.guidislink, Some(false));
-        assert_eq!(source.href.as_deref(), Some("http://other.com/"));
+        assert_eq!(source.link.as_deref(), Some("http://other.com/"));
     }
 
     #[test]
@@ -1642,7 +1721,7 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.guidislink, Some(false));
-        assert!(source.href.is_none());
+        assert!(source.link.is_none());
     }
 
     #[test]
@@ -1661,7 +1740,7 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let source = feed.entries[0].source.as_ref().unwrap();
         assert!(source.guidislink.is_none());
-        assert_eq!(source.href.as_deref(), Some("http://a.com/"));
+        assert_eq!(source.link.as_deref(), Some("http://a.com/"));
     }
 
     #[test]
@@ -2468,6 +2547,97 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let itunes = feed.feed.itunes.as_ref().unwrap();
         assert_eq!(itunes.explicit, None);
+    }
+
+    // Regression tests for fixes #262, #252, #251
+
+    #[test]
+    fn test_atom_source_link_field_populated() {
+        // Fix #262: Atom <source><link href="..."/> should populate source.link, not source.href
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+<entry><title>E</title><id>e1</id><updated>2026-01-01T00:00:00Z</updated>
+  <source>
+    <title>Origin</title>
+    <id>urn:source</id>
+    <link href="http://origin.example.com/"/>
+  </source>
+</entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.link.as_deref(), Some("http://origin.example.com/"));
+        assert!(source.href.is_none(), "href must be None for Atom sources");
+    }
+
+    #[test]
+    fn test_atom_source_author_field() {
+        // Fix #262: Atom <source><author> should populate source.author
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+<entry><title>E</title><id>e1</id><updated>2026-01-01T00:00:00Z</updated>
+  <source>
+    <title>Origin</title>
+    <author><name>Alice</name><email>alice@example.com</email></author>
+  </source>
+</entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.author.as_deref(), Some("Alice (alice@example.com)"));
+    }
+
+    #[test]
+    fn test_atom_content_src_attribute() {
+        // Fix #252: <content src="..."> should parse out-of-line content
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+<entry><title>E</title><id>e1</id><updated>2026-01-01T00:00:00Z</updated>
+  <content type="image/png" src="http://example.com/image.png"/>
+</entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.entries[0].content.is_empty());
+        let content = &feed.entries[0].content[0];
+        assert_eq!(content.src.as_deref(), Some("http://example.com/image.png"));
+        assert_eq!(content.value, "");
+        assert_eq!(content.content_type.as_deref(), Some("image/png"));
+    }
+
+    #[test]
+    fn test_atom_author_flat_string_with_email() {
+        // Fix #251: flat author string should be "Name (email)" when email is present
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+<author><name>Bob</name><email>bob@example.com</email></author>
+<entry><title>E</title><id>e1</id><updated>2026-01-01T00:00:00Z</updated>
+  <author><name>Carol</name><email>carol@example.com</email></author>
+</entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.feed.author.as_deref(), Some("Bob (bob@example.com)"));
+        assert_eq!(
+            feed.entries[0].author.as_deref(),
+            Some("Carol (carol@example.com)")
+        );
+    }
+
+    #[test]
+    fn test_atom_author_flat_string_name_only() {
+        // Fix #251: when no email, flat string is just the name (no regression)
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+<entry><title>E</title><id>e1</id><updated>2026-01-01T00:00:00Z</updated>
+  <author><name>Dave</name></author>
+</entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].author.as_deref(), Some("Dave"));
     }
 
     #[test]

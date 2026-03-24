@@ -219,7 +219,7 @@ impl Entry {
     /// ```
     #[inline]
     pub fn set_author(&mut self, person: Person) {
-        self.author.clone_from(&person.name);
+        self.author = person.flat_string();
         self.author_detail = Some(person);
     }
 

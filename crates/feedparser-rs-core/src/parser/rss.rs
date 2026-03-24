@@ -1796,6 +1796,8 @@ fn parse_source(
     Ok(Source {
         title,
         href: link,
+        link: None,
+        author: None,
         id,
         links: Vec::new(),
         updated: None,

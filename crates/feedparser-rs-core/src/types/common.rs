@@ -556,6 +556,19 @@ impl Person {
             uri: None,
         }
     }
+
+    /// Build flat author string in `"Name (email)"` format when email is present.
+    ///
+    /// Returns `None` if neither name nor email is set.
+    #[must_use]
+    pub fn flat_string(&self) -> Option<SmallString> {
+        match (&self.name, &self.email) {
+            (Some(name), Some(email)) => Some(format!("{name} ({email})").into()),
+            (Some(name), None) => Some(name.clone()),
+            (None, Some(email)) => Some(email.as_str().into()),
+            (None, None) => None,
+        }
+    }
 }
 
 /// Tag/category
@@ -620,6 +633,8 @@ pub struct Content {
     pub language: Option<SmallString>,
     /// Base URL for relative links
     pub base: Option<String>,
+    /// Out-of-line content URL (Atom `<content src="...">`, RFC 4287 §4.1.3.2)
+    pub src: Option<String>,
 }
 
 impl Content {
@@ -631,6 +646,7 @@ impl Content {
             content_type: Some(MimeType::new(MimeType::TEXT_HTML)),
             language: None,
             base: None,
+            src: None,
         }
     }
 
@@ -642,6 +658,7 @@ impl Content {
             content_type: Some(MimeType::new(MimeType::TEXT_PLAIN)),
             language: None,
             base: None,
+            src: None,
         }
     }
 }
@@ -718,8 +735,12 @@ pub struct Generator {
 pub struct Source {
     /// Source title
     pub title: Option<String>,
-    /// Primary source URL (renamed from `link` for Python feedparser API compatibility)
+    /// Primary source URL for RSS `<source url="...">` (RSS-only field)
     pub href: Option<String>,
+    /// Primary source URL for Atom `<source><link href="..."/>` (Atom-only field)
+    pub link: Option<String>,
+    /// Source author (flat string, Atom `<source><author>`)
+    pub author: Option<String>,
     /// Source unique identifier
     pub id: Option<String>,
     /// All links from the source element

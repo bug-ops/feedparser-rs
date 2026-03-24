@@ -29,6 +29,7 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
             content_type: Some("text/html".into()),
             language: None,
             base: None,
+            src: None,
         });
     }
 }
