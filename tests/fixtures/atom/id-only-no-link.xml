@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Feed Without Link</title>
+  <id>http://example.com/feed</id>
+  <updated>2024-12-14T10:00:00Z</updated>
+
+  <entry>
+    <title>Entry Without Link</title>
+    <id>http://example.com/entry1</id>
+    <published>2024-12-14T09:00:00Z</published>
+    <summary>Entry has no link element, only id</summary>
+  </entry>
+
+  <entry>
+    <title>Entry With Explicit Link</title>
+    <id>http://example.com/entry2-id</id>
+    <link href="http://example.com/entry2-link" rel="alternate"/>
+    <updated>2024-12-14T08:00:00Z</updated>
+    <summary>Entry has explicit link different from id</summary>
+  </entry>
+</feed>
