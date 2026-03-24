@@ -40,6 +40,16 @@ const DATE_FORMATS: &[&str] = &[
     "%d-%B-%Y",          // 14-December-2024
 ];
 
+/// Strip a leading weekday prefix of the form `"Www, "` (3 ASCII alpha chars + ", ").
+fn strip_weekday_prefix(s: &str) -> Option<&str> {
+    let b = s.as_bytes();
+    if b.len() > 5 && b[3] == b',' && b[4] == b' ' && b[..3].iter().all(u8::is_ascii_alphabetic) {
+        Some(&s[5..])
+    } else {
+        None
+    }
+}
+
 /// Parse date from string, trying multiple formats
 ///
 /// This function attempts to parse dates in the following order:
@@ -88,6 +98,14 @@ pub fn parse_date(input: &str) -> Option<DateTime<Utc>> {
 
     // Try RFC 2822 (RSS pubDate format)
     if let Ok(dt) = DateTime::parse_from_rfc2822(input) {
+        return Some(dt.with_timezone(&Utc));
+    }
+
+    // Retry RFC 2822 with weekday prefix stripped — chrono validates the weekday
+    // strictly, but Python feedparser accepts wrong day-of-week names (#143)
+    if let Some(stripped) = strip_weekday_prefix(input)
+        && let Ok(dt) = DateTime::parse_from_rfc2822(stripped)
+    {
         return Some(dt.with_timezone(&Utc));
     }
 
@@ -292,6 +310,42 @@ mod tests {
         for date_str in dates {
             let _ = parse_date(date_str);
         }
+    }
+
+    #[test]
+    fn test_rfc2822_wrong_weekday() {
+        // Mon is wrong (actual day is Thu), but date should still parse (#143)
+        let dt = parse_date("Mon, 15 Jan 2026 10:30:00 +0000").unwrap();
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 15);
+        assert_eq!(dt.hour(), 10);
+    }
+
+    #[test]
+    fn test_rfc2822_wrong_weekday_new_year() {
+        // Wed is wrong (actual day is Thu), but date should still parse (#143)
+        let dt = parse_date("Wed, 01 Jan 2026 00:00:00 +0000").unwrap();
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 1);
+    }
+
+    #[test]
+    fn test_rfc2822_correct_weekday() {
+        // Thu is correct for 2026-01-15
+        let dt = parse_date("Thu, 15 Jan 2026 10:30:00 +0000").unwrap();
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 15);
+    }
+
+    #[test]
+    fn test_rfc2822_no_weekday() {
+        let dt = parse_date("15 Jan 2026 10:30:00 +0000").unwrap();
+        assert_eq!(dt.year(), 2026);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 15);
     }
 
     #[test]

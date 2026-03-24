@@ -643,3 +643,15 @@ fn test_atom_title_and_summary_detail_value() {
         "summary_detail.value must equal summary"
     );
 }
+
+#[test]
+fn test_rss_source_element_title_and_link() {
+    let xml = load_fixture("rss/with-source.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    let entry = &feed.entries[0];
+    let source = entry.source.as_ref().expect("entry must have source");
+    assert_eq!(source.title.as_deref(), Some("Other Feed Name"));
+    assert_eq!(source.link.as_deref(), Some("https://otherfeed.com/rss"));
+}
