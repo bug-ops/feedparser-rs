@@ -83,7 +83,7 @@ def test_feed_date_alias_falls_back_to_updated():
 
 
 def test_feed_date_alias_falls_back_to_published():
-    """feed.date should fall back to feed.published if updated is absent"""
+    """feed.date maps to feed.updated which is promoted from pubDate when no lastBuildDate"""
     xml = """<rss version="2.0">
         <channel>
             <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
@@ -92,10 +92,11 @@ def test_feed_date_alias_falls_back_to_published():
 
     feed = feedparser_rs.parse(xml)
 
-    # updated is None, so date should map to published
-    assert feed.feed.updated is None
+    # pubDate is mirrored to updated; updated == published, date maps to updated
+    assert feed.feed.updated is not None
     assert feed.feed.published is not None
-    assert feed.feed.date == feed.feed.published
+    assert feed.feed.updated == feed.feed.published
+    assert feed.feed.date == feed.feed.updated
     assert feed.feed.date_parsed.tm_year == 2024
 
 
@@ -202,7 +203,7 @@ def test_entry_date_alias_falls_back_to_updated():
 
 
 def test_entry_date_alias_falls_back_to_published():
-    """entry.date should fall back to entry.published if updated is absent"""
+    """entry.date maps to entry.updated which is promoted from pubDate"""
     xml = """<rss version="2.0">
         <channel>
             <item>
@@ -214,10 +215,11 @@ def test_entry_date_alias_falls_back_to_published():
     feed = feedparser_rs.parse(xml)
     entry = feed.entries[0]
 
-    # updated is None, so date should map to published
-    assert entry.updated is None
+    # pubDate is mirrored to updated; updated == published, date maps to updated
+    assert entry.updated is not None
     assert entry.published is not None
-    assert entry.date == entry.published
+    assert entry.updated == entry.published
+    assert entry.date == entry.updated
     assert entry.date_parsed.tm_year == 2024
 
 

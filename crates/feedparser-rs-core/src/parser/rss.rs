@@ -456,7 +456,11 @@ fn parse_channel_standard(
             match parse_date(&text) {
                 Some(dt) => {
                     feed.feed.published = Some(dt);
-                    feed.feed.published_str = Some(text);
+                    feed.feed.published_str = Some(text.clone());
+                    if feed.feed.updated.is_none() {
+                        feed.feed.updated = Some(dt);
+                        feed.feed.updated_str = Some(text);
+                    }
                 }
                 None if !text.is_empty() => {
                     feed.bozo = true;
@@ -1082,8 +1086,13 @@ fn parse_item_standard(
         }
         b"pubDate" => {
             let text = read_text_str(reader, buf, limits)?;
-            entry.published = parse_date(&text);
-            entry.published_str = Some(text);
+            let dt = parse_date(&text);
+            entry.published = dt;
+            entry.published_str = Some(text.clone());
+            if entry.updated.is_none() {
+                entry.updated = dt;
+                entry.updated_str = Some(text);
+            }
         }
         b"author" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -3667,6 +3676,99 @@ mod tests {
         assert_eq!(
             entry.itunes.as_ref().unwrap().summary.as_deref(),
             Some("iTunes Summary")
+        );
+    }
+
+    // Regression tests for issue #201: pubDate must populate entry.updated when
+    // no other updated source (dc:date, atom:updated) is present.
+
+    #[test]
+    fn test_entry_pubdate_populates_updated_when_no_dc_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Only pubDate</title>
+                    <pubDate>Mon, 10 Mar 2025 08:00:00 +0000</pubDate>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+
+        assert!(
+            entry.published.is_some(),
+            "entry.published must be set from pubDate"
+        );
+        assert!(
+            entry.updated.is_some(),
+            "entry.updated must be populated from pubDate when no dc:date present"
+        );
+        assert!(
+            entry.updated_str.is_some(),
+            "entry.updated_str must be non-None"
+        );
+        assert_eq!(
+            entry.updated, entry.published,
+            "entry.updated must equal entry.published when promoted from pubDate"
+        );
+    }
+
+    #[test]
+    fn test_feed_pubdate_populates_updated_when_no_last_build_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Feed with only pubDate</title>
+                <pubDate>Tue, 11 Mar 2025 12:00:00 +0000</pubDate>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        assert!(
+            feed.feed.published.is_some(),
+            "feed.published must be set from channel pubDate"
+        );
+        assert!(
+            feed.feed.updated.is_some(),
+            "feed.updated must be populated from pubDate when no lastBuildDate present"
+        );
+        assert_eq!(
+            feed.feed.updated, feed.feed.published,
+            "feed.updated must equal feed.published when promoted from pubDate"
+        );
+    }
+
+    #[test]
+    fn test_entry_dc_date_takes_precedence_over_pubdate_for_updated() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel>
+                <item>
+                    <title>Both dates</title>
+                    <pubDate>Mon, 10 Mar 2025 08:00:00 +0000</pubDate>
+                    <dc:date>2025-03-15T20:00:00Z</dc:date>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+
+        assert!(entry.updated.is_some());
+        // dc:date is 2025-03-15, pubDate is 2025-03-10 — updated must use dc:date
+        let updated = entry.updated.unwrap();
+        assert_eq!(updated.year(), 2025);
+        assert_eq!(updated.month(), 3);
+        assert_eq!(
+            updated.day(),
+            15,
+            "entry.updated must use dc:date, not pubDate"
         );
     }
 }
