@@ -135,7 +135,7 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     if let Some(expired) = json.get("expired").and_then(Value::as_bool)
         && expired
     {
-        feed.ttl = Some(0);
+        feed.ttl = Some("0".to_string());
     }
 
     if let Some(next_url) = json.get("next_url").and_then(|v| v.as_str())

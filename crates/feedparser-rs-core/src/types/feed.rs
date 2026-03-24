@@ -66,8 +66,10 @@ pub struct FeedMeta {
     pub tags: Vec<Tag>,
     /// Unique feed identifier
     pub id: Option<String>,
-    /// Time-to-live (update frequency hint) in minutes
-    pub ttl: Option<u32>,
+    /// Time-to-live (update frequency hint) in minutes (kept as string for API compatibility)
+    pub ttl: Option<String>,
+    /// URL of documentation for the RSS format used
+    pub docs: Option<String>,
     /// iTunes podcast metadata (if present)
     pub itunes: Option<Box<ItunesFeedMeta>>,
     /// Podcast 2.0 namespace metadata (if present)

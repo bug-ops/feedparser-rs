@@ -199,7 +199,7 @@ fn parse_channel(
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
                     | b"lastBuildDate" | b"managingEditor" | b"webMaster" | b"generator"
-                    | b"ttl" | b"copyright"
+                    | b"ttl" | b"docs" | b"copyright"
                         if !is_empty =>
                     {
                         parse_channel_standard(
@@ -499,8 +499,10 @@ fn parse_channel_standard(
             feed.feed.generator = Some(read_text_str(reader, buf, limits)?);
         }
         b"ttl" => {
-            let text = read_text_str(reader, buf, limits)?;
-            feed.feed.ttl = text.parse().ok();
+            feed.feed.ttl = Some(read_text_str(reader, buf, limits)?);
+        }
+        b"docs" => {
+            feed.feed.docs = Some(read_text_str(reader, buf, limits)?);
         }
         b"category" => {
             let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
@@ -2088,7 +2090,23 @@ mod tests {
         </rss>"#;
 
         let feed = parse_rss20(xml).unwrap();
-        assert_eq!(feed.feed.ttl, Some(60));
+        assert_eq!(feed.feed.ttl, Some("60".to_string()));
+    }
+
+    #[test]
+    fn test_parse_rss_with_docs() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <docs>https://www.rssboard.org/rss-specification</docs>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.docs.as_deref(),
+            Some("https://www.rssboard.org/rss-specification")
+        );
     }
 
     #[test]
