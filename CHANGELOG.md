@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core/Python/Node.js bindings: add `medium` field to public `MediaContent`, exposing the `media:content medium` attribute; valid values: `"image"`, `"video"`, `"audio"`, `"document"`, `"executable"` (#158)
 
 ### Fixed
+- Map Atom `xml:lang` attribute on `<feed>` to `feed.language`; propagate to `TextConstruct.language` and `Content.language` on feed-level and entry-level constructs; entry-level `xml:lang` overrides feed-level (#149)
+- Whitespace adjacent to XML entity sequences (`&lt;`, `&gt;`, `&amp;`, etc.) in RSS/Atom description and summary fields is now preserved; previously spaces immediately before or after entities were stripped because `trim_text` was applied per-token rather than to the final collected text (#152)
 - Core: when an RSS item has only `content:encoded` (no `<description>`), or an Atom entry has only `<content>` (no `<summary>`), set `entry.summary` from `content[0].value` as a fallback, matching Python feedparser behavior (#150)
 - Map RSS 2.0 `<lastBuildDate>` channel element to `feed.updated` / `feed.updated_parsed`, matching Python feedparser behavior (#147)
 - Atom `<link>` elements without an explicit `type` attribute now get a default MIME type based on `rel`: `text/html` for `alternate`, `hub`, `enclosure`, and unknown relations; `application/atom+xml` for `self` — matching Python feedparser behavior (#146)

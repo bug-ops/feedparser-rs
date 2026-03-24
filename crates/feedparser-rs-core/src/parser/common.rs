@@ -96,8 +96,7 @@ impl<'a> ParseContext<'a> {
             .check_feed_size(data.len())
             .map_err(|e| FeedError::InvalidFormat(e.to_string()))?;
 
-        let mut reader = Reader::from_reader(data);
-        reader.config_mut().trim_text(true);
+        let reader = Reader::from_reader(data);
 
         Ok(Self {
             reader,
@@ -431,7 +430,8 @@ pub fn read_text(
         buf.clear();
     }
 
-    Ok((text, had_bozo))
+    let trimmed = text.trim().to_string();
+    Ok((trimmed, had_bozo))
 }
 
 /// Resolve a general entity reference (numeric or named) to `(string, is_bozo)`.
@@ -561,7 +561,6 @@ mod tests {
     fn test_read_text_basic() {
         let xml = b"<title>Test Title</title>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -585,7 +584,6 @@ mod tests {
     fn test_read_text_exceeds_limit() {
         let xml = b"<title>This is a very long title</title>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits {
             max_text_length: 10,
@@ -611,7 +609,6 @@ mod tests {
     fn test_read_text_numeric_char_ref() {
         let xml = b"<guid>https://example.com/?post_type=webcomic1&#038;p=3172</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -634,7 +631,6 @@ mod tests {
     fn test_read_text_amp_entity() {
         let xml = b"<guid>https://example.com/?a=1&amp;b=2</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -657,7 +653,6 @@ mod tests {
     fn test_read_text_hex_char_ref() {
         let xml = b"<guid>https://example.com/?a=1&#x26;b=2</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -680,7 +675,6 @@ mod tests {
     fn test_read_text_multiple_entities() {
         let xml = b"<guid>https://example.com/?a=1&amp;b=2&amp;c=3</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -704,7 +698,6 @@ mod tests {
         // Unknown entities should be kept verbatim, not cause errors (bozo pattern).
         let xml = b"<guid>https://example.com/?a=1&customEntity;b=2</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -726,11 +719,8 @@ mod tests {
     #[test]
     fn test_read_text_mixed_valid_and_unknown_entities() {
         // Mix of standard and unknown entities — all should resolve without error.
-        // trim_text(true) strips leading/trailing whitespace from each text chunk,
-        // so spaces adjacent to entity refs are dropped; test reflects that reality.
         let xml = b"<title>AT&amp;T&unknown;rocks</title>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
 
@@ -767,7 +757,6 @@ mod tests {
         // &#x; (no hex digits after x) must be preserved verbatim, not cause an error.
         let xml = b"<guid>pre&#x;suf</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -780,7 +769,6 @@ mod tests {
         // &#; (no digits at all) must be preserved verbatim, not cause an error.
         let xml = b"<guid>pre&#;suf</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -793,7 +781,6 @@ mod tests {
         // &; (empty entity name) must be preserved verbatim, not cause an error.
         let xml = b"<guid>pre&;suf</guid>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -805,7 +792,6 @@ mod tests {
     fn test_skip_element_basic() {
         let xml = b"<parent><child>content</child></parent>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         let limits = ParserLimits::default();
         let depth = 1;
@@ -829,7 +815,6 @@ mod tests {
     fn test_resolve_entity_valid_named() {
         let xml = b"<t>&amp;</t>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -841,7 +826,6 @@ mod tests {
     fn test_resolve_entity_valid_numeric() {
         let xml = b"<t>&#38;</t>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -853,7 +837,6 @@ mod tests {
     fn test_resolve_entity_unknown_named() {
         let xml = b"<t>&foo;</t>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -865,20 +848,17 @@ mod tests {
     fn test_read_text_returns_bozo_on_unknown_entity() {
         let xml = b"<t>hello &custom; world</t>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
-        assert!(text.contains("&custom;"));
+        assert_eq!(text, "hello &custom; world");
         assert!(had_bozo);
     }
 
     #[test]
     fn test_read_text_no_bozo_on_standard_entities() {
-        // trim_text(true) removes whitespace adjacent to entity refs, so result has no spaces
         let xml = b"<t>a&amp;b&lt;c&gt;</t>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
@@ -890,7 +870,6 @@ mod tests {
     fn test_read_text_mixed_entities_bozo() {
         let xml = b"<t>&amp;&unknown;</t>";
         let mut reader = Reader::from_reader(&xml[..]);
-        reader.config_mut().trim_text(true);
         let mut buf = Vec::new();
         advance_past_start(&mut reader, &mut buf);
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
