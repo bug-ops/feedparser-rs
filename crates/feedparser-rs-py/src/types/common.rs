@@ -535,6 +535,16 @@ impl PyEnclosure {
         self.inner.enclosure_type.as_deref()
     }
 
+    #[getter]
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
+    }
+
+    #[getter]
+    fn duration(&self) -> Option<&str> {
+        self.inner.duration.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "Enclosure(href='{}', type='{}')",
@@ -548,12 +558,14 @@ impl PyEnclosure {
             "href" => Ok(Some(self.inner.url.to_string())),
             "type" => Ok(self.inner.enclosure_type.as_deref().map(str::to_owned)),
             "length" => Ok(self.inner.length.clone()),
+            "title" => Ok(self.inner.title.clone()),
+            "duration" => Ok(self.inner.duration.clone()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
 
     fn __contains__(&self, key: &str) -> bool {
-        matches!(key, "href" | "type" | "length")
+        matches!(key, "href" | "type" | "length" | "title" | "duration")
     }
 
     #[pyo3(signature = (key, default = None))]
@@ -565,7 +577,7 @@ impl PyEnclosure {
     }
 
     fn keys(&self) -> Vec<&'static str> {
-        vec!["href", "type", "length"]
+        vec!["href", "type", "length", "title", "duration"]
     }
 
     fn values(&self) -> Vec<Option<String>> {
@@ -573,6 +585,8 @@ impl PyEnclosure {
             Some(self.inner.url.to_string()),
             self.inner.enclosure_type.as_deref().map(str::to_owned),
             self.inner.length.clone(),
+            self.inner.title.clone(),
+            self.inner.duration.clone(),
         ]
     }
 

@@ -695,6 +695,11 @@ pub struct Entry {
     /// `false` when `isPermaLink="false"`. `null` when no `<guid>` element present.
     #[napi(js_name = "guidislink")]
     pub guidislink: Option<bool>,
+    /// Entry language (JSON Feed `language` field)
+    pub language: Option<String>,
+    /// External URL where the full content lives (JSON Feed `external_url`)
+    #[napi(js_name = "externalUrl")]
+    pub external_url: Option<String>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -776,6 +781,8 @@ impl From<CoreEntry> for Entry {
             slash_hit_parade: core.slash_hit_parade,
             wfw_comment_rss: core.wfw_comment_rss,
             guidislink: core.guidislink,
+            language: core.language.map(|s| s.to_string()),
+            external_url: core.external_url,
         }
     }
 }
@@ -978,6 +985,10 @@ pub struct Enclosure {
     /// MIME type
     #[napi(js_name = "type")]
     pub enclosure_type: Option<String>,
+    /// Attachment title (JSON Feed only)
+    pub title: Option<String>,
+    /// Duration in seconds as raw string (JSON Feed `duration_in_seconds`)
+    pub duration: Option<String>,
 }
 
 impl From<CoreEnclosure> for Enclosure {
@@ -986,6 +997,8 @@ impl From<CoreEnclosure> for Enclosure {
             href: core.url.into_inner(),
             length: core.length,
             enclosure_type: core.enclosure_type.map(|t| t.to_string()),
+            title: core.title,
+            duration: core.duration,
         }
     }
 }

@@ -254,6 +254,8 @@ pub fn media_content_to_enclosure(content: &MediaContent) -> Enclosure {
         url: content.url.clone().into(),
         enclosure_type: content.type_.as_ref().map(|t| t.clone().into()),
         length: content.file_size.map(|v| v.to_string()),
+        title: None,
+        duration: None,
     }
 }
 

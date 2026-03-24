@@ -126,6 +126,10 @@ pub struct Entry {
     /// `true` when `isPermaLink="true"` or the attribute is absent (RSS 2.0 default).
     /// `false` when `isPermaLink="false"`. `None` when no `<guid>` element is present.
     pub guidislink: Option<bool>,
+    /// Entry language (JSON Feed `language` field)
+    pub language: Option<super::common::SmallString>,
+    /// External URL where the full content lives (JSON Feed `external_url`)
+    pub external_url: Option<String>,
 }
 
 impl Entry {

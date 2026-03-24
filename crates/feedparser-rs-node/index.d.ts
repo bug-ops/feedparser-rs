@@ -33,6 +33,10 @@ export interface Enclosure {
   length?: number
   /** MIME type */
   type?: string
+  /** Attachment title (JSON Feed only) */
+  title?: string
+  /** Duration in seconds as raw string (JSON Feed duration_in_seconds) */
+  duration?: string
 }
 
 /** Feed entry/item */
@@ -127,6 +131,10 @@ export interface Entry {
   slashComments?: number
   /** WFW namespace: comment RSS feed URL */
   wfwCommentRss?: string
+  /** Entry language (JSON Feed language field) */
+  language?: string
+  /** External URL where the full content lives (JSON Feed external_url) */
+  externalUrl?: string
 }
 
 /** Feed metadata */
