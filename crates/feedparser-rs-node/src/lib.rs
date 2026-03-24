@@ -547,7 +547,7 @@ pub struct Entry {
     pub dc_rights: Option<String>,
     /// Media RSS thumbnails
     #[napi(js_name = "mediaThumbnails")]
-    pub media_thumbnails: Vec<MediaThumbnail>,
+    pub media_thumbnail: Vec<MediaThumbnail>,
     /// Media RSS content
     #[napi(js_name = "mediaContent")]
     pub media_content: Vec<MediaContent>,
@@ -619,8 +619,8 @@ impl From<CoreEntry> for Entry {
             dc_date_parsed: core.dc_date.map(|dt| dt.timestamp_millis() as f64),
             dc_subject: core.dc_subject,
             dc_rights: core.dc_rights,
-            media_thumbnails: core
-                .media_thumbnails
+            media_thumbnail: core
+                .media_thumbnail
                 .into_iter()
                 .map(MediaThumbnail::from)
                 .collect(),
@@ -942,6 +942,8 @@ pub struct MediaContent {
     /// MIME type
     #[napi(js_name = "type")]
     pub content_type: Option<String>,
+    /// Medium type: "image", "video", "audio", "document", "executable"
+    pub medium: Option<String>,
     /// File size in bytes (converted from u64 with i64::MAX cap)
     pub filesize: Option<i64>,
     /// Width in pixels
@@ -957,6 +959,7 @@ impl From<CoreMediaContent> for MediaContent {
         Self {
             url: core.url.into_inner(),
             content_type: core.content_type.map(|t| t.to_string()),
+            medium: core.medium,
             filesize: core.filesize.map(|f| i64::try_from(f).unwrap_or(i64::MAX)),
             width: core.width,
             height: core.height,

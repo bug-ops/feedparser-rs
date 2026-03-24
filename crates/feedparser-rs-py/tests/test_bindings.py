@@ -3,7 +3,7 @@
 import feedparser_rs
 
 
-def test_media_thumbnails():
+def test_media_thumbnail():
     """Test Media RSS thumbnail parsing"""
     xml = b"""<?xml version="1.0"?>
     <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
@@ -21,16 +21,16 @@ def test_media_thumbnails():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert len(entry.media_thumbnails) == 2
+    assert len(entry.media_thumbnail) == 2
 
     # First thumbnail with dimensions
-    thumb1 = entry.media_thumbnails[0]
+    thumb1 = entry.media_thumbnail[0]
     assert thumb1.url == "http://example.com/thumb.jpg"
     assert thumb1.width == 640
     assert thumb1.height == 480
 
     # Second thumbnail without dimensions
-    thumb2 = entry.media_thumbnails[1]
+    thumb2 = entry.media_thumbnail[1]
     assert thumb2.url == "http://example.com/small.jpg"
     assert thumb2.width is None
     assert thumb2.height is None
@@ -492,7 +492,7 @@ def test_empty_lists_not_none():
     entry = result.entries[0]
 
     # Lists should be empty, not None
-    assert entry.media_thumbnails == []
+    assert entry.media_thumbnail == []
     assert entry.media_content == []
     assert entry.dc_subject == []
     assert entry.podcast_transcripts == []
@@ -538,7 +538,7 @@ def test_media_thumbnail_repr():
     """
 
     result = feedparser_rs.parse(xml)
-    thumb = result.entries[0].media_thumbnails[0]
+    thumb = result.entries[0].media_thumbnail[0]
 
     repr_str = repr(thumb)
     assert "MediaThumbnail" in repr_str

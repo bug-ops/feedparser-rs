@@ -1397,7 +1397,7 @@ fn parse_item_media(
             let height = find_attribute(attrs, b"height").and_then(|v| v.parse().ok());
 
             if !url.is_empty() {
-                entry.media_thumbnails.try_push_limited(
+                entry.media_thumbnail.try_push_limited(
                     MediaThumbnail {
                         url: url.into(),
                         width,
@@ -1416,6 +1416,8 @@ fn parse_item_media(
                 .unwrap_or_default();
             let content_type = find_attribute(attrs, b"type")
                 .map(|v| truncate_to_length(v, limits.max_attribute_length));
+            let medium = find_attribute(attrs, b"medium")
+                .map(|v| truncate_to_length(v, limits.max_attribute_length));
             let filesize = find_attribute(attrs, b"fileSize").and_then(|v| v.parse().ok());
             let duration = find_attribute(attrs, b"duration").and_then(|v| v.parse().ok());
             let width = find_attribute(attrs, b"width").and_then(|v| v.parse().ok());
@@ -1426,6 +1428,7 @@ fn parse_item_media(
                     MediaContent {
                         url: url.into(),
                         content_type: content_type.map(Into::into),
+                        medium,
                         filesize,
                         width,
                         height,
