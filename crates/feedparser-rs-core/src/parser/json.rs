@@ -207,10 +207,12 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
 
     if let Some(date_str) = json.get("date_published").and_then(|v| v.as_str()) {
         entry.published = parse_date(date_str);
+        entry.published_str = Some(date_str.to_string());
     }
 
     if let Some(date_str) = json.get("date_modified").and_then(|v| v.as_str()) {
         entry.updated = parse_date(date_str);
+        entry.updated_str = Some(date_str.to_string());
     }
 
     parse_authors(

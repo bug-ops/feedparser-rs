@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Timezone Test Feed -08:00</title>
+  <link href="http://example.com"/>
+  <updated>2024-12-14T10:00:00-08:00</updated>
+  <id>http://example.com/feed</id>
+
+  <entry>
+    <title>Entry with -08:00 timezone</title>
+    <link href="http://example.com/entry1"/>
+    <id>http://example.com/entry1</id>
+    <updated>2024-12-14T09:00:00-08:00</updated>
+    <published>2024-12-13T08:00:00-08:00</published>
+    <summary>Entry with negative Pacific timezone offset</summary>
+  </entry>
+</feed>

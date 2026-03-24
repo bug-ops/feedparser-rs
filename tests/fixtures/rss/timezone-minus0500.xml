@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Timezone Test Feed -05:00</title>
+    <link>http://example.com</link>
+    <description>RSS feed with non-UTC timezone (-05:00) for regression testing issue #140</description>
+    <pubDate>Sat, 14 Dec 2024 05:00:00 -0500</pubDate>
+
+    <item>
+      <title>Item with -05:00 timezone</title>
+      <link>http://example.com/item1</link>
+      <description>Entry with negative timezone offset</description>
+      <pubDate>Sat, 14 Dec 2024 04:00:00 -0500</pubDate>
+      <guid>http://example.com/item1</guid>
+    </item>
+  </channel>
+</rss>

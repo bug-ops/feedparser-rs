@@ -25,6 +25,10 @@ pub struct Entry {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Rights/copyright statement
+    pub rights: Option<String>,
+    /// Detailed rights with metadata
+    pub rights_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -33,8 +37,12 @@ pub struct Entry {
     pub content: Vec<Content>,
     /// Publication date
     pub published: Option<DateTime<Utc>>,
+    /// Original publication date string as found in the feed (timezone preserved)
+    pub published_str: Option<String>,
     /// Last update date
     pub updated: Option<DateTime<Utc>>,
+    /// Original update date string as found in the feed (timezone preserved)
+    pub updated_str: Option<String>,
     /// Creation date
     pub created: Option<DateTime<Utc>>,
     /// Expiration date
@@ -147,8 +155,8 @@ impl Entry {
     /// assert_eq!(entry.title.as_deref(), Some("Great Article"));
     /// ```
     #[inline]
-    pub fn set_title(&mut self, mut text: TextConstruct) {
-        self.title = Some(std::mem::take(&mut text.value));
+    pub fn set_title(&mut self, text: TextConstruct) {
+        self.title = Some(text.value.clone());
         self.title_detail = Some(text);
     }
 
@@ -164,9 +172,16 @@ impl Entry {
     /// assert_eq!(entry.subtitle.as_deref(), Some("A teaser"));
     /// ```
     #[inline]
-    pub fn set_subtitle(&mut self, mut text: TextConstruct) {
-        self.subtitle = Some(std::mem::take(&mut text.value));
+    pub fn set_subtitle(&mut self, text: TextConstruct) {
+        self.subtitle = Some(text.value.clone());
         self.subtitle_detail = Some(text);
+    }
+
+    /// Sets rights field with `TextConstruct`, storing both simple and detailed versions
+    #[inline]
+    pub fn set_rights(&mut self, mut text: TextConstruct) {
+        self.rights = Some(std::mem::take(&mut text.value));
+        self.rights_detail = Some(text);
     }
 
     /// Sets summary field with `TextConstruct`, storing both simple and detailed versions
@@ -181,8 +196,8 @@ impl Entry {
     /// assert_eq!(entry.summary.as_deref(), Some("A summary"));
     /// ```
     #[inline]
-    pub fn set_summary(&mut self, mut text: TextConstruct) {
-        self.summary = Some(std::mem::take(&mut text.value));
+    pub fn set_summary(&mut self, text: TextConstruct) {
+        self.summary = Some(text.value.clone());
         self.summary_detail = Some(text);
     }
 

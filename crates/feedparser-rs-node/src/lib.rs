@@ -319,14 +319,14 @@ pub struct FeedMeta {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
-    /// Last update date (RFC 3339 string)
+    /// Last update date (original string from feed, timezone preserved)
     pub updated: Option<String>,
-    /// Parsed last update date as JS Date object
+    /// Parsed last update date as milliseconds since epoch
     #[napi(js_name = "updatedParsed")]
     pub updated_parsed: Option<f64>,
-    /// Initial publication date (RFC 3339 string)
+    /// Initial publication date (original string from feed, timezone preserved)
     pub published: Option<String>,
-    /// Parsed publication date as JS Date object
+    /// Parsed publication date as milliseconds since epoch
     #[napi(js_name = "publishedParsed")]
     pub published_parsed: Option<f64>,
     /// Primary author name
@@ -395,9 +395,9 @@ impl From<CoreFeedMeta> for FeedMeta {
             links: core.links.into_iter().map(Link::from).collect(),
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
-            updated: core.updated.map(|dt| dt.to_rfc3339()),
+            updated: core.updated_str,
             updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
-            published: core.published.map(|dt| dt.to_rfc3339()),
+            published: core.published_str,
             published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
@@ -472,30 +472,34 @@ pub struct Entry {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Rights/copyright statement
+    pub rights: Option<String>,
+    /// Detailed rights with metadata
+    pub rights_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
     pub summary_detail: Option<TextConstruct>,
     /// Full content blocks
     pub content: Vec<Content>,
-    /// Publication date (RFC 3339 string)
+    /// Publication date (original string from feed, timezone preserved)
     pub published: Option<String>,
-    /// Parsed publication date as JS Date object
+    /// Parsed publication date as milliseconds since epoch
     #[napi(js_name = "publishedParsed")]
     pub published_parsed: Option<f64>,
-    /// Last update date (RFC 3339 string)
+    /// Last update date (original string from feed, timezone preserved)
     pub updated: Option<String>,
-    /// Parsed last update date as JS Date object
+    /// Parsed last update date as milliseconds since epoch
     #[napi(js_name = "updatedParsed")]
     pub updated_parsed: Option<f64>,
     /// Creation date (RFC 3339 string)
     pub created: Option<String>,
-    /// Parsed creation date as JS Date object
+    /// Parsed creation date as milliseconds since epoch
     #[napi(js_name = "createdParsed")]
     pub created_parsed: Option<f64>,
     /// Expiration date (RFC 3339 string)
     pub expired: Option<String>,
-    /// Parsed expiration date as JS Date object
+    /// Parsed expiration date as milliseconds since epoch
     #[napi(js_name = "expiredParsed")]
     pub expired_parsed: Option<f64>,
     /// Primary author name
@@ -575,16 +579,18 @@ impl From<CoreEntry> for Entry {
             links: core.links.into_iter().map(Link::from).collect(),
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
+            rights: core.rights,
+            rights_detail: core.rights_detail.map(TextConstruct::from),
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),
-            published: core.published.map(|dt| dt.to_rfc3339()),
+            published: core.published_str,
             published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
-            updated: core.updated.map(|dt| dt.to_rfc3339()),
+            updated: core.updated_str,
             updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
-            created: core.created.map(|dt| dt.to_rfc3339()),
+            created: core.created.as_ref().map(|dt| dt.to_rfc3339()),
             created_parsed: core.created.map(|dt| dt.timestamp_millis() as f64),
-            expired: core.expired.map(|dt| dt.to_rfc3339()),
+            expired: core.expired.as_ref().map(|dt| dt.to_rfc3339()),
             expired_parsed: core.expired.map(|dt| dt.timestamp_millis() as f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
@@ -652,9 +658,9 @@ impl From<CoreTextConstruct> for TextConstruct {
         Self {
             value: core.value,
             content_type: match core.content_type {
-                TextType::Text => "text".to_string(),
-                TextType::Html => "html".to_string(),
-                TextType::Xhtml => "xhtml".to_string(),
+                TextType::Text => "text/plain".to_string(),
+                TextType::Html => "text/html".to_string(),
+                TextType::Xhtml => "application/xhtml+xml".to_string(),
             },
             language: core.language.map(|s| s.to_string()),
             base: core.base,
