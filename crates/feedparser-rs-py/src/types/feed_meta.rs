@@ -307,21 +307,19 @@ impl PyFeedMeta {
                             .ok()
                             .map(|p: Py<PyTextConstruct>| p.into_any())
                     }),
-                    "updated" => self.inner.updated.and_then(|dt| {
-                        dt.to_rfc3339()
-                            .into_pyobject(py)
-                            .map(|o| o.unbind().into())
-                            .ok()
-                    }),
+                    "updated" => self
+                        .inner
+                        .updated_str
+                        .as_deref()
+                        .and_then(|v| v.into_pyobject(py).map(|o| o.unbind().into()).ok()),
                     "updated_parsed" => optional_datetime_to_struct_time(py, &self.inner.updated)
                         .ok()
                         .flatten(),
-                    "published" => self.inner.published.and_then(|dt| {
-                        dt.to_rfc3339()
-                            .into_pyobject(py)
-                            .map(|o| o.unbind().into())
-                            .ok()
-                    }),
+                    "published" => self
+                        .inner
+                        .published_str
+                        .as_deref()
+                        .and_then(|v| v.into_pyobject(py).map(|o| o.unbind().into()).ok()),
                     "published_parsed" => {
                         optional_datetime_to_struct_time(py, &self.inner.published)
                             .ok()
@@ -404,8 +402,8 @@ impl PyFeedMeta {
             }
             "updated" => Ok(self
                 .inner
-                .updated
-                .map(|dt| dt.to_rfc3339())
+                .updated_str
+                .as_deref()
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -415,8 +413,8 @@ impl PyFeedMeta {
                 .unbind()),
             "published" => Ok(self
                 .inner
-                .published
-                .map(|dt| dt.to_rfc3339())
+                .published_str
+                .as_deref()
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -643,22 +641,16 @@ impl PyFeedMeta {
                                             .map(|p: Py<PyTextConstruct>| p.into_any())
                                     })
                                 }
-                                "updated" => self.inner.updated.and_then(|dt| {
-                                    dt.to_rfc3339()
-                                        .into_pyobject(py)
-                                        .map(|o| o.unbind().into())
-                                        .ok()
+                                "updated" => self.inner.updated_str.as_deref().and_then(|v| {
+                                    v.into_pyobject(py).map(|o| o.unbind().into()).ok()
                                 }),
                                 "updated_parsed" => {
                                     optional_datetime_to_struct_time(py, &self.inner.updated)
                                         .ok()
                                         .flatten()
                                 }
-                                "published" => self.inner.published.and_then(|dt| {
-                                    dt.to_rfc3339()
-                                        .into_pyobject(py)
-                                        .map(|o| o.unbind().into())
-                                        .ok()
+                                "published" => self.inner.published_str.as_deref().and_then(|v| {
+                                    v.into_pyobject(py).map(|o| o.unbind().into()).ok()
                                 }),
                                 "published_parsed" => {
                                     optional_datetime_to_struct_time(py, &self.inner.published)
