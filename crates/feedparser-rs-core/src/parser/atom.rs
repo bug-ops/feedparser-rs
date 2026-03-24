@@ -105,6 +105,12 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                     feed.bozo = true;
                     feed.bozo_exception = Some(e.to_string());
                 }
+                // #274: promote feed.id → feed.link when no explicit link was found
+                if feed.feed.link.is_none()
+                    && let Some(id) = feed.feed.id.as_deref()
+                {
+                    feed.feed.link = Some(id.to_string());
+                }
                 depth = depth.saturating_sub(1);
             }
             Ok(Event::Eof) => {
@@ -290,6 +296,10 @@ fn parse_feed_element(
                                 if entry.summary.is_none() {
                                     entry.summary = entry.content.first().map(|c| c.value.clone());
                                 }
+                                // #273: promote entry.id → entry.link when no explicit link
+                                promote_entry_id_to_link(&mut entry);
+                                // #275: fallback entry.updated from entry.published
+                                promote_entry_published_to_updated(&mut entry);
                                 feed.entries.push(entry);
                             }
                             Err(e) => {
@@ -838,6 +848,28 @@ fn parse_entry(
     entry.guidislink = entry.id.as_ref().map(|_| false);
 
     Ok(entry)
+}
+
+/// Promote entry.id → entry.link when no explicit `<link>` is present (#273).
+///
+/// Sets `guidislink = true` when the id is used as the link, `false` otherwise.
+fn promote_entry_id_to_link(entry: &mut Entry) {
+    if entry.link.is_some() {
+        entry.guidislink = Some(false);
+    } else if let Some(id) = entry.id.as_deref() {
+        entry.link = Some(id.to_string());
+        entry.guidislink = Some(true);
+    }
+}
+
+/// Fallback entry.updated from entry.published when `<updated>` is absent (#275).
+fn promote_entry_published_to_updated(entry: &mut Entry) {
+    if entry.updated.is_none() {
+        entry.updated = entry.published;
+        if entry.updated_str.is_none() {
+            entry.updated_str.clone_from(&entry.published_str);
+        }
+    }
 }
 
 /// Parse Atom text construct (title, summary, rights, etc.)

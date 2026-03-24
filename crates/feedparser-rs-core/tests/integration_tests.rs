@@ -842,3 +842,96 @@ fn test_atom_content_xhtml_type_normalization() {
         "text should normalize to text/plain"
     );
 }
+
+// --- Issue #273/#274/#275 regression tests ---
+
+/// #273: entry.id promoted to entry.link when no explicit <link> present
+#[test]
+fn test_atom_entry_id_promoted_to_link_when_no_explicit_link() {
+    let xml = load_fixture("atom/id-only-no-link.xml");
+    let result = parse(&xml).unwrap();
+
+    let entry0 = &result.entries[0];
+    assert_eq!(
+        entry0.link.as_deref(),
+        Some("http://example.com/entry1"),
+        "entry.link should be promoted from entry.id when no explicit link"
+    );
+    assert_eq!(
+        entry0.guidislink,
+        Some(true),
+        "guidislink should be true when link is promoted from id"
+    );
+}
+
+/// #273: guidislink=false when explicit <link> present
+#[test]
+fn test_atom_entry_guidislink_false_when_explicit_link() {
+    let xml = load_fixture("atom/id-only-no-link.xml");
+    let result = parse(&xml).unwrap();
+
+    let entry1 = &result.entries[1];
+    assert_eq!(
+        entry1.link.as_deref(),
+        Some("http://example.com/entry2-link"),
+        "entry.link should be the explicit link, not the id"
+    );
+    assert_eq!(
+        entry1.guidislink,
+        Some(false),
+        "guidislink should be false when explicit link is present"
+    );
+}
+
+/// #274: feed.id promoted to feed.link when no explicit feed <link> present
+#[test]
+fn test_atom_feed_id_promoted_to_feed_link_when_no_explicit_link() {
+    let xml = load_fixture("atom/id-only-no-link.xml");
+    let result = parse(&xml).unwrap();
+
+    assert_eq!(
+        result.feed.link.as_deref(),
+        Some("http://example.com/feed"),
+        "feed.link should be promoted from feed.id when no explicit link"
+    );
+}
+
+/// #274: feed.link NOT overwritten when explicit feed <link> is present
+#[test]
+fn test_atom_feed_explicit_link_not_overwritten_by_id() {
+    let xml = load_fixture("atom/basic.xml");
+    let result = parse(&xml).unwrap();
+
+    assert_eq!(
+        result.feed.link.as_deref(),
+        Some("http://example.com"),
+        "feed.link should remain the explicit link"
+    );
+}
+
+/// #275: entry.updated falls back to entry.published when <updated> absent
+#[test]
+fn test_atom_entry_updated_fallback_from_published() {
+    let xml = load_fixture("atom/id-only-no-link.xml");
+    let result = parse(&xml).unwrap();
+
+    let entry0 = &result.entries[0];
+    assert!(entry0.published.is_some(), "entry.published should be set");
+    assert_eq!(
+        entry0.updated, entry0.published,
+        "entry.updated should equal entry.published when <updated> is absent"
+    );
+}
+
+/// #275: entry.updated NOT overwritten when <updated> is explicitly set
+#[test]
+fn test_atom_entry_updated_not_overwritten_when_set() {
+    let xml = load_fixture("atom/basic.xml");
+    let result = parse(&xml).unwrap();
+
+    let entry0 = &result.entries[0];
+    assert!(entry0.updated.is_some(), "entry.updated should be set");
+    // In basic.xml, updated=2024-12-14T09:00:00Z, published is absent
+    // published should be None, updated should be the explicit value
+    assert_eq!(entry0.updated_str.as_deref(), Some("2024-12-14T09:00:00Z"));
+}
