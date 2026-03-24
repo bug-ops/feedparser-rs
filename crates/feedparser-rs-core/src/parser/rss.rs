@@ -1631,6 +1631,7 @@ fn parse_item_media(
             let expression = find_attribute(attrs, b"expression").map(str::to_owned);
             let isdefault = find_attribute(attrs, b"isDefault").map(str::to_owned);
             let samplingrate = find_attribute(attrs, b"samplingrate").map(str::to_owned);
+            let framerate = find_attribute(attrs, b"framerate").map(str::to_owned);
 
             if !url.is_empty() {
                 entry.media_content.try_push_limited(
@@ -1649,12 +1650,13 @@ fn parse_item_media(
                         expression,
                         isdefault,
                         samplingrate,
+                        framerate,
                     },
                     limits.max_enclosures,
                 );
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                parse_media_content_children(reader, buf, entry, limits, depth)?;
             }
         }
         "group" => {
@@ -1723,6 +1725,74 @@ fn parse_media_group(
                         true,
                         inner_depth,
                     )?;
+                }
+            }
+            Ok(Event::End(_) | Event::Eof) | Err(_) => break,
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Parse children of `<media:content>`, collecting nested `media:thumbnail` elements.
+///
+/// Python feedparser collects all `media:thumbnail` elements into `entry.media_thumbnail`
+/// regardless of whether they are top-level or nested inside `media:content`.
+fn parse_media_content_children(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+) -> Result<()> {
+    let mut inner_depth = depth;
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                inner_depth += 1;
+                check_depth(inner_depth, limits.max_nesting_depth)?;
+                let tag = e.name().as_ref().to_vec();
+                if is_media_tag(&tag) == Some("thumbnail") {
+                    let (attrs, _) = collect_attributes(&e);
+                    let url = find_attribute(&attrs, b"url")
+                        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                        .unwrap_or_default();
+                    let width = find_attribute(&attrs, b"width").map(str::to_owned);
+                    let height = find_attribute(&attrs, b"height").map(str::to_owned);
+                    if !url.is_empty() {
+                        entry.media_thumbnail.try_push_limited(
+                            MediaThumbnail {
+                                url: url.into(),
+                                width,
+                                height,
+                            },
+                            limits.max_enclosures,
+                        );
+                    }
+                }
+                skip_element(reader, buf, limits, inner_depth)?;
+                inner_depth = inner_depth.saturating_sub(1);
+            }
+            Ok(Event::Empty(e)) => {
+                let tag = e.name().as_ref().to_vec();
+                if is_media_tag(&tag) == Some("thumbnail") {
+                    let (attrs, _) = collect_attributes(&e);
+                    let url = find_attribute(&attrs, b"url")
+                        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                        .unwrap_or_default();
+                    let width = find_attribute(&attrs, b"width").map(str::to_owned);
+                    let height = find_attribute(&attrs, b"height").map(str::to_owned);
+                    if !url.is_empty() {
+                        entry.media_thumbnail.try_push_limited(
+                            MediaThumbnail {
+                                url: url.into(),
+                                width,
+                                height,
+                            },
+                            limits.max_enclosures,
+                        );
+                    }
                 }
             }
             Ok(Event::End(_) | Event::Eof) | Err(_) => break,

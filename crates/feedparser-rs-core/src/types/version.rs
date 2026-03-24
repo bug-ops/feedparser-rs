@@ -5,9 +5,9 @@ use std::fmt;
 pub enum FeedVersion {
     /// RSS 0.90
     Rss090,
-    /// RSS 0.91 Netscape
+    /// RSS 0.91 Netscape (with Netscape DOCTYPE)
     Rss091Netscape,
-    /// RSS 0.91 Userland
+    /// RSS 0.91 Userland (without Netscape DOCTYPE)
     Rss091Userland,
     /// RSS 0.92
     Rss092,

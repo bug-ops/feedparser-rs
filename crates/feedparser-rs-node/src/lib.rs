@@ -1041,6 +1041,8 @@ pub struct MediaContent {
     pub isdefault: Option<String>,
     /// Sampling rate in kHz (raw string value)
     pub samplingrate: Option<String>,
+    /// Frame rate in frames per second (raw string value)
+    pub framerate: Option<String>,
 }
 
 impl From<CoreMediaContent> for MediaContent {
@@ -1060,6 +1062,7 @@ impl From<CoreMediaContent> for MediaContent {
             expression: core.expression,
             isdefault: core.isdefault,
             samplingrate: core.samplingrate,
+            framerate: core.framerate,
         }
     }
 }

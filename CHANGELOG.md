@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Core: `media:content` attributes `bitrate`, `channels`, `samplingrate`, and `framerate` are now parsed and exposed as strings on `MediaContent`, matching Python feedparser behavior (#294, #253)
+- Core, Python, Node.js bindings: `media:thumbnail` elements nested inside `<media:content>` are now collected into `entry.media_thumbnail` alongside top-level thumbnails, matching Python feedparser behavior (#270)
+- Python bindings: `bitrate`, `channels`, `samplingrate`, `framerate`, `lang`, `codec`, `expression`, and `isdefault` attributes are now accessible via `MediaContent.__getitem__` / `__contains__` / `keys` / `values` dict protocol (#294)
+
 - Core: syndication module (`syn:`/`sy:` namespace) is now parsed in RSS 2.0 feeds; previously only RSS 1.0 feeds were supported — RSS 2.0 feeds with `<syn:updatePeriod>` etc. returned `feed.syndication = None` (#237)
 - Core: `syn:updateFrequency` / `sy:updateFrequency` now returns the raw string value (e.g. `"2"`) instead of an integer, matching Python feedparser behavior (#268, #220)
+- Python bindings: expose `thr:in-reply-to` as `entry['thr_in-reply-to']` returning the first element as a plain dict with keys `ref`, `href`, `type`, `source` (non-None only), matching Python feedparser API; `entry.thr_in_reply_to` (underscore) retains the full list of `InReplyTo` objects (#267, #245)
 - Core, Python, Node.js bindings: Atom `<source><link href="..."/>` now populates `entry.source.link` (new field); `entry.source.href` remains for RSS `<source url="...">` only (#262)
 - Core, Python, Node.js bindings: Atom `<source><author>` is now exposed as `entry.source.author` flat string in `"Name (email)"` format (#262)
 - Core, Python, Node.js bindings: Atom `<content src="...">` (out-of-line content per RFC 4287 §4.1.3.2) is now parsed — `content.src` is set to the URL, `content.value` is empty string, `content.type` is set from the `type` attribute (#252)
@@ -41,7 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: Atom `entry.guidislink` is now `Some(true)` when `entry.link` is promoted from `entry.id` (no explicit `<link>`), and `Some(false)` when an explicit `<link>` is present; previously always hardcoded to `Some(false)` (#285)
 - Core: `dc:creator` in Atom entries is now used as fallback for `entry.author` when no `<author>` element is present, matching RSS behavior and Python feedparser (#278)
 - Core: RSS 0.92 and 0.90 feeds now report `"rss092"` and `"rss090"` instead of `"rss20"`; RSS 0.91 with Netscape DOCTYPE reports `"rss091n"`, without DOCTYPE reports `"rss091u"`, matching Python feedparser behavior (#283)
-- Python bindings: expose `thr:in-reply-to` as `entry['thr_in-reply-to']` returning the first element as a plain dict with keys `ref`, `href`, `type`, `source` (non-None only), matching Python feedparser API; `entry.thr_in_reply_to` (underscore) retains the full list of `InReplyTo` objects (#267, #245)
 - Core: `georss:point`, `georss:polygon`, and `georss:line` are now parsed in Atom `<entry>` elements and populate `entry.where`; previously only RSS `<item>` elements were supported (#291)
 - Core, Python, Node.js bindings: `geo:lat` and `geo:long` (W3C Basic Geo namespace) are now parsed at feed and entry level; `feed.geo_lat`, `feed.geo_long`, `entry.geo_lat`, `entry.geo_long` are exposed as flat strings; `feed.where`/`entry.where` are auto-constructed as a GeoJSON Point when both are present (#248)
 

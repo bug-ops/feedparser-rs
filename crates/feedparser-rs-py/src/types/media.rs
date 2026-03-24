@@ -178,6 +178,11 @@ impl PyMediaContent {
         self.inner.samplingrate.as_deref()
     }
 
+    #[getter]
+    fn framerate(&self) -> Option<&str> {
+        self.inner.framerate.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "MediaContent(url='{}', type='{}')",
@@ -195,6 +200,14 @@ impl PyMediaContent {
             "height" => Ok(self.inner.height.as_deref().map(str::to_owned)),
             "duration" => Ok(self.inner.duration.as_deref().map(str::to_owned)),
             "filesize" => Ok(self.inner.filesize.map(|v| v.to_string())),
+            "bitrate" => Ok(self.inner.bitrate.as_deref().map(str::to_owned)),
+            "channels" => Ok(self.inner.channels.as_deref().map(str::to_owned)),
+            "samplingrate" => Ok(self.inner.samplingrate.as_deref().map(str::to_owned)),
+            "framerate" => Ok(self.inner.framerate.as_deref().map(str::to_owned)),
+            "lang" => Ok(self.inner.lang.as_deref().map(str::to_owned)),
+            "codec" => Ok(self.inner.codec.as_deref().map(str::to_owned)),
+            "expression" => Ok(self.inner.expression.as_deref().map(str::to_owned)),
+            "isdefault" => Ok(self.inner.isdefault.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
@@ -202,7 +215,21 @@ impl PyMediaContent {
     fn __contains__(&self, key: &str) -> bool {
         matches!(
             key,
-            "url" | "type" | "medium" | "width" | "height" | "duration" | "filesize"
+            "url"
+                | "type"
+                | "medium"
+                | "width"
+                | "height"
+                | "duration"
+                | "filesize"
+                | "bitrate"
+                | "channels"
+                | "samplingrate"
+                | "framerate"
+                | "lang"
+                | "codec"
+                | "expression"
+                | "isdefault"
         )
     }
 
@@ -216,7 +243,21 @@ impl PyMediaContent {
 
     fn keys(&self) -> Vec<&'static str> {
         vec![
-            "url", "type", "medium", "width", "height", "duration", "filesize",
+            "url",
+            "type",
+            "medium",
+            "width",
+            "height",
+            "duration",
+            "filesize",
+            "bitrate",
+            "channels",
+            "samplingrate",
+            "framerate",
+            "lang",
+            "codec",
+            "expression",
+            "isdefault",
         ]
     }
 
@@ -229,6 +270,14 @@ impl PyMediaContent {
             self.inner.height.as_deref().map(str::to_owned),
             self.inner.duration.as_deref().map(str::to_owned),
             self.inner.filesize.map(|v| v.to_string()),
+            self.inner.bitrate.as_deref().map(str::to_owned),
+            self.inner.channels.as_deref().map(str::to_owned),
+            self.inner.samplingrate.as_deref().map(str::to_owned),
+            self.inner.framerate.as_deref().map(str::to_owned),
+            self.inner.lang.as_deref().map(str::to_owned),
+            self.inner.codec.as_deref().map(str::to_owned),
+            self.inner.expression.as_deref().map(str::to_owned),
+            self.inner.isdefault.as_deref().map(str::to_owned),
         ]
     }
 
@@ -255,5 +304,6 @@ impl PyMediaContent {
             && self.inner.expression == other.inner.expression
             && self.inner.isdefault == other.inner.isdefault
             && self.inner.samplingrate == other.inner.samplingrate
+            && self.inner.framerate == other.inner.framerate
     }
 }
