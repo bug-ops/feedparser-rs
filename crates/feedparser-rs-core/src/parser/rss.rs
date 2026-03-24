@@ -1202,15 +1202,21 @@ fn parse_podcast_transcript(
         find_attribute(attrs, b"rel").map(|v| truncate_to_length(v, limits.max_attribute_length));
 
     if !url.is_empty() {
-        entry.podcast_transcripts.try_push_limited(
-            PodcastTranscript {
-                url: url.into(),
-                transcript_type: transcript_type.map(Into::into),
-                language,
-                rel,
-            },
-            limits.max_podcast_transcripts,
-        );
+        let transcript = PodcastTranscript {
+            url: url.into(),
+            transcript_type: transcript_type.map(Into::into),
+            language,
+            rel,
+        };
+        entry
+            .podcast_transcripts
+            .try_push_limited(transcript.clone(), limits.max_podcast_transcripts);
+        let podcast = entry
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+        podcast
+            .transcript
+            .try_push_limited(transcript, limits.max_podcast_transcripts);
     }
 
     if !is_empty {
@@ -1239,16 +1245,22 @@ fn parse_podcast_person(
 
     let name = read_text_str(reader, buf, limits)?;
     if !name.is_empty() {
-        entry.podcast_persons.try_push_limited(
-            PodcastPerson {
-                name,
-                role,
-                group,
-                img: img.map(Into::into),
-                href: href.map(Into::into),
-            },
-            limits.max_podcast_persons,
-        );
+        let person = PodcastPerson {
+            name,
+            role,
+            group,
+            img: img.map(Into::into),
+            href: href.map(Into::into),
+        };
+        entry
+            .podcast_persons
+            .try_push_limited(person.clone(), limits.max_podcast_persons);
+        let podcast = entry
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+        podcast
+            .person
+            .try_push_limited(person, limits.max_podcast_persons);
     }
 
     Ok(())
@@ -2530,6 +2542,111 @@ mod tests {
         assert_eq!(persons[2].name, "Bob Editor");
         assert_eq!(persons[2].role.as_deref(), Some("editor"));
         assert_eq!(persons[2].group.as_deref(), Some("production"));
+    }
+
+    #[test]
+    fn test_podcast_entry_meta_transcript_populated() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:transcript
+                        url="https://example.com/ep1.srt"
+                        type="application/srt"
+                        language="en"
+                        rel="captions"/>
+                    <podcast:transcript
+                        url="https://example.com/ep1.vtt"
+                        type="text/vtt"/>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+
+        let podcast = entry
+            .podcast
+            .as_deref()
+            .expect("entry.podcast should be Some");
+        assert_eq!(podcast.transcript.len(), 2);
+        assert_eq!(podcast.transcript[0].url, "https://example.com/ep1.srt");
+        assert_eq!(
+            podcast.transcript[0].transcript_type.as_deref(),
+            Some("application/srt")
+        );
+        assert_eq!(podcast.transcript[0].language.as_deref(), Some("en"));
+        assert_eq!(podcast.transcript[0].rel.as_deref(), Some("captions"));
+        assert_eq!(podcast.transcript[1].url, "https://example.com/ep1.vtt");
+        assert_eq!(
+            podcast.transcript[1].transcript_type.as_deref(),
+            Some("text/vtt")
+        );
+    }
+
+    #[test]
+    fn test_podcast_entry_meta_person_populated() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:person
+                        role="host"
+                        href="https://example.com/host"
+                        img="https://example.com/host.jpg">Jane Doe</podcast:person>
+                    <podcast:person role="guest">John Smith</podcast:person>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+
+        let podcast = entry
+            .podcast
+            .as_deref()
+            .expect("entry.podcast should be Some");
+        assert_eq!(podcast.person.len(), 2);
+        assert_eq!(podcast.person[0].name, "Jane Doe");
+        assert_eq!(podcast.person[0].role.as_deref(), Some("host"));
+        assert_eq!(
+            podcast.person[0].href.as_deref(),
+            Some("https://example.com/host")
+        );
+        assert_eq!(
+            podcast.person[0].img.as_deref(),
+            Some("https://example.com/host.jpg")
+        );
+        assert_eq!(podcast.person[1].name, "John Smith");
+        assert_eq!(podcast.person[1].role.as_deref(), Some("guest"));
+    }
+
+    #[test]
+    fn test_podcast_entry_meta_non_none_without_soundbites_chapters() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:transcript url="https://example.com/ep1.txt" type="text/plain"/>
+                    <podcast:person role="host">Jane Doe</podcast:person>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+
+        let podcast = entry
+            .podcast
+            .as_deref()
+            .expect("entry.podcast must be Some when only transcript/person present");
+        assert_eq!(podcast.transcript.len(), 1);
+        assert_eq!(podcast.person.len(), 1);
+        assert!(podcast.chapters.is_none());
+        assert!(podcast.soundbite.is_empty());
     }
 
     // PRIORITY 3: Namespace Tests
