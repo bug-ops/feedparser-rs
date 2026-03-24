@@ -161,7 +161,7 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     Ok(feed)
 }
 
-/// Apply iTunes subtitle/summary promotions to feed-level fields.
+/// Apply iTunes promotion rules to feed-level fields.
 ///
 /// Called after all XML elements in a channel/feed have been parsed, so promotion
 /// is order-independent regardless of where itunes: elements appear in the document.
@@ -170,6 +170,18 @@ fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
     // Clone to avoid simultaneous immutable + mutable borrow on `feed`.
     let subtitle = feed.itunes.as_ref().and_then(|it| it.subtitle.clone());
     let summary = feed.itunes.as_ref().and_then(|it| it.summary.clone());
+    let itunes_image = feed.itunes.as_ref().and_then(|it| it.image.clone());
+    let itunes_author = feed.itunes.as_ref().and_then(|it| it.author.clone());
+    let owner_name = feed
+        .itunes
+        .as_ref()
+        .and_then(|it| it.owner.as_ref())
+        .and_then(|o| o.name.clone());
+    let owner_email = feed
+        .itunes
+        .as_ref()
+        .and_then(|it| it.owner.as_ref())
+        .and_then(|o| o.email.clone());
 
     if let Some(ref s) = subtitle
         && !s.trim().is_empty()
@@ -180,8 +192,41 @@ fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
         && !s.trim().is_empty()
     {
         feed.set_summary(TextConstruct::text(s));
-        if feed.subtitle.is_none() {
-            feed.set_subtitle(TextConstruct::text(s));
+    }
+
+    // itunes:image href always wins over RSS <image> (#287).
+    if let Some(ref url) = itunes_image
+        && !url.trim().is_empty()
+    {
+        feed.image = Some(Image {
+            url: url.as_str().into(),
+            title: None,
+            link: None,
+            width: None,
+            height: None,
+            description: None,
+        });
+    }
+
+    // Author promotion priority (#297): managingEditor > itunes:owner.name > itunes:author.
+    // managingEditor is set inline as a native RSS field before this function runs.
+    if feed.author.is_none() {
+        if let Some(ref name) = owner_name
+            && !name.trim().is_empty()
+        {
+            let person = Person {
+                name: Some(name.as_str().into()),
+                email: owner_email.as_deref().map(crate::types::Email::new),
+                uri: None,
+            };
+            feed.set_author(person.clone());
+            feed.authors.try_push_limited(person, usize::MAX);
+        } else if let Some(ref name) = itunes_author
+            && !name.trim().is_empty()
+        {
+            let person = Person::from_name(name);
+            feed.set_author(person.clone());
+            feed.authors.try_push_limited(person, usize::MAX);
         }
     }
 }
@@ -603,13 +648,8 @@ fn parse_channel_itunes(
     if is_itunes_tag(tag, b"author") {
         if !is_empty {
             let text = read_text_str(reader, buf, limits)?;
-            // Promote to feed.author if not already set
-            if feed.feed.author.is_none() {
-                feed.feed.set_author(Person::from_name(&text));
-                feed.feed
-                    .authors
-                    .try_push_limited(Person::from_name(&text), limits.max_authors);
-            }
+            // Store raw value; author promotion happens in apply_itunes_feed_promotions
+            // so that itunes:owner.name priority over itunes:author is order-independent.
             let itunes = feed
                 .feed
                 .itunes
@@ -676,17 +716,16 @@ fn parse_channel_itunes(
                 .itunes
                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
             itunes.image = Some(url.clone().into());
-            // Also set feed.image if not already set (for Python feedparser compatibility)
-            if feed.feed.image.is_none() {
-                feed.feed.image = Some(Image {
-                    url: url.into(),
-                    title: None,
-                    link: None,
-                    width: None,
-                    height: None,
-                    description: None,
-                });
-            }
+            // itunes:image always wins over RSS <image> (order-independent via post-processing
+            // in apply_itunes_feed_promotions called after the channel element loop).
+            feed.feed.image = Some(Image {
+                url: url.into(),
+                title: None,
+                link: None,
+                width: None,
+                height: None,
+                description: None,
+            });
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"keywords") {
@@ -4031,6 +4070,100 @@ mod tests {
         );
     }
 
+    // #297: itunes:owner.name must win over itunes:author for feed.author
+    #[test]
+    fn test_itunes_owner_name_wins_over_itunes_author() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:author>Show Author</itunes:author>
+                <itunes:owner>
+                    <itunes:name>Owner Name</itunes:name>
+                    <itunes:email>owner@example.com</itunes:email>
+                </itunes:owner>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        // flat author string follows "Name (email)" convention
+        assert_eq!(
+            feed.feed.author.as_deref(),
+            Some("Owner Name (owner@example.com)"),
+            "itunes:owner.name must win over itunes:author"
+        );
+        let detail = feed.feed.author_detail.as_ref().unwrap();
+        assert_eq!(detail.name.as_deref(), Some("Owner Name"));
+        assert_eq!(detail.email.as_deref(), Some("owner@example.com"));
+    }
+
+    // #297: itunes:owner before itunes:author — order must not matter
+    #[test]
+    fn test_itunes_owner_before_author_still_wins() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:owner>
+                    <itunes:name>Owner Name</itunes:name>
+                    <itunes:email>owner@example.com</itunes:email>
+                </itunes:owner>
+                <itunes:author>Show Author</itunes:author>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.author.as_deref(),
+            Some("Owner Name (owner@example.com)"),
+            "itunes:owner.name must win regardless of element order"
+        );
+    }
+
+    // #287: itunes:image must override RSS <image>
+    #[test]
+    fn test_itunes_image_overrides_rss_image() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <image>
+                    <url>https://example.com/rss-logo.png</url>
+                    <title>RSS Logo</title>
+                    <link>https://example.com</link>
+                </image>
+                <itunes:image href="https://example.com/itunes-cover.jpg"/>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.image.as_ref().map(|i| i.url.as_str()),
+            Some("https://example.com/itunes-cover.jpg"),
+            "itunes:image must override RSS <image>"
+        );
+    }
+
+    // #287: itunes:image before RSS <image> — order must not matter
+    #[test]
+    fn test_itunes_image_before_rss_image_still_wins() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:image href="https://example.com/itunes-cover.jpg"/>
+                <image>
+                    <url>https://example.com/rss-logo.png</url>
+                    <title>RSS Logo</title>
+                    <link>https://example.com</link>
+                </image>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.image.as_ref().map(|i| i.url.as_str()),
+            Some("https://example.com/itunes-cover.jpg"),
+            "itunes:image must win regardless of element order"
+        );
+    }
+
     #[test]
     fn test_itunes_subtitle_promotes_to_feed_subtitle_when_absent() {
         let xml = br#"<?xml version="1.0"?>
@@ -4068,7 +4201,8 @@ mod tests {
     }
 
     #[test]
-    fn test_itunes_summary_promotes_to_feed_subtitle_when_absent() {
+    fn test_itunes_summary_does_not_promote_to_feed_subtitle() {
+        // #308: itunes:summary must NOT set feed.subtitle — only itunes:subtitle does that.
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
             <channel>
@@ -4077,7 +4211,7 @@ mod tests {
             </channel>
         </rss>"#;
         let feed = parse_rss20(xml).unwrap();
-        assert_eq!(feed.feed.subtitle.as_deref(), Some("iTunes Summary"));
+        assert_eq!(feed.feed.subtitle.as_deref(), None);
         assert_eq!(
             feed.feed.itunes.as_ref().unwrap().summary.as_deref(),
             Some("iTunes Summary")
@@ -4398,9 +4532,9 @@ mod tests {
         );
     }
 
-    // TC-257-4: itunes:summary falls back to subtitle when no description present
+    // TC-257-4: itunes:summary populates feed.summary only, never feed.subtitle (#308)
     #[test]
-    fn test_tc_257_4_itunes_summary_fallback_to_subtitle() {
+    fn test_tc_257_4_itunes_summary_only_sets_feed_summary() {
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
             <channel>
@@ -4411,8 +4545,8 @@ mod tests {
         assert_eq!(feed.feed.summary.as_deref(), Some("iTunes summary"));
         assert_eq!(
             feed.feed.subtitle.as_deref(),
-            Some("iTunes summary"),
-            "subtitle gets summary as fallback when no <description> and no itunes:subtitle"
+            None,
+            "itunes:summary must not set feed.subtitle — only itunes:subtitle does that"
         );
     }
 
