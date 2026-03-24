@@ -90,8 +90,8 @@ impl PyLink {
     }
 
     #[getter]
-    fn length(&self) -> Option<u64> {
-        self.inner.length
+    fn length(&self) -> Option<&str> {
+        self.inner.length.as_deref()
     }
 
     #[getter]
@@ -307,8 +307,8 @@ impl PyEnclosure {
     }
 
     #[getter]
-    fn length(&self) -> Option<u64> {
-        self.inner.length
+    fn length(&self) -> Option<&str> {
+        self.inner.length.as_deref()
     }
 
     #[getter]
@@ -329,7 +329,7 @@ impl PyEnclosure {
         match key {
             "href" => Ok(Some(self.inner.url.to_string())),
             "type" => Ok(self.inner.enclosure_type.as_deref().map(str::to_owned)),
-            "length" => Ok(self.inner.length.map(|v| v.to_string())),
+            "length" => Ok(self.inner.length.clone()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }

@@ -109,7 +109,7 @@ fn parse_rss_example() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(enclosure_type) = &enc.enclosure_type {
                     println!("        Type: {enclosure_type}");
                 }
-                if let Some(length) = enc.length {
+                if let Some(length) = &enc.length {
                     println!("        Size: {length} bytes");
                 }
             }

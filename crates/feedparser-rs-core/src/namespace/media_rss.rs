@@ -198,13 +198,13 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
 /// let enclosure = media_content_to_enclosure(&content);
 /// assert_eq!(enclosure.url, "https://example.com/video.mp4");
 /// assert_eq!(enclosure.enclosure_type.as_deref(), Some("video/mp4"));
-/// assert_eq!(enclosure.length, Some(1_024_000));
+/// assert_eq!(enclosure.length.as_deref(), Some("1024000"));
 /// ```
 pub fn media_content_to_enclosure(content: &MediaContent) -> Enclosure {
     Enclosure {
         url: content.url.clone().into(),
         enclosure_type: content.type_.as_ref().map(|t| t.clone().into()),
-        length: content.file_size,
+        length: content.file_size.map(|v| v.to_string()),
     }
 }
 
@@ -412,7 +412,7 @@ mod tests {
 
         assert_eq!(enclosure.url, "https://example.com/video.mp4");
         assert_eq!(enclosure.enclosure_type.as_deref(), Some("video/mp4"));
-        assert_eq!(enclosure.length, Some(1_024_000));
+        assert_eq!(enclosure.length.as_deref(), Some("1024000"));
     }
 
     #[test]

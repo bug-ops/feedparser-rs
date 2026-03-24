@@ -176,10 +176,14 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) {
                 if let Some(enclosure_type) = &enc.enclosure_type {
                     println!("    Type: {enclosure_type}");
                 }
-                if let Some(length) = enc.length {
-                    #[allow(clippy::cast_precision_loss)]
-                    let mb = length as f64 / 1_048_576.0;
-                    println!("    Size: {mb:.2} MB ({length} bytes)");
+                if let Some(length) = &enc.length {
+                    if let Ok(bytes) = length.parse::<u64>() {
+                        #[allow(clippy::cast_precision_loss)]
+                        let mb = bytes as f64 / 1_048_576.0;
+                        println!("    Size: {mb:.2} MB ({bytes} bytes)");
+                    } else {
+                        println!("    Size: {length} bytes");
+                    }
                 }
             }
         }

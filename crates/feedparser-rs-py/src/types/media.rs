@@ -25,13 +25,13 @@ impl PyMediaThumbnail {
     }
 
     #[getter]
-    fn width(&self) -> Option<u32> {
-        self.inner.width
+    fn width(&self) -> Option<&str> {
+        self.inner.width.as_deref()
     }
 
     #[getter]
-    fn height(&self) -> Option<u32> {
-        self.inner.height
+    fn height(&self) -> Option<&str> {
+        self.inner.height.as_deref()
     }
 
     fn __repr__(&self) -> String {
@@ -88,13 +88,13 @@ impl PyMediaContent {
     }
 
     #[getter]
-    fn width(&self) -> Option<u32> {
-        self.inner.width
+    fn width(&self) -> Option<&str> {
+        self.inner.width.as_deref()
     }
 
     #[getter]
-    fn height(&self) -> Option<u32> {
-        self.inner.height
+    fn height(&self) -> Option<&str> {
+        self.inner.height.as_deref()
     }
 
     #[getter]

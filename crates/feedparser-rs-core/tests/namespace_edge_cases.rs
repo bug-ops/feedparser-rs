@@ -82,10 +82,10 @@ fn test_media_invalid_numeric_attributes() {
     let feed = parse(xml).unwrap();
     let entry = &feed.entries[0];
 
-    // Should still parse URL, but invalid attributes should be None
+    // Raw string values are preserved even when non-numeric
     assert_eq!(entry.media_thumbnail.len(), 1);
-    assert!(entry.media_thumbnail[0].width.is_none());
-    assert!(entry.media_thumbnail[0].height.is_none());
+    assert_eq!(entry.media_thumbnail[0].width.as_deref(), Some("invalid"));
+    assert_eq!(entry.media_thumbnail[0].height.as_deref(), Some("-50"));
 
     assert_eq!(entry.media_content.len(), 1);
     assert!(entry.media_content[0].filesize.is_none());
@@ -166,9 +166,9 @@ fn test_multiple_media_thumbnail() {
     let entry = &feed.entries[0];
 
     assert_eq!(entry.media_thumbnail.len(), 3);
-    assert_eq!(entry.media_thumbnail[0].width, Some(100));
-    assert_eq!(entry.media_thumbnail[1].width, Some(200));
-    assert_eq!(entry.media_thumbnail[2].width, Some(300));
+    assert_eq!(entry.media_thumbnail[0].width.as_deref(), Some("100"));
+    assert_eq!(entry.media_thumbnail[1].width.as_deref(), Some("200"));
+    assert_eq!(entry.media_thumbnail[2].width.as_deref(), Some("300"));
 }
 
 /// Tests parsing of Unicode/non-ASCII characters in Dublin Core elements
@@ -335,8 +335,8 @@ fn test_multiple_media_content() {
     let entry = &feed.entries[0];
 
     assert_eq!(entry.media_content.len(), 2);
-    assert_eq!(entry.media_content[0].width, Some(640));
-    assert_eq!(entry.media_content[1].width, Some(1920));
+    assert_eq!(entry.media_content[0].width.as_deref(), Some("640"));
+    assert_eq!(entry.media_content[1].width.as_deref(), Some("1920"));
 }
 
 /// Tests that dc:contributor elements are handled separately from dc:creator

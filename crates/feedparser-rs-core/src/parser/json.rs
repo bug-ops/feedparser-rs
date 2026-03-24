@@ -447,7 +447,10 @@ mod tests {
             feed.entries[0].enclosures[0].enclosure_type.as_deref(),
             Some("audio/mpeg")
         );
-        assert_eq!(feed.entries[0].enclosures[0].length, Some(12345));
+        assert_eq!(
+            feed.entries[0].enclosures[0].length.as_deref(),
+            Some("12345")
+        );
     }
 
     #[test]

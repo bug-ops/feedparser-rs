@@ -1421,8 +1421,8 @@ fn parse_item_media(
             let url = find_attribute(attrs, b"url")
                 .map(|v| truncate_to_length(v, limits.max_attribute_length))
                 .unwrap_or_default();
-            let width = find_attribute(attrs, b"width").and_then(|v| v.parse().ok());
-            let height = find_attribute(attrs, b"height").and_then(|v| v.parse().ok());
+            let width = find_attribute(attrs, b"width").map(str::to_owned);
+            let height = find_attribute(attrs, b"height").map(str::to_owned);
 
             if !url.is_empty() {
                 entry.media_thumbnail.try_push_limited(
@@ -1448,8 +1448,8 @@ fn parse_item_media(
                 .map(|v| truncate_to_length(v, limits.max_attribute_length));
             let filesize = find_attribute(attrs, b"fileSize").and_then(|v| v.parse().ok());
             let duration = find_attribute(attrs, b"duration").and_then(|v| v.parse().ok());
-            let width = find_attribute(attrs, b"width").and_then(|v| v.parse().ok());
-            let height = find_attribute(attrs, b"height").and_then(|v| v.parse().ok());
+            let width = find_attribute(attrs, b"width").map(str::to_owned);
+            let height = find_attribute(attrs, b"height").map(str::to_owned);
 
             if !url.is_empty() {
                 entry.media_content.try_push_limited(
@@ -1852,7 +1852,10 @@ mod tests {
             feed.entries[0].enclosures[0].url,
             "http://example.com/audio.mp3"
         );
-        assert_eq!(feed.entries[0].enclosures[0].length, Some(12345));
+        assert_eq!(
+            feed.entries[0].enclosures[0].length.as_deref(),
+            Some("12345")
+        );
         assert_eq!(
             feed.entries[0].enclosures[0].enclosure_type.as_deref(),
             Some("audio/mpeg")

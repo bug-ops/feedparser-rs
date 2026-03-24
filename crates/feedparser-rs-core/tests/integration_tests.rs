@@ -482,7 +482,7 @@ fn test_atom_enclosure_full_attributes() {
         entry.enclosures[0].enclosure_type.as_deref(),
         Some("audio/mpeg")
     );
-    assert_eq!(entry.enclosures[0].length, Some(12_345_678));
+    assert_eq!(entry.enclosures[0].length.as_deref(), Some("12345678"));
 
     // Enclosure link also appears in entry.links (dual population)
     assert!(
@@ -515,7 +515,7 @@ fn test_atom_enclosure_missing_type() {
         entry.enclosures[0].enclosure_type.as_deref(),
         Some("text/html")
     );
-    assert_eq!(entry.enclosures[0].length, Some(9_876_543));
+    assert_eq!(entry.enclosures[0].length.as_deref(), Some("9876543"));
 }
 
 #[test]
@@ -546,14 +546,14 @@ fn test_atom_enclosure_invalid_length() {
 
     assert!(!feed.bozo, "invalid length must not set bozo");
 
-    // Entry 3: enclosure with non-numeric length — silently None
+    // Entry 3: enclosure with non-numeric length — raw string is preserved
     let entry = &feed.entries[3];
     assert_eq!(entry.enclosures.len(), 1);
     assert_eq!(
         entry.enclosures[0].url.as_str(),
         "http://example.com/ep4.mp3"
     );
-    assert!(entry.enclosures[0].length.is_none());
+    assert_eq!(entry.enclosures[0].length.as_deref(), Some("not-a-number"));
 }
 
 #[test]
@@ -573,7 +573,7 @@ fn test_atom_enclosure_multiple() {
         .find(|e| e.url.as_str() == "http://example.com/ep5.mp3")
         .expect("mp3 enclosure");
     assert_eq!(mp3.enclosure_type.as_deref(), Some("audio/mpeg"));
-    assert_eq!(mp3.length, Some(5_000_000));
+    assert_eq!(mp3.length.as_deref(), Some("5000000"));
 
     let pdf = entry
         .enclosures
@@ -581,7 +581,7 @@ fn test_atom_enclosure_multiple() {
         .find(|e| e.url.as_str() == "http://example.com/ep5.pdf")
         .expect("pdf enclosure");
     assert_eq!(pdf.enclosure_type.as_deref(), Some("application/pdf"));
-    assert_eq!(pdf.length, Some(1_000_000));
+    assert_eq!(pdf.length.as_deref(), Some("1000000"));
 
     // Both enclosure links appear in entry.links as well
     assert_eq!(
