@@ -308,9 +308,9 @@ impl PyEntry {
     }
 
     #[getter]
-    fn media_thumbnails(&self) -> Vec<PyMediaThumbnail> {
+    fn media_thumbnail(&self) -> Vec<PyMediaThumbnail> {
         self.inner
-            .media_thumbnails
+            .media_thumbnail
             .iter()
             .map(|t| PyMediaThumbnail::from_core(t.clone()))
             .collect()
@@ -746,10 +746,10 @@ impl PyEntry {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
-            "media_thumbnails" => {
+            "media_thumbnail" => {
                 let thumbnails: Vec<_> = self
                     .inner
-                    .media_thumbnails
+                    .media_thumbnail
                     .iter()
                     .map(|t| PyMediaThumbnail::from_core(t.clone()))
                     .collect();

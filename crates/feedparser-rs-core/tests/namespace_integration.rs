@@ -98,13 +98,10 @@ fn test_rss_with_media_rss() {
     assert_eq!(entry.tags.len(), 4); // 3 keywords + 1 category
 
     // Media thumbnails
-    assert_eq!(entry.media_thumbnails.len(), 1);
-    assert_eq!(
-        entry.media_thumbnails[0].url,
-        "http://example.com/thumb.jpg"
-    );
-    assert_eq!(entry.media_thumbnails[0].width, Some(120));
-    assert_eq!(entry.media_thumbnails[0].height, Some(90));
+    assert_eq!(entry.media_thumbnail.len(), 1);
+    assert_eq!(entry.media_thumbnail[0].url, "http://example.com/thumb.jpg");
+    assert_eq!(entry.media_thumbnail[0].width, Some(120));
+    assert_eq!(entry.media_thumbnail[0].height, Some(90));
 
     // Media content
     assert_eq!(entry.media_content.len(), 1);
@@ -206,11 +203,8 @@ fn test_atom_with_media_rss() {
     let entry = &feed.entries[0];
 
     // Media thumbnails
-    assert_eq!(entry.media_thumbnails.len(), 1);
-    assert_eq!(
-        entry.media_thumbnails[0].url,
-        "http://example.com/image.jpg"
-    );
+    assert_eq!(entry.media_thumbnail.len(), 1);
+    assert_eq!(entry.media_thumbnail[0].url, "http://example.com/image.jpg");
 
     // Media content
     assert_eq!(entry.media_content.len(), 1);
@@ -249,5 +243,5 @@ fn test_mixed_namespaces() {
     assert_eq!(entry.dc_creator.as_deref(), Some("Entry Author"));
     assert_eq!(entry.dc_subject.len(), 1);
     assert!(entry.content.iter().any(|c| c.value.contains("Content")));
-    assert_eq!(entry.media_thumbnails.len(), 1);
+    assert_eq!(entry.media_thumbnail.len(), 1);
 }

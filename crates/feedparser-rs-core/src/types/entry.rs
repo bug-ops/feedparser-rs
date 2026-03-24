@@ -78,7 +78,7 @@ pub struct Entry {
     /// Dublin Core rights (copyright)
     pub dc_rights: Option<String>,
     /// Media RSS thumbnails
-    pub media_thumbnails: Vec<MediaThumbnail>,
+    pub media_thumbnail: Vec<MediaThumbnail>,
     /// Media RSS content items
     pub media_content: Vec<MediaContent>,
     /// Podcast 2.0 transcripts for this episode
@@ -133,7 +133,7 @@ impl Entry {
             tags: Vec::with_capacity(3),
             enclosures: Vec::with_capacity(1),
             dc_subject: Vec::with_capacity(2),
-            media_thumbnails: Vec::with_capacity(1),
+            media_thumbnail: Vec::with_capacity(1),
             media_content: Vec::with_capacity(1),
             podcast_transcripts: Vec::with_capacity(2),
             podcast_persons: Vec::with_capacity(4),
