@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Whitespace adjacent to XML entity sequences (`&lt;`, `&gt;`, `&amp;`, etc.) in RSS/Atom description and summary fields is now preserved; previously spaces immediately before or after entities were stripped because `trim_text` was applied per-token rather than to the final collected text (#152)
 - Atom `<link>` elements without an explicit `type` attribute now get a default MIME type based on `rel`: `text/html` for `alternate`, `hub`, `enclosure`, and unknown relations; `application/atom+xml` for `self` — matching Python feedparser behavior (#146)
 - RFC2822 date parsing now tolerates incorrect day-of-week names, matching Python feedparser behavior (#143)
 - Node.js bindings: `entry.updated`, `entry.published`, `entry.created`, `entry.expired`, `entry.dcDate`, `feed.updated`, `feed.published` now return the original timezone-preserving date string from the feed; added corresponding `*Parsed` fields (`updatedParsed`, `publishedParsed`, `createdParsed`, `expiredParsed`, `dcDateParsed`) returning `number` (ms since epoch) for use with `new Date(ms)` (#141)
