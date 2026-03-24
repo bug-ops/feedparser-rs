@@ -5,8 +5,8 @@ use napi_derive::napi;
 use std::collections::HashMap;
 
 use feedparser_rs::{
-    self as core, Content as CoreContent, Enclosure as CoreEnclosure, Entry as CoreEntry,
-    FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage,
+    self as core, Cloud as CoreCloud, Content as CoreContent, Enclosure as CoreEnclosure,
+    Entry as CoreEntry, FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage,
     InReplyTo as CoreInReplyTo, ItunesCategory as CoreItunesCategory,
     ItunesEntryMeta as CoreItunesEntryMeta, ItunesFeedMeta as CoreItunesFeedMeta,
     ItunesOwner as CoreItunesOwner, Link as CoreLink, MediaContent as CoreMediaContent,
@@ -19,7 +19,7 @@ use feedparser_rs::{
     PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
     PodcastValueRecipient as CorePodcastValueRecipient, Source as CoreSource,
     SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag, TextConstruct as CoreTextConstruct,
-    TextType,
+    TextInput as CoreTextInput, TextType,
 };
 
 /// Default maximum feed size (100 MB) - prevents DoS attacks
@@ -411,6 +411,14 @@ pub struct FeedMeta {
     /// Media RSS keywords (`media:keywords`) at feed level
     #[napi(js_name = "mediaKeywords")]
     pub media_keywords: Option<String>,
+    /// RSS 2.0 cloud subscription endpoint
+    pub cloud: Option<Cloud>,
+    /// RSS 2.0 text input form
+    pub textinput: Option<TextInput>,
+    /// RSS 2.0 skip hours (0-23)
+    pub skiphours: Vec<u32>,
+    /// RSS 2.0 skip days
+    pub skipdays: Vec<String>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -469,6 +477,33 @@ impl From<CoreFeedMeta> for FeedMeta {
                 .collect(),
             media_rating: core.media_rating.map(MediaRating::from),
             media_keywords: core.media_keywords,
+            cloud: core.cloud.map(Cloud::from),
+            textinput: core.textinput.map(TextInput::from),
+            skiphours: core.skiphours,
+            skipdays: core.skipdays,
+        }
+    }
+}
+
+impl From<CoreCloud> for Cloud {
+    fn from(core: CoreCloud) -> Self {
+        Self {
+            domain: core.domain,
+            port: core.port,
+            path: core.path,
+            register_procedure: core.register_procedure,
+            protocol: core.protocol,
+        }
+    }
+}
+
+impl From<CoreTextInput> for TextInput {
+    fn from(core: CoreTextInput) -> Self {
+        Self {
+            title: core.title,
+            description: core.description,
+            name: core.name,
+            link: core.link,
         }
     }
 }
@@ -648,6 +683,9 @@ pub struct Entry {
     /// Slash namespace: comment count
     #[napi(js_name = "slashComments")]
     pub slash_comments: Option<String>,
+    /// Slash namespace: hit parade
+    #[napi(js_name = "slashHitParade")]
+    pub slash_hit_parade: Option<String>,
     /// WFW namespace: comment RSS feed URL
     #[napi(js_name = "wfwCommentRss")]
     pub wfw_comment_rss: Option<String>,
@@ -735,6 +773,7 @@ impl From<CoreEntry> for Entry {
             thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),
             thr_total: core.thr_total,
             slash_comments: core.slash_comments.map(|n| n.to_string()),
+            slash_hit_parade: core.slash_hit_parade,
             wfw_comment_rss: core.wfw_comment_rss,
             guidislink: core.guidislink,
         }
@@ -851,6 +890,26 @@ impl From<CoreTag> for Tag {
             label: core.label.map(|s| s.to_string()),
         }
     }
+}
+
+/// RSS 2.0 cloud subscription endpoint
+#[napi(object)]
+pub struct Cloud {
+    pub domain: Option<String>,
+    pub port: Option<String>,
+    pub path: Option<String>,
+    #[napi(js_name = "registerProcedure")]
+    pub register_procedure: Option<String>,
+    pub protocol: Option<String>,
+}
+
+/// RSS 2.0 text input form
+#[napi(object)]
+pub struct TextInput {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub name: Option<String>,
+    pub link: Option<String>,
 }
 
 /// Image metadata

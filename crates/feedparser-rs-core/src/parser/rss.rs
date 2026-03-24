@@ -323,6 +323,18 @@ fn parse_channel(
                             feed.feed.image = Some(image);
                         }
                     }
+                    b"cloud" => {
+                        feed.feed.cloud = Some(parse_cloud(&attrs));
+                    }
+                    b"textInput" if !is_empty => {
+                        feed.feed.textinput = Some(parse_text_input(reader, &mut buf, limits)?);
+                    }
+                    b"skipHours" if !is_empty => {
+                        parse_skip_hours(reader, &mut buf, limits, &mut feed.feed.skiphours)?;
+                    }
+                    b"skipDays" if !is_empty => {
+                        parse_skip_days(reader, &mut buf, limits, &mut feed.feed.skipdays)?;
+                    }
                     b"item" if !is_empty => {
                         parse_channel_item(
                             item_lang.as_deref(),
@@ -604,7 +616,14 @@ fn parse_channel_standard(
             }
         }
         b"generator" => {
-            feed.feed.generator = Some(read_text_str(reader, buf, limits)?);
+            let name = read_text_str(reader, buf, limits)?;
+            if !name.is_empty() {
+                feed.feed.set_generator(crate::types::Generator {
+                    name,
+                    href: None,
+                    version: None,
+                });
+            }
         }
         b"ttl" => {
             feed.feed.ttl = Some(read_text_str(reader, buf, limits)?);
@@ -2071,6 +2090,100 @@ fn parse_media_content_children(
             Ok(Event::End(_) | Event::Eof) | Err(_) => break,
             _ => {}
         }
+    }
+    Ok(())
+}
+
+/// Parse `<cloud>` attributes into a `Cloud` struct (self-closing element)
+fn parse_cloud(attrs: &[(Vec<u8>, String)]) -> crate::types::Cloud {
+    crate::types::Cloud {
+        domain: find_attribute(attrs, b"domain").map(str::to_string),
+        port: find_attribute(attrs, b"port").map(str::to_string),
+        path: find_attribute(attrs, b"path").map(str::to_string),
+        register_procedure: find_attribute(attrs, b"registerProcedure").map(str::to_string),
+        protocol: find_attribute(attrs, b"protocol").map(str::to_string),
+    }
+}
+
+/// Parse `<textInput>` child elements into a `TextInput` struct
+fn parse_text_input(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+) -> Result<crate::types::TextInput> {
+    let mut ti = crate::types::TextInput::default();
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                let tag = e.local_name().as_ref().to_vec();
+                match tag.as_slice() {
+                    b"title" => ti.title = Some(read_text_str(reader, buf, limits)?),
+                    b"description" => ti.description = Some(read_text_str(reader, buf, limits)?),
+                    b"name" => ti.name = Some(read_text_str(reader, buf, limits)?),
+                    b"link" => ti.link = Some(read_text_str(reader, buf, limits)?),
+                    _ => {}
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == b"textInput" => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(ti)
+}
+
+/// Parse `<skipHours>` child `<hour>` elements (values 0–23)
+fn parse_skip_hours(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+    hours: &mut Vec<u32>,
+) -> Result<()> {
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == b"hour" => {
+                let text = read_text_str(reader, buf, limits)?;
+                if let Ok(h) = text.trim().parse::<u32>()
+                    && h <= 23
+                    && !hours.contains(&h)
+                {
+                    hours.push(h);
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == b"skipHours" => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(())
+}
+
+/// Parse `<skipDays>` child `<day>` elements
+fn parse_skip_days(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+    days: &mut Vec<String>,
+) -> Result<()> {
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == b"day" => {
+                let text = read_text_str(reader, buf, limits)?;
+                let day = text.trim().to_string();
+                if !day.is_empty() && !days.contains(&day) {
+                    days.push(day);
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == b"skipDays" => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
     }
     Ok(())
 }

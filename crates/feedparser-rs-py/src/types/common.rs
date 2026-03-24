@@ -1,8 +1,9 @@
 use super::datetime::optional_datetime_to_struct_time;
 use feedparser_rs::{
-    Content as CoreContent, Enclosure as CoreEnclosure, Generator as CoreGenerator,
-    Image as CoreImage, Link as CoreLink, Person as CorePerson, Source as CoreSource,
-    Tag as CoreTag, TextConstruct as CoreTextConstruct, TextType,
+    Cloud as CoreCloud, Content as CoreContent, Enclosure as CoreEnclosure,
+    Generator as CoreGenerator, Image as CoreImage, Link as CoreLink, Person as CorePerson,
+    Source as CoreSource, Tag as CoreTag, TextConstruct as CoreTextConstruct,
+    TextInput as CoreTextInput, TextType,
 };
 use pyo3::prelude::*;
 use pyo3::types::PyList;
@@ -967,5 +968,80 @@ impl PySource {
             "guidislink" => Ok(self.inner.guidislink.into_pyobject(py)?.into_any().unbind()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
+    }
+}
+
+#[pyclass(name = "Cloud", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyCloud {
+    inner: CoreCloud,
+}
+
+impl PyCloud {
+    pub fn from_core(core: CoreCloud) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyCloud {
+    #[getter]
+    fn domain(&self) -> Option<&str> {
+        self.inner.domain.as_deref()
+    }
+
+    #[getter]
+    fn port(&self) -> Option<&str> {
+        self.inner.port.as_deref()
+    }
+
+    #[getter]
+    fn path(&self) -> Option<&str> {
+        self.inner.path.as_deref()
+    }
+
+    #[getter]
+    fn register_procedure(&self) -> Option<&str> {
+        self.inner.register_procedure.as_deref()
+    }
+
+    #[getter]
+    fn protocol(&self) -> Option<&str> {
+        self.inner.protocol.as_deref()
+    }
+}
+
+#[pyclass(name = "TextInput", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyTextInput {
+    inner: CoreTextInput,
+}
+
+impl PyTextInput {
+    pub fn from_core(core: CoreTextInput) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyTextInput {
+    #[getter]
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
+    }
+
+    #[getter]
+    fn description(&self) -> Option<&str> {
+        self.inner.description.as_deref()
+    }
+
+    #[getter]
+    fn name(&self) -> Option<&str> {
+        self.inner.name.as_deref()
+    }
+
+    #[getter]
+    fn link(&self) -> Option<&str> {
+        self.inner.link.as_deref()
     }
 }

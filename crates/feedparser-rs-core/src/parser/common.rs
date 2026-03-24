@@ -174,8 +174,12 @@ pub fn check_depth(depth: usize, max_depth: usize) -> Result<()> {
 pub fn extract_ns_local_name<'a>(name: &'a [u8], prefix: &[u8]) -> Option<&'a str> {
     if name.starts_with(prefix) {
         let tag_name = std::str::from_utf8(&name[prefix.len()..]).ok()?;
-        // Security: validate tag name (alphanumeric + hyphen only)
-        if !tag_name.is_empty() && tag_name.chars().all(|c| c.is_alphanumeric() || c == '-') {
+        // Security: validate tag name (alphanumeric, hyphen, underscore only)
+        if !tag_name.is_empty()
+            && tag_name
+                .chars()
+                .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+        {
             Some(tag_name)
         } else {
             None

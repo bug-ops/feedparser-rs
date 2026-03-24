@@ -317,6 +317,11 @@ impl PyEntry {
     }
 
     #[getter]
+    fn slash_hit_parade(&self) -> Option<&str> {
+        self.inner.slash_hit_parade.as_deref()
+    }
+
+    #[getter]
     fn wfw_commentrss(&self) -> Option<&str> {
         self.inner.wfw_comment_rss.as_deref()
     }
@@ -495,6 +500,7 @@ impl PyEntry {
             "dc_date",
             "dc_date_parsed",
             "slash_comments",
+            "slash_hit_parade",
             "wfw_commentrss",
             "rights",
             "rights_detail",
@@ -957,6 +963,13 @@ impl PyEntry {
                 .inner
                 .slash_comments
                 .map(|n| n.to_string())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "slash_hit_parade" => Ok(self
+                .inner
+                .slash_hit_parade
+                .as_deref()
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
