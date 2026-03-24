@@ -265,8 +265,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn slash_comments(&self) -> Option<u32> {
-        self.inner.slash_comments
+    fn slash_comments(&self) -> Option<String> {
+        self.inner.slash_comments.map(|n| n.to_string())
     }
 
     #[getter]
@@ -849,6 +849,7 @@ impl PyEntry {
             "slash_comments" => Ok(self
                 .inner
                 .slash_comments
+                .map(|n| n.to_string())
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),

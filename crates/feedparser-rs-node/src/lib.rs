@@ -563,7 +563,7 @@ pub struct Entry {
     pub thr_total: Option<u32>,
     /// Slash namespace: comment count
     #[napi(js_name = "slashComments")]
-    pub slash_comments: Option<u32>,
+    pub slash_comments: Option<String>,
     /// WFW namespace: comment RSS feed URL
     #[napi(js_name = "wfwCommentRss")]
     pub wfw_comment_rss: Option<String>,
@@ -633,7 +633,7 @@ impl From<CoreEntry> for Entry {
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
             thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),
             thr_total: core.thr_total,
-            slash_comments: core.slash_comments,
+            slash_comments: core.slash_comments.map(|n| n.to_string()),
             wfw_comment_rss: core.wfw_comment_rss,
         }
     }
