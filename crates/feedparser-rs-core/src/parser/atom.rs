@@ -661,6 +661,8 @@ fn parse_entry(
                                         url: link.href.clone(),
                                         length: link.length.clone(),
                                         enclosure_type: link.link_type.clone(),
+                                        title: None,
+                                        duration: None,
                                     },
                                     limits.max_enclosures,
                                 );

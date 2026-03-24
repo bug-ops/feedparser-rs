@@ -508,6 +508,8 @@ fn parse_enclosure(attrs: &[(Vec<u8>, String)], limits: &ParserLimits) -> Option
             url: url.into(),
             length,
             enclosure_type: enc_type.map(Into::into),
+            title: None,
+            duration: None,
         })
     }
 }
