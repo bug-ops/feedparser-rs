@@ -26,6 +26,10 @@ pub struct FeedMeta {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Feed summary (populated from itunes:summary when present)
+    pub summary: Option<String>,
+    /// Detailed summary with metadata
+    pub summary_detail: Option<TextConstruct>,
     /// Last update date
     pub updated: Option<DateTime<Utc>>,
     /// Original update date string as found in the feed (timezone preserved)
@@ -306,6 +310,23 @@ impl FeedMeta {
     pub fn set_subtitle(&mut self, text: TextConstruct) {
         self.subtitle = Some(text.value.clone());
         self.subtitle_detail = Some(text);
+    }
+
+    /// Sets summary field with `TextConstruct`, storing both simple and detailed versions
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::{FeedMeta, TextConstruct};
+    ///
+    /// let mut meta = FeedMeta::default();
+    /// meta.set_summary(TextConstruct::text("A detailed description"));
+    /// assert_eq!(meta.summary.as_deref(), Some("A detailed description"));
+    /// ```
+    #[inline]
+    pub fn set_summary(&mut self, text: TextConstruct) {
+        self.summary = Some(text.value.clone());
+        self.summary_detail = Some(text);
     }
 
     /// Sets rights field with `TextConstruct`, storing both simple and detailed versions

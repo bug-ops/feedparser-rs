@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `ItunesFeedMeta.complete` changed from `Option<bool>` to `Option<String>` to return the raw XML text value (e.g. `"Yes"`, `"No"`) instead of a parsed boolean (#281)
+- `itunes:subtitle` now always overrides `<description>` for `feed.subtitle` regardless of XML element order; previously it only set subtitle when absent (#257)
+- `itunes:summary` populates new `feed.summary` field instead of aliasing to `feed.subtitle` (#257)
+- Entry-level `itunes:subtitle` and `itunes:summary` promotion is now order-independent via post-processing (#257)
+- Atom entry `itunes:subtitle` now promotes to `entry.subtitle` (was missing) (#257)
+
+### Added
+
+- Core, Python, Node.js bindings: `FeedMeta.summary` and `FeedMeta.summary_detail` fields populated from `itunes:summary` (#257)
+- Python binding: `feed.summary` and `feed["summary"]` now return the `itunes:summary` value (#257)
+
 ### Fixed
 
 - Core, Python, Node.js bindings: `MediaContent.filesize` is now a `String` (was `u64`/`i64`), matching Python feedparser which preserves raw attribute values; non-numeric values like `"not_a_number"` are now retained as-is (#221)
@@ -22,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python bindings: expose flat `itunes_block`, `itunes_complete`, `itunes_type`, `itunes_new-feed-url` fields directly on feed dict, matching Python feedparser API (#232)
 - Python bindings: expose flat `sy_updateperiod`, `sy_updatefrequency`, `sy_updatebase` fields directly on feed dict, matching Python feedparser API (#293)
 - Python bindings: `PodcastPerson` now supports dict protocol (`__getitem__`, `get`, `keys`, `values`, `items`), consistent with other struct types (#300)
-
+- `itunes:duration` confirmed as string type in core and all bindings (regression test added) (#265)
 - Core: syndication module (`syn:`/`sy:` namespace) is now parsed in RSS 2.0 feeds; previously only RSS 1.0 feeds were supported — RSS 2.0 feeds with `<syn:updatePeriod>` etc. returned `feed.syndication = None` (#237)
 - Core: `syn:updateFrequency` / `sy:updateFrequency` now returns the raw string value (e.g. `"2"`) instead of an integer, matching Python feedparser behavior (#268, #220)
 - Python bindings: expose `thr:in-reply-to` as `entry['thr_in-reply-to']` returning the first element as a plain dict with keys `ref`, `href`, `type`, `source` (non-None only), matching Python feedparser API; `entry.thr_in_reply_to` (underscore) retains the full list of `InReplyTo` objects (#267, #245)
