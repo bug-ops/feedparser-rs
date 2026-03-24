@@ -164,6 +164,7 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
         let _ = entry
             .links
             .try_push_limited(Link::related(external_url), limits.max_entries);
+        entry.external_url = Some(external_url.to_string());
     }
 
     if let Some(title) = json.get("title").and_then(|v| v.as_str()) {
@@ -234,6 +235,7 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
     }
 
     if let Some(language) = json.get("language").and_then(|v| v.as_str()) {
+        entry.language = Some(language.into());
         if let Some(detail) = &mut entry.title_detail {
             detail.language = Some(language.into());
         }
@@ -685,5 +687,75 @@ mod tests {
             banner.unwrap().href.as_str(),
             "https://example.com/banner.jpg"
         );
+    }
+
+    #[test]
+    fn test_parse_item_external_url() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [
+                {
+                    "id": "1",
+                    "external_url": "https://example.com/original"
+                }
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert_eq!(
+            feed.entries[0].external_url.as_deref(),
+            Some("https://example.com/original")
+        );
+        // Also stored as a related link for backward compat
+        let related = feed.entries[0]
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("related"));
+        assert!(related.is_some());
+    }
+
+    #[test]
+    fn test_parse_item_language() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [
+                {
+                    "id": "1",
+                    "title": "Hello",
+                    "language": "de"
+                }
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        assert_eq!(feed.entries[0].language.as_deref(), Some("de"));
+    }
+
+    #[test]
+    fn test_parse_attachment_title_and_duration() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [
+                {
+                    "id": "1",
+                    "attachments": [
+                        {
+                            "url": "https://example.com/audio.mp3",
+                            "mime_type": "audio/mpeg",
+                            "title": "Episode 1",
+                            "duration_in_seconds": 7200
+                        }
+                    ]
+                }
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        let enc = &feed.entries[0].enclosures[0];
+        assert_eq!(enc.title.as_deref(), Some("Episode 1"));
+        assert_eq!(enc.duration.as_deref(), Some("7200"));
     }
 }

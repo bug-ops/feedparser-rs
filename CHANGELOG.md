@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: `podcast:person` elements at feed/channel level are now collected into `feed.podcast.persons`; previously only entry-level persons were parsed (#292)
 - Core, Python, Node.js bindings: `FeedMeta.summary` and `FeedMeta.summary_detail` fields populated from `itunes:summary` (#257)
 - Python binding: `feed.summary` and `feed["summary"]` now return the `itunes:summary` value (#257)
+- Core, Python, Node.js bindings: `entry.external_url` populated from JSON Feed `item.external_url` (#196)
+- Core, Python, Node.js bindings: `entry.language` populated from JSON Feed `item.language` (#227)
+- Core, Python, Node.js bindings: `enclosure.title` populated from JSON Feed attachment `title` (#196)
+- Core, Python, Node.js bindings: `enclosure.duration` populated from JSON Feed attachment `duration_in_seconds` as raw string (#196)
 
 ### Fixed
 

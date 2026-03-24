@@ -648,6 +648,10 @@ pub struct Enclosure {
     pub length: Option<String>,
     /// MIME type
     pub enclosure_type: Option<MimeType>,
+    /// Attachment title (JSON Feed only)
+    pub title: Option<String>,
+    /// Duration in seconds as raw string (JSON Feed `duration_in_seconds`)
+    pub duration: Option<String>,
 }
 
 /// Content block
@@ -973,6 +977,8 @@ impl FromAttributes for Enclosure {
             url: Url::new(url),
             length,
             enclosure_type: enclosure_type.map(MimeType::new),
+            title: None,
+            duration: None,
         })
     }
 }
@@ -1112,6 +1118,11 @@ impl ParseFrom<&Value> for Enclosure {
                 .get("mime_type")
                 .and_then(Value::as_str)
                 .map(MimeType::new),
+            title: obj.get("title").and_then(Value::as_str).map(String::from),
+            duration: obj
+                .get("duration_in_seconds")
+                .and_then(Value::as_u64)
+                .map(|v| v.to_string()),
         })
     }
 }

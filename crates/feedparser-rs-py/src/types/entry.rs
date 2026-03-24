@@ -332,6 +332,16 @@ impl PyEntry {
     }
 
     #[getter]
+    fn language(&self) -> Option<&str> {
+        self.inner.language.as_deref()
+    }
+
+    #[getter]
+    fn external_url(&self) -> Option<&str> {
+        self.inner.external_url.as_deref()
+    }
+
+    #[getter]
     fn dc_date(&self) -> Option<String> {
         self.inner.dc_date.map(|dt| dt.to_rfc3339())
     }
@@ -1120,6 +1130,20 @@ impl PyEntry {
                 Ok(value.into_pyobject(py)?.into_any().unbind())
             }
             "guidislink" => Ok(self.inner.guidislink.into_pyobject(py)?.into_any().unbind()),
+            "language" => Ok(self
+                .inner
+                .language
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "external_url" => Ok(self
+                .inner
+                .external_url
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             // Check for deprecated field name aliases
             _ => {
                 if let Some(new_names) = ENTRY_FIELD_MAP.get(key) {
