@@ -385,3 +385,84 @@ fn test_media_group_mixed_with_direct_content() {
     assert!(!feed.bozo);
     assert_eq!(feed.entries[0].media_content.len(), 2);
 }
+
+#[test]
+fn test_media_content_framerate_attribute() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>T</title><link>http://example.com/</link>
+            <item>
+                <title>I</title>
+                <media:content url="http://example.com/video.mp4" type="video/mp4"
+                    bitrate="1500" channels="2" samplingrate="44.1" framerate="29.97"/>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let mc = &feed.entries[0].media_content[0];
+    assert_eq!(mc.bitrate.as_deref(), Some("1500"));
+    assert_eq!(mc.channels.as_deref(), Some("2"));
+    assert_eq!(mc.samplingrate.as_deref(), Some("44.1"));
+    assert_eq!(mc.framerate.as_deref(), Some("29.97"));
+}
+
+#[test]
+fn test_media_thumbnail_nested_in_media_content_rss() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>T</title><link>http://example.com/</link>
+            <item>
+                <title>I</title>
+                <media:content url="http://example.com/video.mp4" type="video/mp4">
+                    <media:thumbnail url="http://example.com/nested-thumb.jpg" width="320" height="240"/>
+                </media:content>
+                <media:thumbnail url="http://example.com/top-thumb.jpg" width="640" height="480"/>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let entry = &feed.entries[0];
+    assert_eq!(entry.media_thumbnail.len(), 2);
+    let urls: Vec<&str> = entry
+        .media_thumbnail
+        .iter()
+        .map(|t| t.url.as_ref())
+        .collect();
+    assert!(urls.contains(&"http://example.com/nested-thumb.jpg"));
+    assert!(urls.contains(&"http://example.com/top-thumb.jpg"));
+}
+
+#[test]
+fn test_media_thumbnail_nested_in_media_content_atom() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+        <title>T</title>
+        <id>http://example.com/</id>
+        <entry>
+            <title>I</title>
+            <id>http://example.com/1</id>
+            <media:content url="http://example.com/video.mp4" type="video/mp4">
+                <media:thumbnail url="http://example.com/nested-thumb.jpg" width="320" height="240"/>
+            </media:content>
+            <media:thumbnail url="http://example.com/top-thumb.jpg"/>
+        </entry>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let entry = &feed.entries[0];
+    assert_eq!(entry.media_thumbnail.len(), 2);
+    let urls: Vec<&str> = entry
+        .media_thumbnail
+        .iter()
+        .map(|t| t.url.as_ref())
+        .collect();
+    assert!(urls.contains(&"http://example.com/nested-thumb.jpg"));
+    assert!(urls.contains(&"http://example.com/top-thumb.jpg"));
+}

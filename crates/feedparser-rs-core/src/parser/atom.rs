@@ -675,7 +675,9 @@ fn parse_entry(
                                         .try_push_limited(media, limits.max_enclosures);
                                 }
                                 if !is_empty {
-                                    skip_element(reader, buf, limits, *depth)?;
+                                    parse_atom_media_content_children(
+                                        reader, buf, &mut entry, limits, depth, bozo,
+                                    )?;
                                 }
                             } else if media_element == "group" && !is_empty {
                                 // media:group is a transparent container; promote children to entry
@@ -1066,6 +1068,63 @@ fn parse_atom_media_group(
             Ok(Event::Start(e)) => {
                 let tag = e.name().as_ref().to_vec();
                 handle_atom_media_group_child(&tag, &e, entry, limits);
+                *depth += 1;
+                skip_element(reader, buf, limits, *depth)?;
+                *depth = depth.saturating_sub(1);
+            }
+            Ok(Event::End(_) | Event::Eof) => break,
+            Err(_) => {
+                *bozo = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Parse children of `<media:content>`, collecting nested `media:thumbnail` elements.
+///
+/// Python feedparser collects all `media:thumbnail` elements into `entry.media_thumbnail`
+/// regardless of whether they are nested inside `media:content`.
+fn parse_atom_media_content_children(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    bozo: &mut bool,
+) -> Result<()> {
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf) {
+            Ok(Event::Empty(e)) => {
+                let tag = e.name().as_ref().to_vec();
+                if is_media_tag(&tag) == Some("thumbnail") {
+                    let thumbnail = MediaThumbnail::from_attributes(
+                        e.attributes().flatten(),
+                        limits.max_attribute_length,
+                    );
+                    if let Some(thumbnail) = thumbnail {
+                        entry
+                            .media_thumbnail
+                            .try_push_limited(thumbnail, limits.max_enclosures);
+                    }
+                }
+            }
+            Ok(Event::Start(e)) => {
+                let tag = e.name().as_ref().to_vec();
+                if is_media_tag(&tag) == Some("thumbnail") {
+                    let thumbnail = MediaThumbnail::from_attributes(
+                        e.attributes().flatten(),
+                        limits.max_attribute_length,
+                    );
+                    if let Some(thumbnail) = thumbnail {
+                        entry
+                            .media_thumbnail
+                            .try_push_limited(thumbnail, limits.max_enclosures);
+                    }
+                }
                 *depth += 1;
                 skip_element(reader, buf, limits, *depth)?;
                 *depth = depth.saturating_sub(1);

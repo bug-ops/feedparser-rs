@@ -811,6 +811,8 @@ pub struct MediaContent {
     pub isdefault: Option<String>,
     /// Sampling rate in kHz (raw string value)
     pub samplingrate: Option<String>,
+    /// Frame rate in frames per second (raw string value)
+    pub framerate: Option<String>,
 }
 
 impl FromAttributes for Link {
@@ -980,6 +982,7 @@ impl FromAttributes for MediaContent {
         let mut expression = None;
         let mut isdefault = None;
         let mut samplingrate = None;
+        let mut framerate = None;
 
         for attr in attrs {
             if attr.value.len() > max_attr_length {
@@ -1001,6 +1004,7 @@ impl FromAttributes for MediaContent {
                 b"expression" => expression = Some(bytes_to_string(&attr.value)),
                 b"isDefault" => isdefault = Some(bytes_to_string(&attr.value)),
                 b"samplingrate" => samplingrate = Some(bytes_to_string(&attr.value)),
+                b"framerate" => framerate = Some(bytes_to_string(&attr.value)),
                 _ => {}
             }
         }
@@ -1020,6 +1024,7 @@ impl FromAttributes for MediaContent {
             expression,
             isdefault,
             samplingrate,
+            framerate,
         })
     }
 }
