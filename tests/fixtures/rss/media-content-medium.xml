@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Media Medium Test Feed</title>
+    <link>http://example.com/</link>
+    <description>Tests media:content medium attribute</description>
+    <item>
+      <title>Video Entry</title>
+      <link>http://example.com/video</link>
+      <media:content url="http://example.com/video.mp4" type="video/mp4" medium="video" fileSize="1024000" width="1920" height="1080" duration="600"/>
+    </item>
+    <item>
+      <title>Audio Entry</title>
+      <link>http://example.com/audio</link>
+      <media:content url="http://example.com/audio.mp3" type="audio/mpeg" medium="audio" fileSize="5242880" duration="180"/>
+    </item>
+    <item>
+      <title>Image Entry</title>
+      <link>http://example.com/image</link>
+      <media:content url="http://example.com/image.jpg" type="image/jpeg" medium="image" width="800" height="600"/>
+    </item>
+  </channel>
+</rss>
