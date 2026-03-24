@@ -822,6 +822,10 @@ fn parse_entry(
         buf.clear();
     }
 
+    // Atom uses <id> not <guid>; guidislink is always false when <id> is present.
+    // Python feedparser never sets guidislink=true for Atom entries.
+    entry.guidislink = entry.id.as_ref().map(|_| false);
+
     Ok(entry)
 }
 
@@ -2464,5 +2468,38 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         let itunes = feed.feed.itunes.as_ref().unwrap();
         assert_eq!(itunes.explicit, None);
+    }
+
+    #[test]
+    fn test_atom_entry_guidislink_is_false_when_id_present() {
+        // Atom entries with <id> must have guidislink=Some(false)
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_atom_entry_guidislink_is_none_when_no_id() {
+        // Atom entries without <id> must have guidislink=None
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <entry>
+                <title>Entry without id</title>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, None);
     }
 }
