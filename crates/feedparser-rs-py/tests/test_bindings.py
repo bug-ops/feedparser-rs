@@ -26,8 +26,8 @@ def test_media_thumbnail():
     # First thumbnail with dimensions
     thumb1 = entry.media_thumbnail[0]
     assert thumb1.url == "http://example.com/thumb.jpg"
-    assert thumb1.width == 640
-    assert thumb1.height == 480
+    assert thumb1.width == "640"
+    assert thumb1.height == "480"
 
     # Second thumbnail without dimensions
     thumb2 = entry.media_thumbnail[1]
@@ -66,8 +66,8 @@ def test_media_content():
     assert video.url == "http://example.com/video.mp4"
     assert video.type == "video/mp4"
     assert video.filesize == 1048576
-    assert video.width == 1920
-    assert video.height == 1080
+    assert video.width == "1920"
+    assert video.height == "1080"
     assert video.duration == 300
 
     # Audio with minimal attributes

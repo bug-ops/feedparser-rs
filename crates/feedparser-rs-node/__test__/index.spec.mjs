@@ -719,8 +719,8 @@ describe('feedparser-rs', () => {
 
       assert.strictEqual(enclosure.href, 'https://example.com/ep1.mp3');
       assert.strictEqual(enclosure.type, 'audio/mpeg');
-      assert.strictEqual(typeof enclosure.length, 'number');
-      assert(enclosure.length > 0);
+      assert.strictEqual(typeof enclosure.length, 'string');
+      assert(enclosure.length.length > 0);
     });
 
     it('should handle enclosures without optional fields', () => {
@@ -745,7 +745,7 @@ describe('feedparser-rs', () => {
       assert(
         enclosure.length === null ||
           enclosure.length === undefined ||
-          typeof enclosure.length === 'number',
+          typeof enclosure.length === 'string',
       );
     });
   });
