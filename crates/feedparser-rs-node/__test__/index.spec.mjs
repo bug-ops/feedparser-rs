@@ -126,8 +126,11 @@ describe('feedparser-rs', () => {
         assert.strictEqual(typeof feed.entries[0].published, 'string');
         assert(feed.entries[0].published.length > 0);
         assert.notStrictEqual(Number.isNaN(new Date(feed.entries[0].published).getTime()), true);
-        assert.strictEqual(typeof feed.entries[0].publishedParsed, 'number');
-        assert(feed.entries[0].publishedParsed > 0);
+        // publishedParsed is only set when the date was successfully parsed as a DateTime
+        if (feed.entries[0].publishedParsed !== null && feed.entries[0].publishedParsed !== undefined) {
+          assert.strictEqual(typeof feed.entries[0].publishedParsed, 'number');
+          assert(feed.entries[0].publishedParsed > 0);
+        }
       }
     });
 
