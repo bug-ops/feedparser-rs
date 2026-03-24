@@ -362,6 +362,7 @@ impl PyEntry {
     #[pyo3(signature = (key, default = None))]
     fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
         match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
             Ok(v) => Ok(v),
             Err(_) => Ok(default.unwrap_or_else(|| py.None())),
         }

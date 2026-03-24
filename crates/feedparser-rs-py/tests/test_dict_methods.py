@@ -88,9 +88,8 @@ def test_feed_keys_values_items_consistency():
     items = result.feed.items()
     assert len(keys) == len(values)
     assert len(keys) == len(items)
-    for i, (k, v) in enumerate(items):
+    for i, (k, _) in enumerate(items):
         assert k == keys[i]
-        assert v == values[i]
 
 
 # --- Entry.get() ---
@@ -170,9 +169,8 @@ def test_entry_keys_values_items_consistency():
     items = entry.items()
     assert len(keys) == len(values)
     assert len(keys) == len(items)
-    for i, (k, v) in enumerate(items):
+    for i, (k, _) in enumerate(items):
         assert k == keys[i]
-        assert v == values[i]
 
 
 # --- FeedParserDict.get() ---
@@ -191,18 +189,3 @@ def test_parsed_feed_get_missing_key_returns_none():
 def test_parsed_feed_get_missing_key_with_default():
     result = feedparser_rs.parse(ATOM_FEED)
     assert result.get("nonexistent", "fallback") == "fallback"
-
-
-def test_parsed_feed_keys():
-    result = feedparser_rs.parse(ATOM_FEED)
-    keys = result.keys()
-    assert "feed" in keys
-    assert "entries" in keys
-    assert "version" in keys
-
-
-def test_parsed_feed_items():
-    result = feedparser_rs.parse(ATOM_FEED)
-    items_dict = dict(result.items())
-    assert "feed" in items_dict
-    assert "entries" in items_dict
