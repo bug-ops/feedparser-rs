@@ -92,8 +92,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn published(&self) -> Option<String> {
-        self.inner.published.map(|dt| dt.to_rfc3339())
+    fn published(&self) -> Option<&str> {
+        self.inner.published_str.as_deref()
     }
 
     #[getter]
@@ -102,8 +102,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn updated(&self) -> Option<String> {
-        self.inner.updated.map(|dt| dt.to_rfc3339())
+    fn updated(&self) -> Option<&str> {
+        self.inner.updated_str.as_deref()
     }
 
     #[getter]
@@ -285,6 +285,19 @@ impl PyEntry {
     }
 
     #[getter]
+    fn rights(&self) -> Option<&str> {
+        self.inner.rights.as_deref()
+    }
+
+    #[getter]
+    fn rights_detail(&self) -> Option<PyTextConstruct> {
+        self.inner
+            .rights_detail
+            .as_ref()
+            .map(|tc| PyTextConstruct::from_core(tc.clone()))
+    }
+
+    #[getter]
     fn dc_rights(&self) -> Option<&str> {
         self.inner.dc_rights.as_deref()
     }
@@ -381,23 +394,21 @@ impl PyEntry {
                             .ok()
                             .map(|p: Py<PyTextConstruct>| p.into_any())
                     }),
-                    "published" => self.inner.published.and_then(|dt| {
-                        dt.to_rfc3339()
-                            .into_pyobject(py)
-                            .map(|o| o.unbind().into())
-                            .ok()
-                    }),
+                    "published" => self
+                        .inner
+                        .published_str
+                        .as_deref()
+                        .and_then(|v| v.into_pyobject(py).map(|o| o.unbind().into()).ok()),
                     "published_parsed" => {
                         optional_datetime_to_struct_time(py, &self.inner.published)
                             .ok()
                             .flatten()
                     }
-                    "updated" => self.inner.updated.and_then(|dt| {
-                        dt.to_rfc3339()
-                            .into_pyobject(py)
-                            .map(|o| o.unbind().into())
-                            .ok()
-                    }),
+                    "updated" => self
+                        .inner
+                        .updated_str
+                        .as_deref()
+                        .and_then(|v| v.into_pyobject(py).map(|o| o.unbind().into()).ok()),
                     "updated_parsed" => optional_datetime_to_struct_time(py, &self.inner.updated)
                         .ok()
                         .flatten(),
@@ -503,8 +514,8 @@ impl PyEntry {
             }
             "published" => Ok(self
                 .inner
-                .published
-                .map(|dt| dt.to_rfc3339())
+                .published_str
+                .as_deref()
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -514,8 +525,8 @@ impl PyEntry {
                 .unbind()),
             "updated" => Ok(self
                 .inner
-                .updated
-                .map(|dt| dt.to_rfc3339())
+                .updated_str
+                .as_deref()
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -693,6 +704,34 @@ impl PyEntry {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
+            "rights" => Ok(self
+                .inner
+                .rights
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "rights_detail" => {
+                if let Some(ref tc) = self.inner.rights_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "copyright" => Ok(self
+                .inner
+                .rights
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "copyright_detail" => {
+                if let Some(ref tc) = self.inner.rights_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
             "dc_rights" => Ok(self
                 .inner
                 .dc_rights
@@ -768,22 +807,16 @@ impl PyEntry {
                                             .map(|p: Py<PyTextConstruct>| p.into_any())
                                     })
                                 }
-                                "published" => self.inner.published.and_then(|dt| {
-                                    dt.to_rfc3339()
-                                        .into_pyobject(py)
-                                        .map(|o| o.unbind().into())
-                                        .ok()
+                                "published" => self.inner.published_str.as_deref().and_then(|v| {
+                                    v.into_pyobject(py).map(|o| o.unbind().into()).ok()
                                 }),
                                 "published_parsed" => {
                                     optional_datetime_to_struct_time(py, &self.inner.published)
                                         .ok()
                                         .flatten()
                                 }
-                                "updated" => self.inner.updated.and_then(|dt| {
-                                    dt.to_rfc3339()
-                                        .into_pyobject(py)
-                                        .map(|o| o.unbind().into())
-                                        .ok()
+                                "updated" => self.inner.updated_str.as_deref().and_then(|v| {
+                                    v.into_pyobject(py).map(|o| o.unbind().into()).ok()
                                 }),
                                 "updated_parsed" => {
                                     optional_datetime_to_struct_time(py, &self.inner.updated)

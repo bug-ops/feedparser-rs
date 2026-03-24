@@ -175,10 +175,12 @@ fn parse_feed_element(
                     b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.updated = parse_date(&text);
+                        feed.feed.updated_str = Some(text);
                     }
                     b"published" | b"issued" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.published = parse_date(&text);
+                        feed.feed.published_str = Some(text);
                     }
                     b"author" if !is_empty => {
                         if let Ok(person) = parse_person(reader, &mut buf, limits, depth) {
@@ -377,14 +379,20 @@ fn parse_entry(
                     b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
                         entry.updated = parse_date(&text);
+                        entry.updated_str = Some(text);
                     }
                     b"published" | b"issued" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
                         entry.published = parse_date(&text);
+                        entry.published_str = Some(text);
                     }
                     b"subtitle" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits)?;
                         entry.set_subtitle(text);
+                    }
+                    b"rights" if !is_empty => {
+                        let text = parse_text_construct(reader, buf, &element, limits)?;
+                        entry.set_rights(text);
                     }
                     b"summary" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits)?;
@@ -1318,5 +1326,33 @@ mod tests {
             .find(|l| l.rel.as_deref() == Some("alternate"))
             .expect("alternate link");
         assert_eq!(alt_link.thr_count, Some(5));
+    }
+
+    #[test]
+    fn test_parse_entry_rights() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <entry>
+                <title>Entry with rights</title>
+                <id>entry1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <rights>Copyright 2024 Example Corp</rights>
+            </entry>
+            <entry>
+                <title>Entry without rights</title>
+                <id>entry2</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.entries[0].rights.as_deref(),
+            Some("Copyright 2024 Example Corp")
+        );
+        assert!(feed.entries[0].rights_detail.is_some());
+        assert!(feed.entries[1].rights.is_none());
     }
 }
