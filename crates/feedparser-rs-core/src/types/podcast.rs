@@ -47,6 +47,10 @@ pub struct ItunesFeedMeta {
     /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
     /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
     pub new_feed_url: Option<Url>,
+    /// Podcast subtitle (itunes:subtitle)
+    pub subtitle: Option<String>,
+    /// Podcast summary (itunes:summary)
+    pub summary: Option<String>,
 }
 
 /// iTunes podcast metadata for episodes
@@ -86,6 +90,10 @@ pub struct ItunesEntryMeta {
     pub season: Option<u32>,
     /// Episode type: "full", "trailer", or "bonus"
     pub episode_type: Option<String>,
+    /// Episode subtitle (itunes:subtitle)
+    pub subtitle: Option<String>,
+    /// Episode summary (itunes:summary)
+    pub summary: Option<String>,
 }
 
 /// iTunes podcast owner information
