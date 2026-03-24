@@ -990,6 +990,69 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_atom_link_type_defaults() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <link href="http://example.com/" rel="alternate"/>
+            <link href="http://example.com/feed" rel="self"/>
+            <link href="http://hub.example.com/" rel="hub"/>
+            <link href="http://example.com/audio.mp3" rel="enclosure"/>
+            <link href="http://example.com/explicit" rel="alternate" type="application/xhtml+xml"/>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let links = &feed.feed.links;
+        assert_eq!(links.len(), 5);
+
+        let alternate = links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("alternate") && !l.href.contains("explicit"))
+            .unwrap();
+        assert_eq!(
+            alternate.link_type.as_deref(),
+            Some("text/html"),
+            "alternate without type should default to text/html"
+        );
+
+        let self_link = links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("self"))
+            .unwrap();
+        assert_eq!(
+            self_link.link_type.as_deref(),
+            Some("application/atom+xml"),
+            "self without type should default to application/atom+xml"
+        );
+
+        let hub = links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("hub"))
+            .unwrap();
+        assert_eq!(
+            hub.link_type.as_deref(),
+            Some("text/html"),
+            "hub without type should default to text/html"
+        );
+
+        let enclosure = links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("enclosure"))
+            .unwrap();
+        assert_eq!(
+            enclosure.link_type.as_deref(),
+            Some("text/html"),
+            "enclosure without type should default to text/html"
+        );
+
+        let explicit = links.iter().find(|l| l.href.contains("explicit")).unwrap();
+        assert_eq!(
+            explicit.link_type.as_deref(),
+            Some("application/xhtml+xml"),
+            "explicit type must be preserved"
+        );
+    }
+
+    #[test]
     fn test_parse_atom_xhtml_content() {
         let xml = br#"<?xml version="1.0"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
