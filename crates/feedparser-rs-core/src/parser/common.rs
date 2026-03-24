@@ -12,6 +12,7 @@ use quick_xml::{
     Reader,
     events::{BytesRef, Event},
 };
+use std::io::Write as _;
 
 pub use crate::types::{FromAttributes, LimitedCollectionExt};
 pub use crate::util::text::bytes_to_string;
@@ -680,6 +681,15 @@ fn serialize_inner_xml(
                 Ok(Event::Text(e)) => {
                     let _ = writer.write_event(Event::Text(e));
                 }
+                Ok(Event::GeneralRef(e)) => {
+                    // Entity references (e.g. &amp;, &lt;) are emitted as separate
+                    // GeneralRef events by quick-xml. Re-emit them verbatim so that
+                    // &amp; → &amp; (not lost) in the serialized XHTML output.
+                    let inner = writer.get_mut();
+                    let _ = inner.write_all(b"&");
+                    let _ = inner.write_all(e.as_ref());
+                    let _ = inner.write_all(b";");
+                }
                 Ok(Event::CData(e)) => {
                     let _ = writer.write_event(Event::CData(e));
                 }
@@ -1057,6 +1067,30 @@ mod tests {
         assert!(result.contains("<li>B</li>"));
         assert!(!result.contains("<div"));
         assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_read_xhtml_content_preserves_entities() {
+        // Bug #215: &amp; and &lt; must survive the round-trip through serialize_inner_xml
+        let xml = b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Tom &amp; Jerry &lt;rocks&gt;</p></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert!(!had_bozo);
+        assert!(
+            result.contains("&amp;"),
+            "& must be escaped as &amp; in output, got: {result}"
+        );
+        assert!(
+            result.contains("&lt;"),
+            "< must be escaped as &lt; in output, got: {result}"
+        );
+        assert!(
+            !result.contains("Tom & Jerry"),
+            "bare & must not appear in output, got: {result}"
+        );
     }
 
     #[test]

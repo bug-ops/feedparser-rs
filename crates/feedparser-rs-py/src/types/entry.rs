@@ -147,8 +147,8 @@ impl PyEntry {
     }
 
     #[getter]
-    fn created(&self) -> Option<String> {
-        self.inner.created.map(|dt| dt.to_rfc3339())
+    fn created(&self) -> Option<&str> {
+        self.inner.created_str.as_deref()
     }
 
     #[getter]

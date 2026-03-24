@@ -662,6 +662,11 @@ fn parse_entry(
                         entry.published = parse_date(&text);
                         entry.published_str = Some(text);
                     }
+                    b"created" if !is_empty => {
+                        let text = read_text_str(reader, buf, limits)?;
+                        entry.created = parse_date(&text);
+                        entry.created_str = Some(text);
+                    }
                     b"subtitle" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits, entry_lang)?;
                         entry.set_subtitle(text);
@@ -3133,6 +3138,36 @@ mod tests {
             Some("Valid Atom subtitle"),
             "Empty itunes:subtitle must not override valid Atom <subtitle>"
         );
+    }
+
+    // Bug #301: Atom 0.3 <created> element maps to entry.created / entry.created_str
+    #[test]
+    fn test_atom03_created_element() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://purl.org/atom/ns#">
+            <title>Test</title>
+            <modified>2025-01-01T00:00:00Z</modified>
+            <entry>
+                <title>Entry</title>
+                <id>urn:test:1</id>
+                <issued>2024-12-01T00:00:00Z</issued>
+                <modified>2024-12-02T00:00:00Z</modified>
+                <created>2024-11-30T00:00:00Z</created>
+            </entry>
+        </feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert!(
+            entry.created.is_some(),
+            "entry.created must be set from <created>"
+        );
+        assert_eq!(
+            entry.created_str.as_deref(),
+            Some("2024-11-30T00:00:00Z"),
+            "entry.created_str must preserve raw date string"
+        );
+        // 2024-11-30 00:00:00 UTC
+        assert_eq!(entry.created.unwrap().timestamp(), 1_732_924_800);
     }
 
     // TC-257-12B: Atom — itunes:subtitle only present (no <subtitle>) sets feed.subtitle

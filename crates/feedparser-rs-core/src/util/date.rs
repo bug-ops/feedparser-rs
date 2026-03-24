@@ -40,6 +40,39 @@ const DATE_FORMATS: &[&str] = &[
     "%d-%B-%Y",          // 14-December-2024
 ];
 
+/// Parse ASCTIME format: `Www Mmm [D]D HH:MM:SS YYYY` where DD may have a leading space.
+///
+/// Example: `Mon Jan  6 12:30:00 2025` or `Mon Jan 16 12:30:00 2025`
+fn parse_asctime(s: &str) -> Option<NaiveDateTime> {
+    // Expected: 3 alpha (weekday) + space + 3 alpha (month) + space + 1-2 digit day
+    //           (possibly space-padded) + space + HH:MM:SS + space + YYYY
+    let b = s.as_bytes();
+    if b.len() < 24 {
+        return None;
+    }
+    // Weekday: bytes 0..3 must be alpha
+    if !b[..3].iter().all(u8::is_ascii_alphabetic) || b[3] != b' ' {
+        return None;
+    }
+    // Strip weekday prefix
+    let rest = &s[4..];
+    // Normalize: collapse double-space before single-digit day to single space
+    // "Jan  6" → "Jan 6"
+    let normalized = if rest.len() > 4 && rest.as_bytes()[4] == b' ' && rest.as_bytes()[3] == b' ' {
+        // "Mmm  D ..." → "Mmm D ..."
+        let mut n = String::with_capacity(rest.len());
+        n.push_str(&rest[..3]); // month
+        n.push(' ');
+        n.push_str(rest[4..].trim_start_matches(' '));
+        n
+    } else {
+        rest.to_string()
+    };
+    NaiveDateTime::parse_from_str(&normalized, "%b %e %H:%M:%S %Y")
+        .or_else(|_| NaiveDateTime::parse_from_str(&normalized, "%b %d %H:%M:%S %Y"))
+        .ok()
+}
+
 /// Strip a leading weekday prefix of the form `"Www, "` (3 ASCII alpha chars + ", ").
 fn strip_weekday_prefix(s: &str) -> Option<&str> {
     let b = s.as_bytes();
@@ -128,6 +161,11 @@ pub fn parse_date(input: &str) -> Option<DateTime<Utc>> {
         return NaiveDate::from_ymd_opt(year, month, 1)
             .and_then(|d| d.and_hms_opt(0, 0, 0))
             .map(|dt| dt.and_utc());
+    }
+
+    // Try ASCTIME format: "Mon Jan  6 12:30:00 2025"
+    if let Some(dt) = parse_asctime(input) {
+        return Some(dt.and_utc());
     }
 
     // Try all format strings
@@ -425,5 +463,33 @@ mod tests {
             assert_eq!(dt.month(), month, "Month mismatch for: {input}");
             assert_eq!(dt.day(), day, "Day mismatch for: {input}");
         }
+    }
+
+    #[test]
+    fn test_asctime_single_digit_day_space_padded() {
+        // Bug #258: "Mon Jan  6 12:30:00 2025" — day padded with space
+        let dt = parse_date("Mon Jan  6 12:30:00 2025").unwrap();
+        assert_eq!(dt.year(), 2025);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 6);
+        assert_eq!(dt.hour(), 12);
+        assert_eq!(dt.minute(), 30);
+        assert_eq!(dt.second(), 0);
+    }
+
+    #[test]
+    fn test_asctime_double_digit_day() {
+        let dt = parse_date("Mon Jan 16 12:30:00 2025").unwrap();
+        assert_eq!(dt.year(), 2025);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 16);
+    }
+
+    #[test]
+    fn test_asctime_various_months() {
+        let dt = parse_date("Fri Dec 31 23:59:59 2021").unwrap();
+        assert_eq!(dt.year(), 2021);
+        assert_eq!(dt.month(), 12);
+        assert_eq!(dt.day(), 31);
     }
 }

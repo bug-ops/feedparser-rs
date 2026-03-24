@@ -46,6 +46,8 @@ pub struct Entry {
     pub updated_str: Option<String>,
     /// Creation date
     pub created: Option<DateTime<Utc>>,
+    /// Original creation date string as found in the feed (timezone preserved)
+    pub created_str: Option<String>,
     /// Expiration date
     pub expired: Option<DateTime<Utc>>,
     /// Primary author name (stored inline for names ≤24 bytes)
