@@ -759,14 +759,19 @@ fn parse_atom_source(
 
     loop {
         match reader.read_event_into(buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
+
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
                 match element.name().as_ref() {
-                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
+                    b"title" if !is_empty => title = Some(read_text_str(reader, buf, limits)?),
                     b"link" => {
                         if let Some(l) = Link::from_attributes(
                             element.attributes().flatten(),
@@ -775,10 +780,13 @@ fn parse_atom_source(
                         {
                             link = Some(l.href.to_string());
                         }
-                        skip_to_end(reader, buf, b"link")?;
+                        if !is_empty {
+                            skip_to_end(reader, buf, b"link")?;
+                        }
                     }
-                    b"id" => id = Some(read_text_str(reader, buf, limits)?),
-                    _ => skip_element(reader, buf, limits, *depth)?,
+                    b"id" if !is_empty => id = Some(read_text_str(reader, buf, limits)?),
+                    _ if !is_empty => skip_element(reader, buf, limits, *depth)?,
+                    _ => {}
                 }
                 *depth = depth.saturating_sub(1);
             }
@@ -1036,6 +1044,31 @@ mod tests {
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.title.as_deref(), Some("Source Feed"));
         assert_eq!(source.id.as_deref(), Some("source-id"));
+    }
+
+    #[test]
+    fn test_parse_atom_source_link_before_id() {
+        // Regression test for issue #174: skip_to_end on empty <link/> consumed
+        // subsequent siblings including <id>, causing source.id to return None.
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <id>urn:test</id>
+            <entry>
+                <title>Entry</title>
+                <id>urn:entry</id>
+                <source>
+                    <title>Source</title>
+                    <link href="http://x.com/"/>
+                    <id>source-id-here</id>
+                </source>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert_eq!(source.id.as_deref(), Some("source-id-here"));
+        assert_eq!(source.link.as_deref(), Some("http://x.com/"));
     }
 
     #[test]
