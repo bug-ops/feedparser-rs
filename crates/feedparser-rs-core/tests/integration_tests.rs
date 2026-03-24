@@ -388,7 +388,7 @@ fn test_atom_entry_subtitle_html() {
     let entry = &feed.entries[0];
     assert_eq!(
         entry.subtitle.as_deref(),
-        Some("A longer<em>teaser</em>description")
+        Some("A longer <em>teaser</em> description")
     );
     let detail = entry.subtitle_detail.as_ref().unwrap();
     assert_eq!(detail.content_type, TextType::Html);
@@ -511,7 +511,10 @@ fn test_atom_enclosure_missing_type() {
         entry.enclosures[0].url.as_str(),
         "http://example.com/ep2.mp3"
     );
-    assert!(entry.enclosures[0].enclosure_type.is_none());
+    assert_eq!(
+        entry.enclosures[0].enclosure_type.as_deref(),
+        Some("text/html")
+    );
     assert_eq!(entry.enclosures[0].length, Some(9_876_543));
 }
 
@@ -651,4 +654,38 @@ fn test_rss_source_element_title_and_link() {
     let source = entry.source.as_ref().expect("entry must have source");
     assert_eq!(source.title.as_deref(), Some("Other Feed Name"));
     assert_eq!(source.link.as_deref(), Some("https://otherfeed.com/rss"));
+}
+
+// Regression tests for issue #152: whitespace around XML entities must be preserved.
+#[test]
+fn test_rss20_entity_whitespace_preserved() {
+    let xml = load_fixture("rss/rss20-entity-whitespace.xml");
+    let feed = parse(&xml).unwrap();
+
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    assert_eq!(feed.entries.len(), 5);
+
+    // space before entity sequence
+    assert_eq!(feed.entries[0].summary.as_deref(), Some("word <b>bold</b>"));
+
+    // space after entity sequence
+    assert_eq!(
+        feed.entries[1].summary.as_deref(),
+        Some("<b>bold</b> after")
+    );
+
+    // spaces on both sides
+    assert_eq!(
+        feed.entries[2].summary.as_deref(),
+        Some("word <b>bold</b> after")
+    );
+
+    // multiple entity sequences with spaces between
+    assert_eq!(
+        feed.entries[3].summary.as_deref(),
+        Some("a <em>b</em> c <strong>d</strong> e")
+    );
+
+    // &amp; entity with adjacent spaces
+    assert_eq!(feed.entries[4].summary.as_deref(), Some("foo & bar"));
 }
