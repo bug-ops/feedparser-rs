@@ -1179,7 +1179,12 @@ fn parse_person(
         buf.clear();
     }
 
-    Ok(Person { name, email, uri })
+    Ok(Person {
+        name,
+        email,
+        uri,
+        avatar: None,
+    })
 }
 
 /// Parse <generator> element

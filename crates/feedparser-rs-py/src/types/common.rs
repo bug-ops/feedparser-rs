@@ -242,17 +242,23 @@ impl PyPerson {
         self.inner.uri.as_deref()
     }
 
+    #[getter]
+    fn avatar(&self) -> Option<&str> {
+        self.inner.avatar.as_deref()
+    }
+
     fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
         match key {
             "name" => Ok(self.inner.name.as_deref().map(str::to_owned)),
             "email" => Ok(self.inner.email.as_deref().map(str::to_owned)),
             "href" => Ok(self.inner.uri.as_deref().map(str::to_owned)),
+            "avatar" => Ok(self.inner.avatar.clone()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
 
     fn __contains__(&self, key: &str) -> bool {
-        matches!(key, "name" | "email" | "href")
+        matches!(key, "name" | "email" | "href" | "avatar")
     }
 
     #[pyo3(signature = (key, default = None))]
@@ -264,7 +270,7 @@ impl PyPerson {
     }
 
     fn keys(&self) -> Vec<&'static str> {
-        vec!["name", "email", "href"]
+        vec!["name", "email", "href", "avatar"]
     }
 
     fn values(&self) -> Vec<Option<String>> {
@@ -272,6 +278,7 @@ impl PyPerson {
             self.inner.name.as_deref().map(str::to_owned),
             self.inner.email.as_deref().map(str::to_owned),
             self.inner.uri.as_deref().map(str::to_owned),
+            self.inner.avatar.clone(),
         ]
     }
 

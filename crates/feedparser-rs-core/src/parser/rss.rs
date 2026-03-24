@@ -218,6 +218,7 @@ fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
                 name: Some(name.as_str().into()),
                 email: owner_email.as_deref().map(crate::types::Email::new),
                 uri: None,
+                avatar: None,
             };
             // #317: feed.author must be name-only (no email in parentheses).
             // author_detail still carries the full person (name + email).
@@ -709,6 +710,7 @@ fn parse_channel_itunes(
                     name: owner.name.as_deref().map(Into::into),
                     email: owner.email.as_deref().map(crate::types::Email::new),
                     uri: None,
+                    avatar: None,
                 };
                 feed.feed.set_publisher(person);
             }

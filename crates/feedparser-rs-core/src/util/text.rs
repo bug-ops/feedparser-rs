@@ -98,6 +98,7 @@ pub fn parse_rss_person(text: &str) -> Person {
                 },
                 email: Some(Email::new(email_part.to_string())),
                 uri: None,
+                avatar: None,
             };
         }
     }
@@ -117,6 +118,7 @@ pub fn parse_rss_person(text: &str) -> Person {
                 },
                 email: Some(Email::new(email_part.to_string())),
                 uri: None,
+                avatar: None,
             };
         }
     }
@@ -127,6 +129,7 @@ pub fn parse_rss_person(text: &str) -> Person {
             name: None,
             email: Some(Email::new(text.to_string())),
             uri: None,
+            avatar: None,
         }
     } else {
         Person::from_name(text)
