@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Map Atom `xml:lang` attribute on `<feed>` to `feed.language`; propagate to `TextConstruct.language` and `Content.language` on feed-level and entry-level constructs; entry-level `xml:lang` overrides feed-level (#149)
 - Node.js bindings: `entry.updated`, `entry.published`, `entry.created`, `entry.expired`, `entry.dcDate`, `feed.updated`, `feed.published` now return the original timezone-preserving date string from the feed; added corresponding `*Parsed` fields (`updatedParsed`, `publishedParsed`, `createdParsed`, `expiredParsed`, `dcDateParsed`) returning `number` (ms since epoch) for use with `new Date(ms)` (#141)
 - Core/bindings: `updated` and `published` string fields now preserve the original timezone string from the feed instead of normalizing to UTC; `*_parsed` fields remain correctly normalized (#140)
 - Map RSS 2.0 `<copyright>` channel element to `feed.rights` (#144)
