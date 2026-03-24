@@ -113,8 +113,8 @@ impl PyItunesEntryMeta {
     }
 
     #[getter]
-    fn duration(&self) -> Option<u32> {
-        self.inner.duration
+    fn duration(&self) -> Option<&str> {
+        self.inner.duration.as_deref()
     }
 
     #[getter]
@@ -128,13 +128,13 @@ impl PyItunesEntryMeta {
     }
 
     #[getter]
-    fn episode(&self) -> Option<u32> {
-        self.inner.episode
+    fn episode(&self) -> Option<&str> {
+        self.inner.episode.as_deref()
     }
 
     #[getter]
-    fn season(&self) -> Option<u32> {
-        self.inner.season
+    fn season(&self) -> Option<&str> {
+        self.inner.season.as_deref()
     }
 
     #[getter]
@@ -143,8 +143,10 @@ impl PyItunesEntryMeta {
     }
 
     fn __repr__(&self) -> String {
-        if let (Some(season), Some(episode)) = (self.inner.season, self.inner.episode) {
-            format!("ItunesEntryMeta(season={}, episode={})", season, episode)
+        if let (Some(season), Some(episode)) =
+            (self.inner.season.as_deref(), self.inner.episode.as_deref())
+        {
+            format!("ItunesEntryMeta(season={season}, episode={episode})")
         } else {
             "ItunesEntryMeta()".to_string()
         }

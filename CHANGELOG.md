@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: `entry.source` now exposes `links` (all link elements), `updated`/`updated_parsed`, `rights`, and `guidislink` fields for Atom `<source>` elements, matching Python feedparser (#242, #214)
 - Core: `entry.source.guidislink` is `Some(true)` when the Atom `<source>` `<id>` looks like a URL and no explicit `<link>` is present; `Some(false)` when an explicit `<link>` is present or the id is not a URL; `None` for RSS sources
 
+### Fixed
+
+- Core, Python, Node.js bindings: `itunes_duration` now returns the raw XML string (e.g. `"1:23:45"`, `"83:45"`, `"5025"`) instead of converting to seconds as an integer; `itunes_episode` and `itunes_season` now return strings (e.g. `"42"`, `"3"`) instead of integers, matching Python feedparser behavior (#224, #225)
+
 ## [0.5.0] - 2026-03-24
 
 ### Fixed

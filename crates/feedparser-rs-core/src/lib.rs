@@ -192,8 +192,7 @@ pub use types::{
     ItunesCategory, ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link,
     MediaContent, MediaThumbnail, MimeType, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta,
     PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, PodcastValue,
-    PodcastValueRecipient, Source, Tag, TextConstruct, TextType, Url, parse_duration,
-    parse_explicit,
+    PodcastValueRecipient, Source, Tag, TextConstruct, TextType, Url, parse_explicit,
 };
 
 pub use namespace::syndication::{SyndicationMeta, UpdatePeriod};
