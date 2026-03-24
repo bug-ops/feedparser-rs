@@ -1478,9 +1478,16 @@ fn parse_item_media(
             let medium = find_attribute(attrs, b"medium")
                 .map(|v| truncate_to_length(v, limits.max_attribute_length));
             let filesize = find_attribute(attrs, b"fileSize").and_then(|v| v.parse().ok());
-            let duration = find_attribute(attrs, b"duration").and_then(|v| v.parse().ok());
+            let duration = find_attribute(attrs, b"duration").map(str::to_owned);
             let width = find_attribute(attrs, b"width").map(str::to_owned);
             let height = find_attribute(attrs, b"height").map(str::to_owned);
+            let bitrate = find_attribute(attrs, b"bitrate").map(str::to_owned);
+            let lang = find_attribute(attrs, b"lang").map(str::to_owned);
+            let channels = find_attribute(attrs, b"channels").map(str::to_owned);
+            let codec = find_attribute(attrs, b"codec").map(str::to_owned);
+            let expression = find_attribute(attrs, b"expression").map(str::to_owned);
+            let isdefault = find_attribute(attrs, b"isDefault").map(str::to_owned);
+            let samplingrate = find_attribute(attrs, b"samplingrate").map(str::to_owned);
 
             if !url.is_empty() {
                 entry.media_content.try_push_limited(
@@ -1492,6 +1499,13 @@ fn parse_item_media(
                         width,
                         height,
                         duration,
+                        bitrate,
+                        lang,
+                        channels,
+                        codec,
+                        expression,
+                        isdefault,
+                        samplingrate,
                     },
                     limits.max_enclosures,
                 );

@@ -98,8 +98,43 @@ impl PyMediaContent {
     }
 
     #[getter]
-    fn duration(&self) -> Option<u64> {
-        self.inner.duration
+    fn duration(&self) -> Option<&str> {
+        self.inner.duration.as_deref()
+    }
+
+    #[getter]
+    fn bitrate(&self) -> Option<&str> {
+        self.inner.bitrate.as_deref()
+    }
+
+    #[getter]
+    fn lang(&self) -> Option<&str> {
+        self.inner.lang.as_deref()
+    }
+
+    #[getter]
+    fn channels(&self) -> Option<&str> {
+        self.inner.channels.as_deref()
+    }
+
+    #[getter]
+    fn codec(&self) -> Option<&str> {
+        self.inner.codec.as_deref()
+    }
+
+    #[getter]
+    fn expression(&self) -> Option<&str> {
+        self.inner.expression.as_deref()
+    }
+
+    #[getter]
+    fn isdefault(&self) -> Option<&str> {
+        self.inner.isdefault.as_deref()
+    }
+
+    #[getter]
+    fn samplingrate(&self) -> Option<&str> {
+        self.inner.samplingrate.as_deref()
     }
 
     fn __repr__(&self) -> String {
@@ -118,5 +153,12 @@ impl PyMediaContent {
             && self.inner.width == other.inner.width
             && self.inner.height == other.inner.height
             && self.inner.duration == other.inner.duration
+            && self.inner.bitrate == other.inner.bitrate
+            && self.inner.lang == other.inner.lang
+            && self.inner.channels == other.inner.channels
+            && self.inner.codec == other.inner.codec
+            && self.inner.expression == other.inner.expression
+            && self.inner.isdefault == other.inner.isdefault
+            && self.inner.samplingrate == other.inner.samplingrate
     }
 }

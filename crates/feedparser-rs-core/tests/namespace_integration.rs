@@ -113,7 +113,49 @@ fn test_rss_with_media_rss() {
     assert_eq!(entry.media_content[0].filesize, Some(1_024_000));
     assert_eq!(entry.media_content[0].width.as_deref(), Some("1920"));
     assert_eq!(entry.media_content[0].height.as_deref(), Some("1080"));
-    assert_eq!(entry.media_content[0].duration, Some(600));
+    assert_eq!(entry.media_content[0].duration.as_deref(), Some("600"));
+}
+
+#[test]
+fn test_media_rss_extended_attributes() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>Test</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Item</title>
+                <media:content
+                    url="http://example.com/audio.mp3"
+                    type="audio/mpeg"
+                    medium="audio"
+                    bitrate="128"
+                    channels="2"
+                    samplingrate="44.1"
+                    codec="mp3"
+                    expression="full"
+                    isDefault="true"
+                    lang="en"
+                />
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    let entry = &feed.entries[0];
+    assert_eq!(entry.media_content.len(), 1);
+    let mc = &entry.media_content[0];
+    assert_eq!(mc.medium.as_deref(), Some("audio"));
+    assert_eq!(mc.bitrate.as_deref(), Some("128"));
+    assert_eq!(mc.channels.as_deref(), Some("2"));
+    assert_eq!(mc.samplingrate.as_deref(), Some("44.1"));
+    assert_eq!(mc.codec.as_deref(), Some("mp3"));
+    assert_eq!(mc.expression.as_deref(), Some("full"));
+    assert_eq!(mc.isdefault.as_deref(), Some("true"));
+    assert_eq!(mc.lang.as_deref(), Some("en"));
+    assert!(mc.duration.is_none());
+    assert!(mc.width.is_none());
+    assert!(mc.height.is_none());
 }
 
 #[test]

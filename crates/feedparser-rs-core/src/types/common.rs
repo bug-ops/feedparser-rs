@@ -760,8 +760,22 @@ pub struct MediaContent {
     pub width: Option<String>,
     /// Media height in pixels (raw string value, as in Python feedparser)
     pub height: Option<String>,
-    /// Duration in seconds (for audio/video)
-    pub duration: Option<u64>,
+    /// Duration in seconds (raw string value, as in Python feedparser)
+    pub duration: Option<String>,
+    /// Bitrate in kilobits per second (raw string value)
+    pub bitrate: Option<String>,
+    /// Language of the media (lang attribute)
+    pub lang: Option<String>,
+    /// Number of audio channels (raw string value)
+    pub channels: Option<String>,
+    /// Codec used to produce the media (codec attribute)
+    pub codec: Option<String>,
+    /// Expression type: "full", "sample", "nonstop"
+    pub expression: Option<String>,
+    /// Whether this is the default media object (isDefault attribute, raw string)
+    pub isdefault: Option<String>,
+    /// Sampling rate in kHz (raw string value)
+    pub samplingrate: Option<String>,
 }
 
 impl FromAttributes for Link {
@@ -924,6 +938,13 @@ impl FromAttributes for MediaContent {
         let mut width = None;
         let mut height = None;
         let mut duration = None;
+        let mut bitrate = None;
+        let mut lang = None;
+        let mut channels = None;
+        let mut codec = None;
+        let mut expression = None;
+        let mut isdefault = None;
+        let mut samplingrate = None;
 
         for attr in attrs {
             if attr.value.len() > max_attr_length {
@@ -937,7 +958,14 @@ impl FromAttributes for MediaContent {
                 b"fileSize" => filesize = bytes_to_string(&attr.value).parse().ok(),
                 b"width" => width = Some(bytes_to_string(&attr.value)),
                 b"height" => height = Some(bytes_to_string(&attr.value)),
-                b"duration" => duration = bytes_to_string(&attr.value).parse().ok(),
+                b"duration" => duration = Some(bytes_to_string(&attr.value)),
+                b"bitrate" => bitrate = Some(bytes_to_string(&attr.value)),
+                b"lang" => lang = Some(bytes_to_string(&attr.value)),
+                b"channels" => channels = Some(bytes_to_string(&attr.value)),
+                b"codec" => codec = Some(bytes_to_string(&attr.value)),
+                b"expression" => expression = Some(bytes_to_string(&attr.value)),
+                b"isDefault" => isdefault = Some(bytes_to_string(&attr.value)),
+                b"samplingrate" => samplingrate = Some(bytes_to_string(&attr.value)),
                 _ => {}
             }
         }
@@ -950,6 +978,13 @@ impl FromAttributes for MediaContent {
             width,
             height,
             duration,
+            bitrate,
+            lang,
+            channels,
+            codec,
+            expression,
+            isdefault,
+            samplingrate,
         })
     }
 }
