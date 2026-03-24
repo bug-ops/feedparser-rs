@@ -355,6 +355,96 @@ impl PyEntry {
         self.inner.thr_total.map(|n| n.to_string())
     }
 
+    /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
+    ///
+    /// Provides `dict.get()` compatibility for Python feedparser consumers.
+    /// Unlike `__getitem__`, this method never raises `KeyError`.
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    /// Returns a list of field names whose values are not None.
+    fn keys(&self, py: Python<'_>) -> PyResult<Vec<&'static str>> {
+        const ALL_KEYS: &[&str] = &[
+            "id",
+            "title",
+            "title_detail",
+            "subtitle",
+            "subtitle_detail",
+            "link",
+            "links",
+            "summary",
+            "summary_detail",
+            "content",
+            "published",
+            "published_parsed",
+            "updated",
+            "updated_parsed",
+            "created",
+            "created_parsed",
+            "expired",
+            "expired_parsed",
+            "author",
+            "author_detail",
+            "authors",
+            "contributors",
+            "publisher",
+            "publisher_detail",
+            "tags",
+            "enclosures",
+            "comments",
+            "source",
+            "itunes",
+            "podcast_transcripts",
+            "podcast_persons",
+            "license",
+            "geo",
+            "dc_creator",
+            "dc_date",
+            "dc_date_parsed",
+            "slash_comments",
+            "wfw_commentrss",
+            "rights",
+            "rights_detail",
+            "dc_rights",
+            "dc_subject",
+            "media_thumbnail",
+            "media_content",
+            "podcast",
+            "thr_in_reply_to",
+            "thr_total",
+        ];
+        let mut result = Vec::new();
+        for &key in ALL_KEYS {
+            let value = self.__getitem__(py, key)?;
+            if !value.is_none(py) {
+                result.push(key);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Returns a list of field values for all non-None fields.
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let keys = self.keys(py)?;
+        keys.into_iter()
+            .map(|key| self.__getitem__(py, key))
+            .collect()
+    }
+
+    /// Returns a list of `(key, value)` pairs for all non-None fields.
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
+        let keys = self.keys(py)?;
+        keys.into_iter()
+            .map(|key| Ok((key.to_string(), self.__getitem__(py, key)?)))
+            .collect()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "Entry(title='{}', id='{}')",
@@ -641,6 +731,71 @@ impl PyEntry {
                     Ok(py.None())
                 }
             }
+            // Flat itunes_* keys for Python feedparser compatibility
+            "itunes_author" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.author.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_duration" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.duration)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_episode" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.episode)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_season" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.season)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_explicit" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.explicit)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_episodetype" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.episode_type.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_image" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.image.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_title" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.title.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "podcast_transcripts" => {
                 let transcripts: Vec<_> = self
                     .inner

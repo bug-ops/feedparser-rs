@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Core: truncated or unclosed XML feeds (RSS 2.0, Atom, RSS 1.0) now set `bozo=true` with `bozo_exception="Feed is truncated or has unclosed XML elements"`; previously the parsers silently ignored EOF without inspecting whether open elements remained unclosed (#165)
+- Populate `ParsedFeed.namespaces` HashMap from `xmlns:` declarations on root elements (`<rss>`, `<channel>`, `<feed>`, `<rdf:RDF>`); default namespace `xmlns=""` uses key `""`, prefixed namespaces `xmlns:dc=""` use the prefix as key; enforces `max_namespaces` and `max_attribute_length` limits with bozo flag on overflow (#163)
+- Python bindings: `entry['itunes_duration']`, `entry['itunes_episode']`, `entry['itunes_season']`, `entry['itunes_explicit']`, `entry['itunes_episodetype']`, `entry['itunes_author']`, `entry['itunes_title']`, `entry['itunes_image']` now work via `__getitem__`, matching Python feedparser flat key access; feed-level `feed['itunes_author']`, `feed['itunes_explicit']`, `feed['itunes_image']` also supported (#164)
+- Python bindings: `FeedMeta`, `Entry`, and `FeedParserDict` now expose `.get(key, default=None)`, `.keys()`, `.values()`, and `.items()` methods, matching the `FeedParserDict` dict-compatible API from Python feedparser; `.get()` never raises `KeyError` (#162)
 - Core: `entry.rights_detail.value` was always empty due to `std::mem::take` consuming the value before assigning it to `rights_detail`; fixed by cloning the value instead (#161)
 - `media:content` elements now expose the `medium` attribute (`video`, `audio`, `image`, `document`, `executable`) in core, Python, and Node.js bindings, matching Python feedparser behavior (#158)
 - Rename `media_thumbnails` to `media_thumbnail` (singular) across core, Python, and Node.js bindings to match Python feedparser API (#157)

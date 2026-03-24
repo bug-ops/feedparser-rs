@@ -131,6 +131,20 @@ impl PyParsedFeed {
         self.headers.as_ref().map(|h| h.clone_ref(py))
     }
 
+    /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
+    ///
+    /// Provides `dict.get()` compatibility for Python feedparser consumers.
+    /// Unlike `__getitem__`, this method never raises `KeyError`.
+    /// Returns `default` for both unknown keys and known keys whose value is None.
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "FeedParserDict(version='{}', bozo={}, entries={})",
