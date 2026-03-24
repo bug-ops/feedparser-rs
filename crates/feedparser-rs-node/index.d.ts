@@ -391,6 +391,8 @@ export interface MediaContent {
   isdefault?: string
   /** Sampling rate in kHz (raw string value) */
   samplingrate?: string
+  /** Frame rate in frames per second (raw string value) */
+  framerate?: string
 }
 
 /** Media RSS thumbnail */
