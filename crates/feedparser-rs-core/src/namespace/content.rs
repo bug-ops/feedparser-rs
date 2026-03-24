@@ -21,14 +21,20 @@ pub const CONTENT_NAMESPACE: &str = "http://purl.org/rss/1.0/modules/content/";
 /// * `element` - Local name of the element (without namespace prefix)
 /// * `text` - Text content of the element
 /// * `entry` - Entry to update
-pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
+pub fn handle_entry_element(
+    element: &str,
+    text: &str,
+    entry: &mut Entry,
+    lang: Option<&str>,
+    base: Option<&str>,
+) {
     if element == "encoded" {
         // content:encoded → add to entry.content as HTML
         entry.content.push(Content {
             value: text.to_string(),
             content_type: Some("text/html".into()),
-            language: None,
-            base: None,
+            language: lang.filter(|s| !s.is_empty()).map(Into::into),
+            base: base.filter(|s| !s.is_empty()).map(ToString::to_string),
             src: None,
         });
     }
@@ -43,7 +49,7 @@ mod tests {
         let mut entry = Entry::default();
         let html = r"<p>Full HTML content with <strong>formatting</strong>.</p>";
 
-        handle_entry_element("encoded", html, &mut entry);
+        handle_entry_element("encoded", html, &mut entry, None, None);
 
         assert_eq!(entry.content.len(), 1);
         assert_eq!(entry.content[0].value, html);
@@ -54,8 +60,8 @@ mod tests {
     fn test_multiple_content_encoded() {
         let mut entry = Entry::default();
 
-        handle_entry_element("encoded", "<p>First content</p>", &mut entry);
-        handle_entry_element("encoded", "<p>Second content</p>", &mut entry);
+        handle_entry_element("encoded", "<p>First content</p>", &mut entry, None, None);
+        handle_entry_element("encoded", "<p>Second content</p>", &mut entry, None, None);
 
         assert_eq!(entry.content.len(), 2);
     }
@@ -66,7 +72,7 @@ mod tests {
         // CDATA markers are typically stripped by XML parser before we see it
         let html = r"<p>Content from <![CDATA[...]]></p>";
 
-        handle_entry_element("encoded", html, &mut entry);
+        handle_entry_element("encoded", html, &mut entry, None, None);
 
         assert!(!entry.content.is_empty());
     }
@@ -75,8 +81,39 @@ mod tests {
     fn test_ignore_unknown_elements() {
         let mut entry = Entry::default();
 
-        handle_entry_element("unknown", "test", &mut entry);
+        handle_entry_element("unknown", "test", &mut entry, None, None);
 
         assert!(entry.content.is_empty());
+    }
+
+    #[test]
+    fn test_content_encoded_with_lang_and_base() {
+        let mut entry = Entry::default();
+        let html = "<p>Content</p>";
+
+        handle_entry_element(
+            "encoded",
+            html,
+            &mut entry,
+            Some("en"),
+            Some("http://example.com/"),
+        );
+
+        assert_eq!(entry.content.len(), 1);
+        assert_eq!(entry.content[0].language.as_deref(), Some("en"));
+        assert_eq!(
+            entry.content[0].base.as_deref(),
+            Some("http://example.com/")
+        );
+    }
+
+    #[test]
+    fn test_content_encoded_empty_lang_treated_as_none() {
+        let mut entry = Entry::default();
+
+        handle_entry_element("encoded", "<p>Test</p>", &mut entry, Some(""), None);
+
+        assert_eq!(entry.content.len(), 1);
+        assert!(entry.content[0].language.is_none());
     }
 }

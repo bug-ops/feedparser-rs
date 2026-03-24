@@ -57,6 +57,12 @@ pub fn parse_json_feed_with_limits(data: &[u8], limits: ParserLimits) -> Result<
 
     parse_feed_metadata(&json, &mut feed.feed, &limits);
 
+    // Feed-level language for fallback in items
+    let feed_lang = json
+        .get("language")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty() && s.len() <= limits.max_text_length);
+
     if let Some(items) = json.get("items").and_then(|v| v.as_array()) {
         for (idx, item) in items.iter().enumerate() {
             if idx >= limits.max_entries {
@@ -67,7 +73,7 @@ pub fn parse_json_feed_with_limits(data: &[u8], limits: ParserLimits) -> Result<
                 ));
                 break;
             }
-            feed.entries.push(parse_item(item, &limits));
+            feed.entries.push(parse_item(item, &limits, feed_lang));
         }
     }
 
@@ -127,9 +133,17 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     );
 
     if let Some(language) = json.get("language").and_then(|v| v.as_str())
+        && !language.is_empty()
         && language.len() <= limits.max_text_length
     {
         feed.language = Some(language.into());
+        // Propagate feed-level language to title and subtitle TextConstructs
+        if let Some(detail) = &mut feed.title_detail {
+            detail.language = Some(language.into());
+        }
+        if let Some(detail) = &mut feed.subtitle_detail {
+            detail.language = Some(language.into());
+        }
     }
 
     if let Some(expired) = json.get("expired").and_then(Value::as_bool)
@@ -146,8 +160,15 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     }
 }
 
-fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
+fn parse_item(json: &Value, limits: &ParserLimits, feed_lang: Option<&str>) -> Entry {
     let mut entry = Entry::default();
+
+    // Determine effective language: item-level overrides feed-level; empty clears it
+    let item_lang = json
+        .get("language")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty() && s.len() <= limits.max_text_length);
+    let effective_lang = item_lang.or(feed_lang);
 
     if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
         entry.id = Some(id.into());
@@ -169,26 +190,50 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
 
     if let Some(title) = json.get("title").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(title, limits.max_text_length);
-        entry.set_title(TextConstruct::text(&truncated));
+        entry.set_title(TextConstruct {
+            value: truncated,
+            content_type: crate::types::TextType::Text,
+            language: effective_lang.map(Into::into),
+            base: None,
+        });
     }
 
     if let Some(content_html) = json.get("content_html").and_then(|v| v.as_str()) {
         let text = truncate_to_length(content_html, limits.max_text_length);
-        let _ = entry
-            .content
-            .try_push_limited(Content::html(text), limits.max_entries);
+        let _ = entry.content.try_push_limited(
+            Content {
+                value: text,
+                content_type: Some("text/html".into()),
+                language: effective_lang.map(Into::into),
+                base: None,
+                src: None,
+            },
+            limits.max_entries,
+        );
     }
 
     if let Some(content_text) = json.get("content_text").and_then(|v| v.as_str()) {
         let text = truncate_to_length(content_text, limits.max_text_length);
-        let _ = entry
-            .content
-            .try_push_limited(Content::plain(text), limits.max_entries);
+        let _ = entry.content.try_push_limited(
+            Content {
+                value: text,
+                content_type: Some("text/plain".into()),
+                language: effective_lang.map(Into::into),
+                base: None,
+                src: None,
+            },
+            limits.max_entries,
+        );
     }
 
     if let Some(summary) = json.get("summary").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(summary, limits.max_text_length);
-        entry.set_summary(TextConstruct::text(&truncated));
+        entry.set_summary(TextConstruct {
+            value: truncated,
+            content_type: crate::types::TextType::Text,
+            language: effective_lang.map(Into::into),
+            base: None,
+        });
     }
 
     if let Some(image) = json.get("image").and_then(|v| v.as_str()) {
@@ -234,14 +279,9 @@ fn parse_item(json: &Value, limits: &ParserLimits) -> Entry {
         }
     }
 
-    if let Some(language) = json.get("language").and_then(|v| v.as_str()) {
-        entry.language = Some(language.into());
-        if let Some(detail) = &mut entry.title_detail {
-            detail.language = Some(language.into());
-        }
-        if let Some(detail) = &mut entry.summary_detail {
-            detail.language = Some(language.into());
-        }
+    // Set entry.language from item-level field (effective_lang already set on constructs above)
+    if let Some(lang) = effective_lang {
+        entry.language = Some(lang.into());
     }
 
     if let Some(attachments) = json.get("attachments").and_then(|v| v.as_array()) {
@@ -794,5 +834,104 @@ mod tests {
             Some("https://example.com/john/avatar.jpg")
         );
         assert!(!feed.bozo);
+    }
+
+    #[test]
+    fn test_json_feed_level_language_propagates_to_item_constructs() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Feed",
+            "language": "de",
+            "items": [
+                {
+                    "id": "1",
+                    "title": "Artikel",
+                    "content_html": "<p>Inhalt</p>",
+                    "summary": "Kurz"
+                }
+            ]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+        assert_eq!(
+            entry.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("de")
+        );
+        assert_eq!(
+            entry.summary_detail.as_ref().unwrap().language.as_deref(),
+            Some("de")
+        );
+        assert_eq!(entry.content[0].language.as_deref(), Some("de"));
+    }
+
+    #[test]
+    fn test_json_item_language_overrides_feed_language() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Feed",
+            "language": "de",
+            "items": [
+                {
+                    "id": "1",
+                    "title": "Titre",
+                    "language": "fr"
+                }
+            ]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+        assert_eq!(
+            entry.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("fr")
+        );
+        assert_eq!(entry.language.as_deref(), Some("fr"));
+    }
+
+    #[test]
+    fn test_json_feed_language_on_feed_title_detail() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Feed Titel",
+            "description": "Beschreibung",
+            "language": "de",
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.feed.title_detail.as_ref().unwrap().language.as_deref(),
+            Some("de")
+        );
+        assert_eq!(
+            feed.feed
+                .subtitle_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .as_deref(),
+            Some("de")
+        );
+    }
+
+    #[test]
+    fn test_json_no_language_yields_none() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Feed",
+            "items": [{"id": "1", "title": "Entry"}]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.title_detail.as_ref().unwrap().language.is_none());
+        assert!(
+            feed.entries[0]
+                .title_detail
+                .as_ref()
+                .unwrap()
+                .language
+                .is_none()
+        );
     }
 }

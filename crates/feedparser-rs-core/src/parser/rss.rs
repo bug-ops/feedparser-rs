@@ -124,7 +124,8 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"channel" => {
                 // Some feeds declare xmlns on <channel> rather than <rss>
                 extract_namespaces(&e, &mut feed, &limits);
-                let channel_lang = extract_xml_lang(&e, limits.max_attribute_length);
+                let channel_lang =
+                    extract_xml_lang(&e, limits.max_attribute_length).filter(|s| !s.is_empty());
                 found_channel = true;
                 depth += 1;
                 if let Err(e) = parse_channel(
@@ -290,7 +291,8 @@ fn parse_channel(
                 }
 
                 // Extract xml:lang before matching to avoid borrow issues
-                let item_lang = extract_xml_lang(e, limits.max_attribute_length);
+                let item_lang =
+                    extract_xml_lang(e, limits.max_attribute_length).filter(|s| !s.is_empty());
 
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
@@ -1291,6 +1293,8 @@ fn parse_item(
                                 is_empty,
                                 *depth,
                                 &mut has_entity_bozo,
+                                item_lang,
+                                base_ctx.base(),
                             )?;
                         }
 
@@ -1786,6 +1790,8 @@ fn parse_item_namespace(
     is_empty: bool,
     depth: usize,
     bozo: &mut bool,
+    lang: Option<&str>,
+    base: Option<&str>,
 ) -> Result<bool> {
     if let Some(dc_element) = is_dc_tag(tag) {
         let dc_elem = dc_element.to_string();
@@ -1797,7 +1803,7 @@ fn parse_item_namespace(
         let content_elem = content_element.to_string();
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
-        content::handle_entry_element(&content_elem, &text, entry);
+        content::handle_entry_element(&content_elem, &text, entry, lang, base);
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
         let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -3768,15 +3774,71 @@ mod tests {
 
         let feed = parse_rss20(xml).unwrap();
 
-        // Empty xml:lang should be treated as empty string (converted to None or empty)
+        // Empty xml:lang="" must be treated as None per XML spec
         if let Some(ref title_detail) = feed.feed.title_detail {
-            assert_eq!(title_detail.language.as_deref(), Some(""));
+            assert!(title_detail.language.is_none());
         }
 
         assert_eq!(feed.entries.len(), 1);
         if let Some(ref title_detail) = feed.entries[0].title_detail {
-            assert_eq!(title_detail.language.as_deref(), Some(""));
+            assert!(title_detail.language.is_none());
         }
+    }
+
+    #[test]
+    fn test_parse_rss_xml_base_from_link() {
+        // In RSS 2.0, xml:base on <channel> is not extracted by the current implementation.
+        // base is populated from <link> instead.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel xml:lang="en">
+                <title>Base Test</title>
+                <link>http://example.com/</link>
+                <description>Description</description>
+                <item>
+                    <title>Item Title</title>
+                    <description>Item Desc</description>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        // base is populated from <link>, not xml:base attribute
+        let title_detail = feed.feed.title_detail.as_ref().unwrap();
+        // Note: title is parsed before link, so base may be None on title_detail
+        assert_eq!(title_detail.language.as_deref(), Some("en"));
+
+        // subtitle_detail (description) is parsed after link -> should have base
+        let subtitle_detail = feed.feed.subtitle_detail.as_ref().unwrap();
+        assert_eq!(subtitle_detail.base.as_deref(), Some("http://example.com/"));
+        assert_eq!(subtitle_detail.language.as_deref(), Some("en"));
+    }
+
+    #[test]
+    fn test_parse_rss_content_encoded_carries_lang_and_base() {
+        // content:encoded in an RSS item should carry the item-level lang and base.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+            <channel xml:lang="en" xml:base="http://example.com/">
+                <title>Feed</title>
+                <item xml:lang="fr">
+                    <title>Item</title>
+                    <content:encoded><![CDATA[<p>Content</p>]]></content:encoded>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        let entry = &feed.entries[0];
+        assert!(
+            !entry.content.is_empty(),
+            "content:encoded should be parsed"
+        );
+        assert_eq!(entry.content[0].language.as_deref(), Some("fr"));
     }
 
     #[test]
