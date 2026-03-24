@@ -1397,7 +1397,7 @@ fn parse_item_media(
             let height = find_attribute(attrs, b"height").and_then(|v| v.parse().ok());
 
             if !url.is_empty() {
-                entry.media_thumbnails.try_push_limited(
+                entry.media_thumbnail.try_push_limited(
                     MediaThumbnail {
                         url: url.into(),
                         width,

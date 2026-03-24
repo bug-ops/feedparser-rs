@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="de">
+    <title>German Feed</title>
+    <subtitle>A feed in German</subtitle>
+    <rights>All rights reserved</rights>
+    <id>urn:uuid:xml-lang-test-feed</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <entry>
+        <title>Entry inheriting feed language</title>
+        <id>entry1</id>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <summary>This entry inherits de from the feed element</summary>
+        <content>Entry body</content>
+    </entry>
+    <entry xml:lang="fr">
+        <title>Entry overriding with French</title>
+        <id>entry2</id>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <summary>This entry has xml:lang=fr overriding the feed-level de</summary>
+    </entry>
+</feed>

@@ -547,7 +547,7 @@ pub struct Entry {
     pub dc_rights: Option<String>,
     /// Media RSS thumbnails
     #[napi(js_name = "mediaThumbnails")]
-    pub media_thumbnails: Vec<MediaThumbnail>,
+    pub media_thumbnail: Vec<MediaThumbnail>,
     /// Media RSS content
     #[napi(js_name = "mediaContent")]
     pub media_content: Vec<MediaContent>,
@@ -619,8 +619,8 @@ impl From<CoreEntry> for Entry {
             dc_date_parsed: core.dc_date.map(|dt| dt.timestamp_millis() as f64),
             dc_subject: core.dc_subject,
             dc_rights: core.dc_rights,
-            media_thumbnails: core
-                .media_thumbnails
+            media_thumbnail: core
+                .media_thumbnail
                 .into_iter()
                 .map(MediaThumbnail::from)
                 .collect(),
