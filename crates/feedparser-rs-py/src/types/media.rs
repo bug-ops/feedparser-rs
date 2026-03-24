@@ -78,6 +78,11 @@ impl PyMediaContent {
     }
 
     #[getter]
+    fn medium(&self) -> Option<&str> {
+        self.inner.medium.as_deref()
+    }
+
+    #[getter]
     fn filesize(&self) -> Option<u64> {
         self.inner.filesize
     }
@@ -108,6 +113,7 @@ impl PyMediaContent {
     fn __eq__(&self, other: &Self) -> bool {
         self.inner.url == other.inner.url
             && self.inner.content_type == other.inner.content_type
+            && self.inner.medium == other.inner.medium
             && self.inner.filesize == other.inner.filesize
             && self.inner.width == other.inner.width
             && self.inner.height == other.inner.height

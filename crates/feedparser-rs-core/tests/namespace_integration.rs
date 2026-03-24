@@ -251,3 +251,41 @@ fn test_mixed_namespaces() {
     assert!(entry.content.iter().any(|c| c.value.contains("Content")));
     assert_eq!(entry.media_thumbnails.len(), 1);
 }
+
+#[test]
+fn test_media_content_medium_attribute() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>Test Feed</title>
+            <item>
+                <title>Video Entry</title>
+                <media:content url="http://example.com/video.mp4" type="video/mp4" medium="video" />
+            </item>
+            <item>
+                <title>Audio Entry</title>
+                <media:content url="http://example.com/audio.mp3" type="audio/mpeg" medium="audio" />
+            </item>
+            <item>
+                <title>No Medium Entry</title>
+                <media:content url="http://example.com/file.bin" type="application/octet-stream" />
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+
+    assert_eq!(feed.entries.len(), 3);
+
+    let video = &feed.entries[0];
+    assert_eq!(video.media_content.len(), 1);
+    assert_eq!(video.media_content[0].medium.as_deref(), Some("video"));
+
+    let audio = &feed.entries[1];
+    assert_eq!(audio.media_content.len(), 1);
+    assert_eq!(audio.media_content[0].medium.as_deref(), Some("audio"));
+
+    let no_medium = &feed.entries[2];
+    assert_eq!(no_medium.media_content.len(), 1);
+    assert!(no_medium.media_content[0].medium.is_none());
+}

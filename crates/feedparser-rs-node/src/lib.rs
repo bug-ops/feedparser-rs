@@ -942,6 +942,8 @@ pub struct MediaContent {
     /// MIME type
     #[napi(js_name = "type")]
     pub content_type: Option<String>,
+    /// Medium type: "image", "video", "audio", "document", "executable"
+    pub medium: Option<String>,
     /// File size in bytes (converted from u64 with i64::MAX cap)
     pub filesize: Option<i64>,
     /// Width in pixels
@@ -957,6 +959,7 @@ impl From<CoreMediaContent> for MediaContent {
         Self {
             url: core.url.into_inner(),
             content_type: core.content_type.map(|t| t.to_string()),
+            medium: core.medium,
             filesize: core.filesize.map(|f| i64::try_from(f).unwrap_or(i64::MAX)),
             width: core.width,
             height: core.height,
