@@ -288,7 +288,7 @@ pub struct SyndicationMeta {
     pub update_period: Option<String>,
     /// Number of times updated per period
     #[napi(js_name = "updateFrequency")]
-    pub update_frequency: Option<u32>,
+    pub update_frequency: Option<String>,
     /// Base date for update schedule (ISO 8601)
     #[napi(js_name = "updateBase")]
     pub update_base: Option<String>,
@@ -298,7 +298,7 @@ impl From<CoreSyndicationMeta> for SyndicationMeta {
     fn from(core: CoreSyndicationMeta) -> Self {
         Self {
             update_period: core.update_period.map(|p| p.as_str().to_string()),
-            update_frequency: core.update_frequency,
+            update_frequency: core.update_frequency.clone(),
             update_base: core.update_base,
         }
     }

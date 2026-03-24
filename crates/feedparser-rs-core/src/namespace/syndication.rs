@@ -65,7 +65,7 @@ pub struct SyndicationMeta {
     /// Update period (hourly, daily, weekly, monthly, yearly)
     pub update_period: Option<UpdatePeriod>,
     /// Number of times updated per period
-    pub update_frequency: Option<u32>,
+    pub update_frequency: Option<String>,
     /// Base date for update schedule (ISO 8601)
     pub update_base: Option<String>,
 }
@@ -90,12 +90,12 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
             }
         }
         "updateFrequency" => {
-            if let Ok(freq) = text.parse::<u32>() {
+            if !text.is_empty() {
                 if feed.syndication.is_none() {
                     feed.syndication = Some(Box::new(SyndicationMeta::default()));
                 }
                 if let Some(syn) = &mut feed.syndication {
-                    syn.update_frequency = Some(freq);
+                    syn.update_frequency = Some(text.to_string());
                 }
             }
         }
@@ -162,7 +162,7 @@ mod tests {
 
         assert!(feed.syndication.is_some());
         let syn = feed.syndication.as_ref().unwrap();
-        assert_eq!(syn.update_frequency, Some(2));
+        assert_eq!(syn.update_frequency, Some("2".to_string()));
     }
 
     #[test]
@@ -186,7 +186,7 @@ mod tests {
 
         let syn = feed.syndication.as_ref().unwrap();
         assert_eq!(syn.update_period, Some(UpdatePeriod::Hourly));
-        assert_eq!(syn.update_frequency, Some(1));
+        assert_eq!(syn.update_frequency, Some("1".to_string()));
         assert_eq!(syn.update_base.as_deref(), Some("2024-01-01T00:00:00Z"));
     }
 
@@ -196,8 +196,9 @@ mod tests {
 
         handle_feed_element("updateFrequency", "not-a-number", &mut feed);
 
-        // Should not create syndication metadata for invalid input
-        assert!(feed.syndication.is_none());
+        // Raw string is stored as-is (matches Python feedparser behavior)
+        let syn = feed.syndication.as_ref().unwrap();
+        assert_eq!(syn.update_frequency, Some("not-a-number".to_string()));
     }
 
     #[test]

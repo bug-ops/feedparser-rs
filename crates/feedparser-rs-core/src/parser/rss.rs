@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, georss, media_rss, slash, threading},
+    namespace::{content, dublin_core, georss, media_rss, slash, syndication, threading},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person, PodcastChapters,
@@ -21,7 +21,7 @@ use quick_xml::{Reader, events::Event};
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_lang,
     init_feed, is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag,
-    is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
+    is_syn_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -871,6 +871,13 @@ fn parse_channel_namespace(
         // Atom Threading Extensions at channel level — recognize and skip
         if !is_empty {
             skip_element(reader, buf, limits, depth)?;
+        }
+        Ok(true)
+    } else if let Some(syn_element) = is_syn_tag(tag) {
+        if !is_empty {
+            let syn_elem = syn_element.to_string();
+            let text = read_text_str(reader, buf, limits)?;
+            syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
         }
         Ok(true)
     } else {
@@ -3905,5 +3912,55 @@ mod tests {
             15,
             "entry.updated must use dc:date, not pubDate"
         );
+    }
+
+    #[test]
+    fn test_parse_rss2_with_syndication_syn_prefix() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+          <channel>
+            <title>Test</title>
+            <link>http://example.com</link>
+            <syn:updatePeriod>hourly</syn:updatePeriod>
+            <syn:updateFrequency>2</syn:updateFrequency>
+            <syn:updateBase>2024-01-01T00:00:00Z</syn:updateBase>
+          </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.feed.syndication.is_some());
+
+        let syn = feed.feed.syndication.as_ref().unwrap();
+        assert_eq!(
+            syn.update_period,
+            Some(crate::namespace::syndication::UpdatePeriod::Hourly)
+        );
+        assert_eq!(syn.update_frequency, Some("2".to_string()));
+        assert_eq!(syn.update_base.as_deref(), Some("2024-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn test_parse_rss2_with_syndication_sy_prefix() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:sy="http://purl.org/rss/1.0/modules/syndication/">
+          <channel>
+            <title>Test</title>
+            <link>http://example.com</link>
+            <sy:updatePeriod>daily</sy:updatePeriod>
+            <sy:updateFrequency>1</sy:updateFrequency>
+            <sy:updateBase>2024-06-01T00:00:00Z</sy:updateBase>
+          </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.feed.syndication.is_some());
+
+        let syn = feed.feed.syndication.as_ref().unwrap();
+        assert_eq!(
+            syn.update_period,
+            Some(crate::namespace::syndication::UpdatePeriod::Daily)
+        );
+        assert_eq!(syn.update_frequency, Some("1".to_string()));
+        assert_eq!(syn.update_base.as_deref(), Some("2024-06-01T00:00:00Z"));
     }
 }

@@ -24,8 +24,8 @@ impl PySyndicationMeta {
 
     /// Number of times updated per period
     #[getter]
-    fn update_frequency(&self) -> Option<u32> {
-        self.inner.update_frequency
+    fn update_frequency(&self) -> Option<&str> {
+        self.inner.update_frequency.as_deref()
     }
 
     /// Base date for update schedule (ISO 8601)
@@ -38,7 +38,7 @@ impl PySyndicationMeta {
         format!(
             "SyndicationMeta(update_period={:?}, update_frequency={:?}, update_base={:?})",
             self.inner.update_period.as_ref().map(|p| p.as_str()),
-            self.inner.update_frequency,
+            self.inner.update_frequency.as_deref(),
             self.inner.update_base.as_deref()
         )
     }

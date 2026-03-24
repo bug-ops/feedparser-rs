@@ -510,7 +510,7 @@ fn test_rss10_with_syndication_module() {
     // Check update frequency (2 times per period)
     assert_eq!(
         syn.update_frequency,
-        Some(2),
+        Some("2".to_string()),
         "Update frequency should be 2"
     );
 
