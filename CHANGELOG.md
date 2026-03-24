@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Atom feeds with `type="xhtml"` content now preserve inner HTML markup; the outer `<div xmlns="...xhtml">` wrapper is stripped per RFC 4287 §3.1.1.3; applies to `content`, `summary`, `title`, `rights`, and `subtitle` fields; previously all tags were stripped leaving bare concatenated text (#169)
 - Python bindings: `entry['itunes_duration']`, `entry['itunes_episode']`, `entry['itunes_season']`, `entry['itunes_explicit']`, `entry['itunes_episodetype']`, `entry['itunes_author']`, `entry['itunes_title']`, `entry['itunes_image']` now work via `__getitem__`, matching Python feedparser flat key access; feed-level `feed['itunes_author']`, `feed['itunes_explicit']`, `feed['itunes_image']` also supported (#164)
 - Python bindings: `FeedMeta`, `Entry`, and `FeedParserDict` now expose `.get(key, default=None)`, `.keys()`, `.values()`, and `.items()` methods, matching the `FeedParserDict` dict-compatible API from Python feedparser; `.get()` never raises `KeyError` (#162)
 - Core: `entry.rights_detail.value` was always empty due to `std::mem::take` consuming the value before assigning it to `rights_detail`; fixed by cloning the value instead (#161)

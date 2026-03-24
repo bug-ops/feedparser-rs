@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>XHTML Content Test Feed</title>
+  <link href="http://example.com/" rel="alternate"/>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <id>http://example.com/xhtml-test</id>
+
+  <entry>
+    <title>Entry with XHTML content</title>
+    <id>http://example.com/xhtml-content</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        <p>Hello <b>world</b></p>
+      </div>
+    </content>
+  </entry>
+
+  <entry>
+    <title>Entry with XHTML summary</title>
+    <id>http://example.com/xhtml-summary</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <summary type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml">
+        <p>Summary with <em>markup</em></p>
+      </div>
+    </summary>
+    <content type="text">Plain text content</content>
+  </entry>
+
+  <entry>
+    <title>Entry with empty XHTML content</title>
+    <id>http://example.com/xhtml-empty</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml"></div>
+    </content>
+  </entry>
+
+  <entry>
+    <title>Entry with malformed XHTML (no div wrapper)</title>
+    <id>http://example.com/xhtml-malformed</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="xhtml"></content>
+  </entry>
+</feed>

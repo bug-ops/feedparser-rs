@@ -15,7 +15,8 @@ use quick_xml::{Reader, events::Event};
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
     extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag, is_media_tag,
-    is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element, skip_to_end,
+    is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, read_xhtml_content_str,
+    skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -603,7 +604,10 @@ fn parse_text_construct(
         }
     }
 
-    let value = read_text_str(reader, buf, limits)?;
+    let value = match content_type {
+        TextType::Xhtml => read_xhtml_content_str(reader, buf, limits)?,
+        _ => read_text_str(reader, buf, limits)?,
+    };
 
     Ok(TextConstruct {
         value,
@@ -691,18 +695,28 @@ fn parse_content(
     lang: Option<&str>,
 ) -> Result<Content> {
     let mut content_type = None;
+    let mut is_xhtml = false;
 
     for attr in e.attributes().flatten() {
         if attr.value.len() > limits.max_attribute_length {
             continue;
         }
         if attr.key.as_ref() == b"type" {
+            if attr.value.as_ref() == b"xhtml" {
+                is_xhtml = true;
+            }
             content_type = Some(bytes_to_string(&attr.value).into());
         }
     }
 
+    let value = if is_xhtml {
+        read_xhtml_content_str(reader, buf, limits)?
+    } else {
+        read_text_str(reader, buf, limits)?
+    };
+
     Ok(Content {
-        value: read_text_str(reader, buf, limits)?,
+        value,
         content_type,
         language: lang.map(Into::into),
         base: None,
@@ -1088,10 +1102,9 @@ mod tests {
         </feed>"#;
 
         let feed = parse_atom10(xml).unwrap();
-        assert_eq!(
-            feed.feed.title_detail.as_ref().unwrap().content_type,
-            TextType::Xhtml
-        );
+        let title_detail = feed.feed.title_detail.as_ref().unwrap();
+        assert_eq!(title_detail.content_type, TextType::Xhtml);
+        assert_eq!(title_detail.value, "XHTML Title");
     }
 
     #[test]
