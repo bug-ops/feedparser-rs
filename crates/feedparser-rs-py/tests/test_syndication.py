@@ -34,7 +34,7 @@ def test_syndication_update_frequency():
 
     d = feedparser_rs.parse(feed_xml)
     assert d.feed.syndication is not None
-    assert d.feed.syndication.update_frequency == 2
+    assert d.feed.syndication.update_frequency == "2"
 
 
 def test_syndication_update_base():
@@ -74,7 +74,7 @@ def test_syndication_complete():
     syn = d.feed.syndication
     assert syn is not None
     assert syn.update_period == "hourly"
-    assert syn.update_frequency == 1
+    assert syn.update_frequency == "1"
     assert syn.update_base == "2024-01-01T00:00:00Z"
 
 

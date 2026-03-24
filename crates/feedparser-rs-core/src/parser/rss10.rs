@@ -738,7 +738,7 @@ mod tests {
             syn.update_period,
             Some(crate::namespace::syndication::UpdatePeriod::Hourly)
         );
-        assert_eq!(syn.update_frequency, Some(2));
+        assert_eq!(syn.update_frequency, Some("2".to_string()));
         assert_eq!(syn.update_base.as_deref(), Some("2024-01-01T00:00:00Z"));
     }
 
@@ -766,7 +766,7 @@ mod tests {
             syn.update_period,
             Some(crate::namespace::syndication::UpdatePeriod::Daily)
         );
-        assert_eq!(syn.update_frequency, Some(1));
+        assert_eq!(syn.update_frequency, Some("1".to_string()));
         assert_eq!(syn.update_base.as_deref(), Some("2024-06-01T00:00:00Z"));
     }
 

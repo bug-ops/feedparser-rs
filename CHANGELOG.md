@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Core: syndication module (`syn:`/`sy:` namespace) is now parsed in RSS 2.0 feeds; previously only RSS 1.0 feeds were supported — RSS 2.0 feeds with `<syn:updatePeriod>` etc. returned `feed.syndication = None` (#237)
+- Core: `syn:updateFrequency` / `sy:updateFrequency` now returns the raw string value (e.g. `"2"`) instead of an integer, matching Python feedparser behavior (#268, #220)
+
 - Core, Python, Node.js bindings: Atom `<source><link href="..."/>` now populates `entry.source.link` (new field); `entry.source.href` remains for RSS `<source url="...">` only (#262)
 - Core, Python, Node.js bindings: Atom `<source><author>` is now exposed as `entry.source.author` flat string in `"Name (email)"` format (#262)
 - Core, Python, Node.js bindings: Atom `<content src="...">` (out-of-line content per RFC 4287 §4.1.3.2) is now parsed — `content.src` is set to the URL, `content.value` is empty string, `content.type` is set from the `type` attribute (#252)
