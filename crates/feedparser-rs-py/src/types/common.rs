@@ -476,10 +476,10 @@ impl PySource {
         self.inner.href.as_deref()
     }
 
-    /// Primary source URL for Atom `<source><link href="..."/>`.
+    /// Primary source URL: Atom `<source><link href="..."/>` or RSS `<source url="...">` fallback.
     #[getter]
     fn link(&self) -> Option<&str> {
-        self.inner.link.as_deref()
+        self.inner.link.as_deref().or(self.inner.href.as_deref())
     }
 
     /// Source author flat string (Atom `<source><author>`)
@@ -552,6 +552,7 @@ impl PySource {
                 .inner
                 .link
                 .as_deref()
+                .or(self.inner.href.as_deref())
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
