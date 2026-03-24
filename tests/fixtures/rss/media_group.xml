@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Media Group Test</title>
+    <link>http://example.com/</link>
+    <item>
+      <title>Item with media:group</title>
+      <link>http://example.com/1</link>
+      <media:group>
+        <media:content url="http://example.com/video-hd.mp4" medium="video" type="video/mp4"/>
+        <media:content url="http://example.com/video-sd.mp4" medium="video" type="video/mp4"/>
+        <media:thumbnail url="http://example.com/thumb.jpg" width="320" height="180"/>
+      </media:group>
+    </item>
+    <item>
+      <title>Item with direct media:content</title>
+      <link>http://example.com/2</link>
+      <media:content url="http://example.com/audio.mp3" medium="audio" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>Item with mixed media</title>
+      <link>http://example.com/3</link>
+      <media:content url="http://example.com/direct.mp4" medium="video" type="video/mp4"/>
+      <media:group>
+        <media:content url="http://example.com/grouped.mp4" medium="video" type="video/mp4"/>
+      </media:group>
+    </item>
+  </channel>
+</rss>

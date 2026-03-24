@@ -1500,10 +1500,76 @@ fn parse_item_media(
                 skip_element(reader, buf, limits, depth)?;
             }
         }
+        "group" => {
+            // media:group is a transparent container; parse its children as if they
+            // were direct siblings of the enclosing item.
+            if !is_empty {
+                parse_media_group(reader, buf, entry, limits, depth)?;
+            }
+        }
         _ => {
             let media_elem = media_element.to_string();
             let text = read_text_str(reader, buf, limits)?;
             media_rss::handle_entry_element(&media_elem, &text, entry);
+        }
+    }
+    Ok(())
+}
+
+/// Parse children of `<media:group>`, treating the group as a transparent container.
+///
+/// Per the Media RSS spec, `<media:group>` groups related media objects but has no
+/// semantic meaning of its own; its children are promoted to the parent item level.
+fn parse_media_group(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+) -> Result<()> {
+    let mut inner_depth = depth;
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                inner_depth += 1;
+                check_depth(inner_depth, limits.max_nesting_depth)?;
+                let tag = e.name().as_ref().to_vec();
+                let (attrs, _) = collect_attributes(&e);
+                if let Some(media_element) = is_media_tag(&tag) {
+                    parse_item_media(
+                        reader,
+                        buf,
+                        media_element,
+                        &attrs,
+                        entry,
+                        limits,
+                        false,
+                        inner_depth,
+                    )?;
+                } else {
+                    skip_element(reader, buf, limits, inner_depth)?;
+                }
+                inner_depth = inner_depth.saturating_sub(1);
+            }
+            Ok(Event::Empty(e)) => {
+                let tag = e.name().as_ref().to_vec();
+                let (attrs, _) = collect_attributes(&e);
+                if let Some(media_element) = is_media_tag(&tag) {
+                    parse_item_media(
+                        reader,
+                        buf,
+                        media_element,
+                        &attrs,
+                        entry,
+                        limits,
+                        true,
+                        inner_depth,
+                    )?;
+                }
+            }
+            Ok(Event::End(_) | Event::Eof) | Err(_) => break,
+            _ => {}
         }
     }
     Ok(())

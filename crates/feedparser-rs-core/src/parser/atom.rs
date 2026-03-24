@@ -521,6 +521,11 @@ fn parse_entry(
                                 if !is_empty {
                                     skip_element(reader, buf, limits, *depth)?;
                                 }
+                            } else if media_element == "group" && !is_empty {
+                                // media:group is a transparent container; promote children to entry
+                                parse_atom_media_group(
+                                    reader, buf, &mut entry, limits, depth, bozo,
+                                )?;
                             } else {
                                 let media_elem = media_element.to_string();
                                 if !is_empty {
@@ -744,6 +749,77 @@ fn parse_content(
         language: lang.map(Into::into),
         base: None,
     })
+}
+
+/// Parse children of `<media:group>` in an Atom entry.
+///
+/// `<media:group>` is a transparent container per the Media RSS spec; its children
+/// are treated as if they appeared directly under the entry element.
+fn parse_atom_media_group(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    bozo: &mut bool,
+) -> Result<()> {
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf) {
+            Ok(Event::Empty(e)) => {
+                let tag = e.name().as_ref().to_vec();
+                handle_atom_media_group_child(&tag, &e, entry, limits);
+            }
+            Ok(Event::Start(e)) => {
+                let tag = e.name().as_ref().to_vec();
+                handle_atom_media_group_child(&tag, &e, entry, limits);
+                *depth += 1;
+                skip_element(reader, buf, limits, *depth)?;
+                *depth = depth.saturating_sub(1);
+            }
+            Ok(Event::End(_) | Event::Eof) => break,
+            Err(_) => {
+                *bozo = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn handle_atom_media_group_child(
+    tag: &[u8],
+    element: &quick_xml::events::BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+) {
+    let Some(child_elem) = is_media_tag(tag) else {
+        return;
+    };
+    match child_elem {
+        "content" => {
+            if let Some(media) = MediaContent::from_attributes(
+                element.attributes().flatten(),
+                limits.max_attribute_length,
+            ) {
+                entry
+                    .media_content
+                    .try_push_limited(media, limits.max_enclosures);
+            }
+        }
+        "thumbnail" => {
+            if let Some(thumbnail) = MediaThumbnail::from_attributes(
+                element.attributes().flatten(),
+                limits.max_attribute_length,
+            ) {
+                entry
+                    .media_thumbnail
+                    .try_push_limited(thumbnail, limits.max_enclosures);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Parse <source> element (renamed to avoid confusion with RSS source)
