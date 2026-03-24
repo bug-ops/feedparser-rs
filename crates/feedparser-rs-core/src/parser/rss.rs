@@ -185,7 +185,8 @@ fn parse_channel(
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
-                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"copyright"
+                    | b"lastBuildDate" | b"managingEditor" | b"webMaster" | b"generator"
+                    | b"ttl" | b"copyright"
                         if !is_empty =>
                     {
                         parse_channel_standard(
@@ -439,6 +440,20 @@ fn parse_channel_standard(
                 None if !text.is_empty() => {
                     feed.bozo = true;
                     feed.bozo_exception = Some("Invalid pubDate format".to_string());
+                }
+                None => {}
+            }
+        }
+        b"lastBuildDate" => {
+            let text = read_text_str(reader, buf, limits)?;
+            match parse_date(&text) {
+                Some(dt) => {
+                    feed.feed.updated = Some(dt);
+                    feed.feed.updated_str = Some(text);
+                }
+                None if !text.is_empty() => {
+                    feed.bozo = true;
+                    feed.bozo_exception = Some("Invalid lastBuildDate format".to_string());
                 }
                 None => {}
             }
@@ -1732,6 +1747,51 @@ mod tests {
         assert!(feed.bozo);
         assert!(feed.bozo_exception.is_some());
         assert!(feed.bozo_exception.unwrap().contains("Invalid pubDate"));
+    }
+
+    #[test]
+    fn test_parse_rss_last_build_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <lastBuildDate>Sat, 14 Dec 2024 10:30:00 +0000</lastBuildDate>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "valid feed must not be bozo");
+        assert!(
+            feed.feed.updated.is_some(),
+            "feed.updated must be populated from lastBuildDate"
+        );
+        assert_eq!(
+            feed.feed.updated_str.as_deref(),
+            Some("Sat, 14 Dec 2024 10:30:00 +0000")
+        );
+        let dt = feed.feed.updated.unwrap();
+        assert_eq!(dt.year(), 2024);
+        assert_eq!(dt.month(), 12);
+        assert_eq!(dt.day(), 14);
+    }
+
+    #[test]
+    fn test_parse_rss_invalid_last_build_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <lastBuildDate>not a date</lastBuildDate>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(
+            feed.bozo_exception
+                .as_deref()
+                .unwrap_or("")
+                .contains("Invalid lastBuildDate")
+        );
     }
 
     #[test]
