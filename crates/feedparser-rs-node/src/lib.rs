@@ -361,8 +361,10 @@ pub struct FeedMeta {
     pub tags: Vec<Tag>,
     /// Unique feed identifier
     pub id: Option<String>,
-    /// Time-to-live (update frequency hint) in minutes
-    pub ttl: Option<u32>,
+    /// Time-to-live (update frequency hint) in minutes (kept as string for API compatibility)
+    pub ttl: Option<String>,
+    /// URL of documentation for the RSS format used
+    pub docs: Option<String>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
     /// Syndication module metadata (RSS 1.0)
@@ -416,6 +418,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             tags: core.tags.into_iter().map(Tag::from).collect(),
             id: core.id.map(|s| s.to_string()),
             ttl: core.ttl,
+            docs: core.docs,
             license: core.license,
             syndication: core.syndication.map(|b| SyndicationMeta::from(*b)),
             dc_creator: core.dc_creator.map(|s| s.to_string()),

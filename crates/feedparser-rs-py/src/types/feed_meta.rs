@@ -191,8 +191,13 @@ impl PyFeedMeta {
     }
 
     #[getter]
-    fn ttl(&self) -> Option<u32> {
-        self.inner.ttl
+    fn ttl(&self) -> Option<&str> {
+        self.inner.ttl.as_deref()
+    }
+
+    #[getter]
+    fn docs(&self) -> Option<&str> {
+        self.inner.docs.as_deref()
     }
 
     #[getter]
@@ -295,6 +300,7 @@ impl PyFeedMeta {
             "tags",
             "id",
             "ttl",
+            "docs",
             "itunes",
             "podcast",
             "license",
@@ -619,7 +625,20 @@ impl PyFeedMeta {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
-            "ttl" => Ok(self.inner.ttl.into_pyobject(py)?.into_any().unbind()),
+            "ttl" => Ok(self
+                .inner
+                .ttl
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "docs" => Ok(self
+                .inner
+                .docs
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "itunes" => {
                 if let Some(ref i) = self.inner.itunes {
                     Ok(Py::new(py, PyItunesFeedMeta::from_core(i.as_ref().clone()))?.into_any())
