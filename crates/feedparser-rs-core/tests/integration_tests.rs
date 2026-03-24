@@ -511,7 +511,7 @@ fn test_atom_enclosure_missing_type() {
         entry.enclosures[0].url.as_str(),
         "http://example.com/ep2.mp3"
     );
-    assert!(entry.enclosures[0].enclosure_type.is_none());
+    assert_eq!(entry.enclosures[0].enclosure_type.as_deref(), Some("text/html"));
     assert_eq!(entry.enclosures[0].length, Some(9_876_543));
 }
 
