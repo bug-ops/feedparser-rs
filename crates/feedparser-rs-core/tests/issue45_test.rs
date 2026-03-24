@@ -146,7 +146,7 @@ fn test_multiple_empty_elements_in_item() {
     let feed = feedparser_rs::parse(xml.as_bytes()).unwrap();
     assert_eq!(feed.entries.len(), 1);
     assert!(feed.entries[0].summary.is_some());
-    assert_eq!(feed.entries[0].media_thumbnails.len(), 1);
+    assert_eq!(feed.entries[0].media_thumbnail.len(), 1);
     assert_eq!(feed.entries[0].media_content.len(), 1);
 }
 

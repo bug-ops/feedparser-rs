@@ -83,9 +83,9 @@ fn test_media_invalid_numeric_attributes() {
     let entry = &feed.entries[0];
 
     // Should still parse URL, but invalid attributes should be None
-    assert_eq!(entry.media_thumbnails.len(), 1);
-    assert!(entry.media_thumbnails[0].width.is_none());
-    assert!(entry.media_thumbnails[0].height.is_none());
+    assert_eq!(entry.media_thumbnail.len(), 1);
+    assert!(entry.media_thumbnail[0].width.is_none());
+    assert!(entry.media_thumbnail[0].height.is_none());
 
     assert_eq!(entry.media_content.len(), 1);
     assert!(entry.media_content[0].filesize.is_none());
@@ -110,7 +110,7 @@ fn test_media_missing_url() {
     let entry = &feed.entries[0];
 
     // Without URL, should not create thumbnail/content
-    assert!(entry.media_thumbnails.is_empty());
+    assert!(entry.media_thumbnail.is_empty());
     assert!(entry.media_content.is_empty());
 }
 
@@ -148,7 +148,7 @@ fn test_dc_fallback_behavior() {
 
 /// Tests parsing multiple Media RSS thumbnails in a single entry
 #[test]
-fn test_multiple_media_thumbnails() {
+fn test_multiple_media_thumbnail() {
     let xml = br#"<?xml version="1.0"?>
     <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
         <channel>
@@ -165,10 +165,10 @@ fn test_multiple_media_thumbnails() {
     let feed = parse(xml).unwrap();
     let entry = &feed.entries[0];
 
-    assert_eq!(entry.media_thumbnails.len(), 3);
-    assert_eq!(entry.media_thumbnails[0].width, Some(100));
-    assert_eq!(entry.media_thumbnails[1].width, Some(200));
-    assert_eq!(entry.media_thumbnails[2].width, Some(300));
+    assert_eq!(entry.media_thumbnail.len(), 3);
+    assert_eq!(entry.media_thumbnail[0].width, Some(100));
+    assert_eq!(entry.media_thumbnail[1].width, Some(200));
+    assert_eq!(entry.media_thumbnail[2].width, Some(300));
 }
 
 /// Tests parsing of Unicode/non-ASCII characters in Dublin Core elements
@@ -218,7 +218,7 @@ fn test_self_closing_media_elements() {
     let entry = &feed.entries[0];
 
     // Both self-closing and normal closing should parse correctly
-    assert_eq!(entry.media_thumbnails.len(), 2);
+    assert_eq!(entry.media_thumbnail.len(), 2);
 }
 
 /// Tests that RSS feeds without namespace declarations still parse correctly

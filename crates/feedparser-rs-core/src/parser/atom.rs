@@ -461,7 +461,7 @@ fn parse_entry(
                                     limits.max_attribute_length,
                                 ) {
                                     entry
-                                        .media_thumbnails
+                                        .media_thumbnail
                                         .try_push_limited(thumbnail, limits.max_enclosures);
                                 }
                                 if !is_empty {
