@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Channel Media Test</title>
+    <link>http://example.com/</link>
+    <media:keywords>news, technology, rust</media:keywords>
+    <media:rating>nonadult</media:rating>
+    <media:thumbnail url="http://example.com/channel-thumb.jpg" width="640" height="480" time="00:01:00.000"/>
+    <media:content url="http://example.com/channel-video.mp4" type="video/mp4" medium="video"/>
+    <item>
+      <title>Test Entry</title>
+      <link>http://example.com/1</link>
+      <media:rating>adult</media:rating>
+      <media:thumbnail url="http://example.com/entry-thumb.jpg" width="320" height="180" time="12:05:01.123"/>
+    </item>
+  </channel>
+</rss>

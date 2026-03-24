@@ -912,6 +912,74 @@ fn parse_channel_namespace(
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag) {
         match media_element {
+            "thumbnail" => {
+                let url = find_attribute(attrs, b"url")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                    .unwrap_or_default();
+                let width = find_attribute(attrs, b"width").map(str::to_owned);
+                let height = find_attribute(attrs, b"height").map(str::to_owned);
+                let time = find_attribute(attrs, b"time").map(str::to_owned);
+                if !url.is_empty() {
+                    feed.feed.media_thumbnail.try_push_limited(
+                        MediaThumbnail {
+                            url: url.into(),
+                            width,
+                            height,
+                            time,
+                        },
+                        limits.max_enclosures,
+                    );
+                }
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
+            "content" => {
+                let url = find_attribute(attrs, b"url")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                    .unwrap_or_default();
+                let content_type = find_attribute(attrs, b"type")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                let medium = find_attribute(attrs, b"medium")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                let filesize = find_attribute(attrs, b"fileSize").and_then(|v| v.parse().ok());
+                let duration = find_attribute(attrs, b"duration").map(str::to_owned);
+                let width = find_attribute(attrs, b"width").map(str::to_owned);
+                let height = find_attribute(attrs, b"height").map(str::to_owned);
+                let bitrate = find_attribute(attrs, b"bitrate").map(str::to_owned);
+                let lang = find_attribute(attrs, b"lang").map(str::to_owned);
+                let channels = find_attribute(attrs, b"channels").map(str::to_owned);
+                let codec = find_attribute(attrs, b"codec").map(str::to_owned);
+                let expression = find_attribute(attrs, b"expression").map(str::to_owned);
+                let isdefault = find_attribute(attrs, b"isDefault").map(str::to_owned);
+                let samplingrate = find_attribute(attrs, b"samplingrate").map(str::to_owned);
+                let framerate = find_attribute(attrs, b"framerate").map(str::to_owned);
+                if !url.is_empty() {
+                    feed.feed.media_content.try_push_limited(
+                        MediaContent {
+                            url: url.into(),
+                            content_type: content_type.map(Into::into),
+                            medium,
+                            filesize,
+                            width,
+                            height,
+                            duration,
+                            bitrate,
+                            lang,
+                            channels,
+                            codec,
+                            expression,
+                            isdefault,
+                            samplingrate,
+                            framerate,
+                        },
+                        limits.max_enclosures,
+                    );
+                }
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
             "rating" | "keywords" => {
                 if !is_empty {
                     let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
@@ -1664,6 +1732,7 @@ fn parse_item_media(
                 .unwrap_or_default();
             let width = find_attribute(attrs, b"width").map(str::to_owned);
             let height = find_attribute(attrs, b"height").map(str::to_owned);
+            let time = find_attribute(attrs, b"time").map(str::to_owned);
 
             if !url.is_empty() {
                 entry.media_thumbnail.try_push_limited(
@@ -1671,6 +1740,7 @@ fn parse_item_media(
                         url: url.into(),
                         width,
                         height,
+                        time,
                     },
                     limits.max_enclosures,
                 );
@@ -1875,12 +1945,14 @@ fn parse_media_content_children(
                         .unwrap_or_default();
                     let width = find_attribute(&attrs, b"width").map(str::to_owned);
                     let height = find_attribute(&attrs, b"height").map(str::to_owned);
+                    let time = find_attribute(&attrs, b"time").map(str::to_owned);
                     if !url.is_empty() {
                         entry.media_thumbnail.try_push_limited(
                             MediaThumbnail {
                                 url: url.into(),
                                 width,
                                 height,
+                                time,
                             },
                             limits.max_enclosures,
                         );
@@ -1898,12 +1970,14 @@ fn parse_media_content_children(
                         .unwrap_or_default();
                     let width = find_attribute(&attrs, b"width").map(str::to_owned);
                     let height = find_attribute(&attrs, b"height").map(str::to_owned);
+                    let time = find_attribute(&attrs, b"time").map(str::to_owned);
                     if !url.is_empty() {
                         entry.media_thumbnail.try_push_limited(
                             MediaThumbnail {
                                 url: url.into(),
                                 width,
                                 height,
+                                time,
                             },
                             limits.max_enclosures,
                         );

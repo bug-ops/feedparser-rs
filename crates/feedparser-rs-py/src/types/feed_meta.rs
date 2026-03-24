@@ -7,7 +7,7 @@ use pyo3::types::PyDict;
 use super::common::{PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct};
 use super::compat::FEED_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
-use super::media::media_rating_to_py_dict;
+use super::media::{PyMediaContent, PyMediaThumbnail, media_rating_to_py_dict};
 use super::podcast::{PyItunesFeedMeta, PyPodcastMeta};
 use super::syndication::PySyndicationMeta;
 
@@ -315,6 +315,24 @@ impl PyFeedMeta {
     }
 
     #[getter]
+    fn media_thumbnail(&self) -> Vec<PyMediaThumbnail> {
+        self.inner
+            .media_thumbnail
+            .iter()
+            .map(|t| PyMediaThumbnail::from_core(t.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn media_content(&self) -> Vec<PyMediaContent> {
+        self.inner
+            .media_content
+            .iter()
+            .map(|c| PyMediaContent::from_core(c.clone()))
+            .collect()
+    }
+
+    #[getter]
     fn media_rating(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         if let Some(ref r) = self.inner.media_rating {
             media_rating_to_py_dict(py, r)
@@ -383,6 +401,8 @@ impl PyFeedMeta {
             "dc_rights",
             "where",
             "next_url",
+            "media_thumbnail",
+            "media_content",
             "media_rating",
             "media_keywords",
         ];
@@ -887,6 +907,24 @@ impl PyFeedMeta {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
+            "media_thumbnail" => {
+                let thumbnails: Vec<_> = self
+                    .inner
+                    .media_thumbnail
+                    .iter()
+                    .map(|t| PyMediaThumbnail::from_core(t.clone()))
+                    .collect();
+                Ok(thumbnails.into_pyobject(py)?.into_any().unbind())
+            }
+            "media_content" => {
+                let content: Vec<_> = self
+                    .inner
+                    .media_content
+                    .iter()
+                    .map(|c| PyMediaContent::from_core(c.clone()))
+                    .collect();
+                Ok(content.into_pyobject(py)?.into_any().unbind())
+            }
             "media_rating" => {
                 if let Some(ref r) = self.inner.media_rating {
                     media_rating_to_py_dict(py, r)

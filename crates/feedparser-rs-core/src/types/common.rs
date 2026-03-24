@@ -773,6 +773,10 @@ pub struct MediaThumbnail {
     pub width: Option<String>,
     /// Thumbnail height in pixels (raw string value, as in Python feedparser)
     pub height: Option<String>,
+    /// Time offset in NTP format (time attribute)
+    ///
+    /// Indicates which frame of the media this thumbnail represents.
+    pub time: Option<String>,
 }
 
 /// Media RSS content
@@ -954,6 +958,8 @@ impl FromAttributes for MediaThumbnail {
         let mut width = None;
         let mut height = None;
 
+        let mut time = None;
+
         for attr in attrs {
             if attr.value.len() > max_attr_length {
                 continue;
@@ -963,6 +969,7 @@ impl FromAttributes for MediaThumbnail {
                 b"url" => url = Some(bytes_to_string(&attr.value)),
                 b"width" => width = Some(bytes_to_string(&attr.value)),
                 b"height" => height = Some(bytes_to_string(&attr.value)),
+                b"time" => time = Some(bytes_to_string(&attr.value)),
                 _ => {}
             }
         }
@@ -971,6 +978,7 @@ impl FromAttributes for MediaThumbnail {
             url: Url::new(url),
             width,
             height,
+            time,
         })
     }
 }
