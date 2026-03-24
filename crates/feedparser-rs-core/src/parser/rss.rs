@@ -185,7 +185,7 @@ fn parse_channel(
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
-                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl"
+                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"copyright"
                         if !is_empty =>
                     {
                         parse_channel_standard(
@@ -447,6 +447,12 @@ fn parse_channel_standard(
         b"webMaster" => {
             let text = read_text_str(reader, buf, limits)?;
             feed.feed.set_publisher(parse_rss_person(&text));
+        }
+        b"copyright" => {
+            let text = read_text_str(reader, buf, limits)?;
+            if !text.is_empty() {
+                feed.feed.rights = Some(text);
+            }
         }
         b"generator" => {
             feed.feed.generator = Some(read_text_str(reader, buf, limits)?);
@@ -1902,6 +1908,22 @@ mod tests {
 
         let feed = parse_rss20(xml).unwrap();
         assert_eq!(feed.feed.language.as_deref(), Some("en-US"));
+    }
+
+    #[test]
+    fn test_parse_rss_copyright_maps_to_rights() {
+        let xml = br#"<?xml version="1.0"?><rss version="2.0"><channel>
+            <title>T</title><link>http://x.com</link>
+            <copyright>Copyright 2026 ACME Corp</copyright>
+            <item><title>I</title></item>
+        </channel></rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.rights.as_deref(),
+            Some("Copyright 2026 ACME Corp")
+        );
+        assert!(!feed.bozo);
     }
 
     #[test]
