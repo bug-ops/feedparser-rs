@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING**: `PodcastEntryMeta.person` renamed to `PodcastEntryMeta.persons` for consistency with feed-level `PodcastMeta.persons` (#320)
 - **BREAKING**: `ItunesFeedMeta.complete` changed from `Option<bool>` to `Option<String>` to return the raw XML text value (e.g. `"Yes"`, `"No"`) instead of a parsed boolean (#281)
 - `itunes:subtitle` now always overrides `<description>` for `feed.subtitle` regardless of XML element order; previously it only set subtitle when absent (#257)
 - `itunes:summary` populates new `feed.summary` field instead of aliasing to `feed.subtitle` (#257)
@@ -17,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Core, Python, Node.js bindings: `PodcastEntryMeta.medium` field exposes `podcast:medium` at entry/item level (#320)
+- Core, Python, Node.js bindings: `PodcastMeta.locked` and `PodcastMeta.locked_owner` fields parse `podcast:locked` feed-level element (Podcast 2.0 spec) (#213)
 - Core, Python, Node.js bindings: `PodcastMeta.medium` field exposes `podcast:medium` feed-level element (Podcast 2.0 spec: content type string such as `podcast`, `music`, `video`, etc.) (#255)
 - Core: `podcast:person` elements at feed/channel level are now collected into `feed.podcast.persons`; previously only entry-level persons were parsed (#292)
 - Core, Python, Node.js bindings: `FeedMeta.summary` and `FeedMeta.summary_detail` fields populated from `itunes:summary` (#257)

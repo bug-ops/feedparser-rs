@@ -256,9 +256,9 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) {
             }
 
             // Guest information
-            if !podcast.person.is_empty() {
+            if !podcast.persons.is_empty() {
                 println!("    People:");
-                for person in &podcast.person {
+                for person in &podcast.persons {
                     print!("      - {}", person.name);
                     if let Some(role) = &person.role {
                         print!(" ({role})");

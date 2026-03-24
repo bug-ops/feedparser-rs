@@ -175,6 +175,10 @@ pub struct PodcastMeta {
     pub value: Option<PodcastValue>,
     /// Content medium type (podcast:medium)
     pub medium: Option<String>,
+    /// Ownership transfer lock (podcast:locked text content: "yes" or "no")
+    pub locked: Option<String>,
+    /// Email of the lock owner (podcast:locked owner attribute)
+    pub locked_owner: Option<String>,
 }
 
 /// Podcast 2.0 value element for monetization
@@ -467,7 +471,9 @@ pub struct PodcastEntryMeta {
     /// Shareable soundbites (podcast:soundbite)
     pub soundbite: Vec<PodcastSoundbite>,
     /// People associated with this episode (podcast:person)
-    pub person: Vec<PodcastPerson>,
+    pub persons: Vec<PodcastPerson>,
+    /// Content medium type (podcast:medium)
+    pub medium: Option<String>,
 }
 
 /// Parse iTunes explicit flag from various string representations
@@ -706,7 +712,8 @@ mod tests {
         assert!(meta.transcript.is_empty());
         assert!(meta.chapters.is_none());
         assert!(meta.soundbite.is_empty());
-        assert!(meta.person.is_empty());
+        assert!(meta.persons.is_empty());
+        assert!(meta.medium.is_none());
     }
 
     #[test]

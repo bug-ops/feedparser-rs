@@ -450,6 +450,16 @@ impl PyPodcastMeta {
         self.inner.medium.as_deref()
     }
 
+    #[getter]
+    fn locked(&self) -> Option<&str> {
+        self.inner.locked.as_deref()
+    }
+
+    #[getter]
+    fn locked_owner(&self) -> Option<&str> {
+        self.inner.locked_owner.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastMeta(guid='{}', persons={}, medium='{}')",
@@ -741,12 +751,17 @@ impl PyPodcastEntryMeta {
     }
 
     #[getter]
-    fn person(&self) -> Vec<PyPodcastPerson> {
+    fn persons(&self) -> Vec<PyPodcastPerson> {
         self.inner
-            .person
+            .persons
             .iter()
             .map(|p| PyPodcastPerson::from_core(p.clone()))
             .collect()
+    }
+
+    #[getter]
+    fn medium(&self) -> Option<&str> {
+        self.inner.medium.as_deref()
     }
 
     fn __repr__(&self) -> String {
@@ -759,7 +774,7 @@ impl PyPodcastEntryMeta {
                 "none"
             },
             self.inner.soundbite.len(),
-            self.inner.person.len()
+            self.inner.persons.len()
         )
     }
 }
