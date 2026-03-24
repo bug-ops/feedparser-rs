@@ -470,6 +470,10 @@ pub struct Entry {
     pub subtitle: Option<String>,
     /// Detailed subtitle with metadata
     pub subtitle_detail: Option<TextConstruct>,
+    /// Rights/copyright statement
+    pub rights: Option<String>,
+    /// Detailed rights with metadata
+    pub rights_detail: Option<TextConstruct>,
     /// Short description/summary
     pub summary: Option<String>,
     /// Detailed summary with metadata
@@ -562,6 +566,8 @@ impl From<CoreEntry> for Entry {
             links: core.links.into_iter().map(Link::from).collect(),
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
+            rights: core.rights,
+            rights_detail: core.rights_detail.map(TextConstruct::from),
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),
@@ -636,9 +642,9 @@ impl From<CoreTextConstruct> for TextConstruct {
         Self {
             value: core.value,
             content_type: match core.content_type {
-                TextType::Text => "text".to_string(),
-                TextType::Html => "html".to_string(),
-                TextType::Xhtml => "xhtml".to_string(),
+                TextType::Text => "text/plain".to_string(),
+                TextType::Html => "text/html".to_string(),
+                TextType::Xhtml => "application/xhtml+xml".to_string(),
             },
             language: core.language.map(|s| s.to_string()),
             base: core.base,
@@ -805,10 +811,10 @@ impl From<CoreContent> for Content {
 /// Generator metadata
 #[napi(object)]
 pub struct Generator {
-    /// Generator name
-    pub value: String,
-    /// Generator URI
-    pub uri: Option<String>,
+    /// Generator name (text content of the `<generator>` element)
+    pub name: String,
+    /// Generator URI (`href` attribute, matching Python feedparser API)
+    pub href: Option<String>,
     /// Generator version
     pub version: Option<String>,
 }
@@ -816,8 +822,8 @@ pub struct Generator {
 impl From<CoreGenerator> for Generator {
     fn from(core: CoreGenerator) -> Self {
         Self {
-            value: core.value,
-            uri: core.uri,
+            name: core.name,
+            href: core.href,
             version: core.version.map(|s| s.to_string()),
         }
     }

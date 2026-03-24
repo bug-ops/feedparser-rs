@@ -151,6 +151,9 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
             entry.contributors.push(Person::from_name(text));
         }
         "rights" => {
+            if entry.rights.is_none() {
+                entry.rights = Some(text.to_string());
+            }
             entry.dc_rights = Some(text.to_string());
         }
         _ => {
@@ -245,5 +248,27 @@ mod tests {
         handle_entry_element("date", "2024-01-15T10:30:00Z", &mut entry);
 
         assert!(entry.published.is_some());
+    }
+
+    #[test]
+    fn test_entry_dc_rights_sets_both_fields() {
+        let mut entry = Entry::default();
+        handle_entry_element("rights", "Copyright 2024 Example", &mut entry);
+
+        assert_eq!(entry.rights.as_deref(), Some("Copyright 2024 Example"));
+        assert_eq!(entry.dc_rights.as_deref(), Some("Copyright 2024 Example"));
+    }
+
+    #[test]
+    fn test_entry_dc_rights_does_not_overwrite_rights() {
+        let mut entry = Entry {
+            rights: Some("Atom rights".to_string()),
+            ..Default::default()
+        };
+        handle_entry_element("rights", "DC rights", &mut entry);
+
+        // dc:rights should not overwrite rights already set (e.g. by Atom <rights>)
+        assert_eq!(entry.rights.as_deref(), Some("Atom rights"));
+        assert_eq!(entry.dc_rights.as_deref(), Some("DC rights"));
     }
 }

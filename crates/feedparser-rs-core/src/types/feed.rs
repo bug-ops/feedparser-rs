@@ -280,8 +280,8 @@ impl FeedMeta {
     /// assert_eq!(meta.title.as_deref(), Some("Example Feed"));
     /// ```
     #[inline]
-    pub fn set_title(&mut self, mut text: TextConstruct) {
-        self.title = Some(std::mem::take(&mut text.value));
+    pub fn set_title(&mut self, text: TextConstruct) {
+        self.title = Some(text.value.clone());
         self.title_detail = Some(text);
     }
 
@@ -297,8 +297,8 @@ impl FeedMeta {
     /// assert_eq!(meta.subtitle.as_deref(), Some("A great feed"));
     /// ```
     #[inline]
-    pub fn set_subtitle(&mut self, mut text: TextConstruct) {
-        self.subtitle = Some(std::mem::take(&mut text.value));
+    pub fn set_subtitle(&mut self, text: TextConstruct) {
+        self.subtitle = Some(text.value.clone());
         self.subtitle_detail = Some(text);
     }
 
@@ -314,8 +314,8 @@ impl FeedMeta {
     /// assert_eq!(meta.rights.as_deref(), Some("© 2025 Example"));
     /// ```
     #[inline]
-    pub fn set_rights(&mut self, mut text: TextConstruct) {
-        self.rights = Some(std::mem::take(&mut text.value));
+    pub fn set_rights(&mut self, text: TextConstruct) {
+        self.rights = Some(text.value.clone());
         self.rights_detail = Some(text);
     }
 
@@ -329,8 +329,8 @@ impl FeedMeta {
     /// # fn main() {
     /// let mut meta = FeedMeta::default();
     /// let generator = Generator {
-    ///     value: "Example Generator".to_string(),
-    ///     uri: None,
+    ///     name: "Example Generator".to_string(),
+    ///     href: None,
     ///     version: None,
     /// };
     /// meta.set_generator(generator);
@@ -338,8 +338,9 @@ impl FeedMeta {
     /// # }
     /// ```
     #[inline]
-    pub fn set_generator(&mut self, mut generator: Generator) {
-        self.generator = Some(std::mem::take(&mut generator.value));
+    pub fn set_generator(&mut self, generator: Generator) {
+        // Clone the name for the flat `generator` field; the detail struct keeps its own copy.
+        self.generator = Some(generator.name.clone());
         self.generator_detail = Some(generator);
     }
 

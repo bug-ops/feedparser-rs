@@ -390,6 +390,10 @@ fn parse_entry(
                         let text = parse_text_construct(reader, buf, &element, limits)?;
                         entry.set_subtitle(text);
                     }
+                    b"rights" if !is_empty => {
+                        let text = parse_text_construct(reader, buf, &element, limits)?;
+                        entry.set_rights(text);
+                    }
                     b"summary" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits)?;
                         entry.set_summary(text);
@@ -647,8 +651,8 @@ fn parse_generator(
     }
 
     Ok(Generator {
-        value: read_text_str(reader, buf, limits)?,
-        uri,
+        name: read_text_str(reader, buf, limits)?,
+        href: uri,
         version,
     })
 }
@@ -854,7 +858,11 @@ mod tests {
         let feed = parse_atom10(xml).unwrap();
         assert!(feed.feed.generator_detail.is_some());
         let generator_detail = feed.feed.generator_detail.as_ref().unwrap();
-        assert_eq!(generator_detail.uri.as_deref(), Some("http://example.com/"));
+        assert_eq!(generator_detail.name, "Example CMS");
+        assert_eq!(
+            generator_detail.href.as_deref(),
+            Some("http://example.com/")
+        );
         assert_eq!(generator_detail.version.as_deref(), Some("1.0"));
     }
 
@@ -1318,5 +1326,33 @@ mod tests {
             .find(|l| l.rel.as_deref() == Some("alternate"))
             .expect("alternate link");
         assert_eq!(alt_link.thr_count, Some(5));
+    }
+
+    #[test]
+    fn test_parse_entry_rights() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <entry>
+                <title>Entry with rights</title>
+                <id>entry1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <rights>Copyright 2024 Example Corp</rights>
+            </entry>
+            <entry>
+                <title>Entry without rights</title>
+                <id>entry2</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.entries[0].rights.as_deref(),
+            Some("Copyright 2024 Example Corp")
+        );
+        assert!(feed.entries[0].rights_detail.is_some());
+        assert!(feed.entries[1].rights.is_none());
     }
 }
