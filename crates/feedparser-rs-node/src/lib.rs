@@ -866,18 +866,30 @@ impl From<CoreGenerator> for Generator {
 pub struct Source {
     /// Source title
     pub title: Option<String>,
-    /// Source link
-    pub link: Option<String>,
+    /// Primary source URL (renamed from `link` for Python feedparser API compatibility)
+    pub href: Option<String>,
     /// Source ID
     pub id: Option<String>,
+    /// All links from the source element
+    pub links: Vec<Link>,
+    /// Last update date string (Atom `<updated>`, RFC 3339)
+    pub updated: Option<String>,
+    /// Rights/copyright statement (Atom `<rights>`)
+    pub rights: Option<String>,
+    /// Whether `<id>` was used as the link
+    pub guidislink: Option<bool>,
 }
 
 impl From<CoreSource> for Source {
     fn from(core: CoreSource) -> Self {
         Self {
             title: core.title,
-            link: core.link,
+            href: core.href,
             id: core.id.map(|s| s.to_string()),
+            links: core.links.into_iter().map(Link::from).collect(),
+            updated: core.updated_str,
+            rights: core.rights,
+            guidislink: core.guidislink,
         }
     }
 }

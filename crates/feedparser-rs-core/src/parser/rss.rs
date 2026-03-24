@@ -1747,7 +1747,16 @@ fn parse_source(
         Some(title_str.to_owned())
     };
 
-    Ok(Source { title, link, id })
+    Ok(Source {
+        title,
+        href: link,
+        id,
+        links: Vec::new(),
+        updated: None,
+        updated_str: None,
+        rights: None,
+        guidislink: None,
+    })
 }
 
 /// Parse iTunes owner from <itunes:owner> element
@@ -2402,7 +2411,25 @@ mod tests {
         assert!(feed.entries[0].source.is_some());
         let source = feed.entries[0].source.as_ref().unwrap();
         assert_eq!(source.title.as_deref(), Some("Source Feed"));
-        assert_eq!(source.link.as_deref(), Some("http://source.example.com"));
+        assert_eq!(source.href.as_deref(), Some("http://source.example.com"));
+    }
+
+    #[test]
+    fn test_parse_rss_source_no_guidislink() {
+        // RSS <source> has no <id> child, so guidislink and links are always empty/None
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <source url="http://source.example.com">Source Feed</source>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let source = feed.entries[0].source.as_ref().unwrap();
+        assert!(source.guidislink.is_none());
+        assert!(source.links.is_empty());
     }
 
     #[test]

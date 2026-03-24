@@ -463,14 +463,52 @@ impl PySource {
         self.inner.title.as_deref()
     }
 
+    /// Primary source URL (Python feedparser API name).
+    #[getter]
+    fn href(&self) -> Option<&str> {
+        self.inner.href.as_deref()
+    }
+
+    /// Alias for `href` for backward compatibility.
     #[getter]
     fn link(&self) -> Option<&str> {
-        self.inner.link.as_deref()
+        self.inner.href.as_deref()
     }
 
     #[getter]
     fn id(&self) -> Option<&str> {
         self.inner.id.as_deref()
+    }
+
+    #[getter]
+    fn links(&self) -> Vec<PyLink> {
+        self.inner
+            .links
+            .iter()
+            .map(|l| PyLink::from_core(l.clone()))
+            .collect()
+    }
+
+    /// Raw updated date string (timezone preserved).
+    #[getter]
+    fn updated(&self) -> Option<&str> {
+        self.inner.updated_str.as_deref()
+    }
+
+    /// Parsed updated date as `time.struct_time`.
+    #[getter]
+    fn updated_parsed(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        optional_datetime_to_struct_time(py, &self.inner.updated)
+    }
+
+    #[getter]
+    fn rights(&self) -> Option<&str> {
+        self.inner.rights.as_deref()
+    }
+
+    #[getter]
+    fn guidislink(&self) -> Option<bool> {
+        self.inner.guidislink
     }
 
     fn __repr__(&self) -> String {
@@ -481,11 +519,65 @@ impl PySource {
         }
     }
 
-    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {
         match key {
-            "title" => Ok(self.inner.title.as_deref().map(str::to_owned)),
-            "link" => Ok(self.inner.link.as_deref().map(str::to_owned)),
-            "id" => Ok(self.inner.id.as_deref().map(str::to_owned)),
+            "title" => Ok(self
+                .inner
+                .title
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "href" => Ok(self
+                .inner
+                .href
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            // `link` is an alias for `href` for Python feedparser dict-style compat
+            "link" => Ok(self
+                .inner
+                .href
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "id" => Ok(self
+                .inner
+                .id
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "links" => {
+                let py_links: Vec<PyLink> = self
+                    .inner
+                    .links
+                    .iter()
+                    .map(|l| PyLink::from_core(l.clone()))
+                    .collect();
+                Ok(py_links.into_pyobject(py)?.into_any().unbind())
+            }
+            "updated" => Ok(self
+                .inner
+                .updated_str
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "updated_parsed" => Ok(optional_datetime_to_struct_time(py, &self.inner.updated)?
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "rights" => Ok(self
+                .inner
+                .rights
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "guidislink" => Ok(self.inner.guidislink.into_pyobject(py)?.into_any().unbind()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }

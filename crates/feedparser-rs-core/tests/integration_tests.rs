@@ -653,7 +653,7 @@ fn test_rss_source_element_title_and_link() {
     let entry = &feed.entries[0];
     let source = entry.source.as_ref().expect("entry must have source");
     assert_eq!(source.title.as_deref(), Some("Other Feed Name"));
-    assert_eq!(source.link.as_deref(), Some("https://otherfeed.com/rss"));
+    assert_eq!(source.href.as_deref(), Some("https://otherfeed.com/rss"));
 }
 
 // Regression tests for issue #152: whitespace around XML entities must be preserved.
