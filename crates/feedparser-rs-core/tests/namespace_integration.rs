@@ -283,3 +283,63 @@ fn test_media_content_medium_attribute() {
     assert_eq!(no_medium.media_content.len(), 1);
     assert!(no_medium.media_content[0].medium.is_none());
 }
+
+#[test]
+fn test_media_group_rss() {
+    // media:content inside media:group must be promoted to entry.media_content
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>T</title><link>http://example.com/</link>
+            <item>
+                <title>I</title><link>http://example.com/1</link>
+                <media:group>
+                    <media:content url="http://example.com/video-hd.mp4" medium="video" type="video/mp4"/>
+                    <media:content url="http://example.com/video-sd.mp4" medium="video" type="video/mp4"/>
+                    <media:thumbnail url="http://example.com/thumb.jpg" width="320" height="180"/>
+                </media:group>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    let entry = &feed.entries[0];
+    assert_eq!(
+        entry.media_content.len(),
+        2,
+        "both media:content inside group must be parsed"
+    );
+    assert_eq!(
+        entry.media_content[0].url,
+        "http://example.com/video-hd.mp4"
+    );
+    assert_eq!(
+        entry.media_content[1].url,
+        "http://example.com/video-sd.mp4"
+    );
+    assert_eq!(entry.media_thumbnail.len(), 1);
+    assert_eq!(entry.media_thumbnail[0].url, "http://example.com/thumb.jpg");
+}
+
+#[test]
+fn test_media_group_mixed_with_direct_content() {
+    // media:content appearing both directly and inside media:group must all be collected
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>T</title><link>http://example.com/</link>
+            <item>
+                <title>I</title><link>http://example.com/1</link>
+                <media:content url="http://example.com/direct.mp4" medium="video" type="video/mp4"/>
+                <media:group>
+                    <media:content url="http://example.com/grouped.mp4" medium="video" type="video/mp4"/>
+                </media:group>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    assert_eq!(feed.entries[0].media_content.len(), 2);
+}
