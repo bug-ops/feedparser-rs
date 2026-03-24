@@ -859,8 +859,8 @@ fn test_atom_entry_id_promoted_to_link_when_no_explicit_link() {
     );
     assert_eq!(
         entry0.guidislink,
-        Some(true),
-        "guidislink should be true when link is promoted from id"
+        Some(false),
+        "guidislink is always false for Atom entries (Python feedparser never sets true for Atom)"
     );
 }
 

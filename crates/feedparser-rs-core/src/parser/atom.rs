@@ -852,13 +852,12 @@ fn parse_entry(
 
 /// Promote entry.id → entry.link when no explicit `<link>` is present (#273).
 ///
-/// Sets `guidislink = true` when the id is used as the link, `false` otherwise.
+/// `guidislink` is always `Some(false)` for Atom entries (set before this call).
 fn promote_entry_id_to_link(entry: &mut Entry) {
-    if entry.link.is_some() {
-        entry.guidislink = Some(false);
-    } else if let Some(id) = entry.id.as_deref() {
-        entry.link = Some(id.to_string());
-        entry.guidislink = Some(true);
+    if entry.link.is_none() {
+        if let Some(id) = entry.id.as_deref() {
+            entry.link = Some(id.to_string());
+        }
     }
 }
 
