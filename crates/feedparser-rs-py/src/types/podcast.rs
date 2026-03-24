@@ -64,6 +64,21 @@ impl PyItunesFeedMeta {
         self.inner.podcast_type.as_deref()
     }
 
+    #[getter]
+    fn complete(&self) -> Option<bool> {
+        self.inner.complete
+    }
+
+    #[getter]
+    fn new_feed_url(&self) -> Option<&str> {
+        self.inner.new_feed_url.as_deref()
+    }
+
+    #[getter]
+    fn block(&self) -> Option<u8> {
+        self.inner.block
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "ItunesFeedMeta(author='{}', categories={})",

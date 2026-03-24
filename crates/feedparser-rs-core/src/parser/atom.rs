@@ -5,17 +5,18 @@ use crate::{
     error::{FeedError, Result},
     namespace::{content, dublin_core, media_rss, slash, threading},
     types::{
-        Content, Enclosure, Entry, FeedVersion, Generator, Link, MediaContent, MediaThumbnail,
-        ParsedFeed, Person, Source, Tag, TextConstruct, TextType,
+        Content, Enclosure, Entry, FeedVersion, Generator, Image, ItunesCategory, ItunesEntryMeta,
+        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
+        Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
     },
-    util::{base_url::BaseUrlContext, parse_date},
+    util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
-    is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str,
+    is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str,
     read_xhtml_content_str, skip_element, skip_to_end,
 };
 
@@ -324,6 +325,134 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
+                        } else if is_itunes_tag(tag, b"image") {
+                            if let Some(url) = extract_href_attr(&element, limits) {
+                                let itunes = feed
+                                    .feed
+                                    .itunes
+                                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                                itunes.image = Some(url.clone().into());
+                                if feed.feed.image.is_none() {
+                                    feed.feed.image = Some(Image {
+                                        url: url.into(),
+                                        title: None,
+                                        link: None,
+                                        width: None,
+                                        height: None,
+                                        description: None,
+                                    });
+                                }
+                            }
+                            if !is_empty {
+                                skip_element(reader, &mut buf, limits, *depth)?;
+                            }
+                            true
+                        } else if is_itunes_tag(tag, b"category") {
+                            parse_atom_itunes_category(
+                                reader, &mut buf, &element, feed, limits, is_empty,
+                            )?;
+                            true
+                        } else if is_itunes_tag(tag, b"owner") && !is_empty {
+                            if let Ok(owner) =
+                                parse_atom_itunes_owner(reader, &mut buf, limits, depth)
+                            {
+                                let itunes = feed
+                                    .feed
+                                    .itunes
+                                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                                itunes.owner = Some(owner);
+                            }
+                            true
+                        } else if is_itunes_tag(tag, b"author") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            if feed.feed.author.is_none() {
+                                feed.feed.set_author(Person::from_name(&text));
+                                feed.feed
+                                    .authors
+                                    .try_push_limited(Person::from_name(&text), limits.max_authors);
+                            }
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.author = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"subtitle") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            if feed.feed.subtitle.is_none() {
+                                feed.feed.set_subtitle(TextConstruct::text(&text));
+                            }
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.subtitle = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"summary") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            if feed.feed.subtitle.is_none() {
+                                feed.feed.set_subtitle(TextConstruct::text(&text));
+                            }
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.summary = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"explicit") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.explicit = parse_explicit(&text);
+                            true
+                        } else if is_itunes_tag(tag, b"keywords") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.keywords = text
+                                .split(',')
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                                .collect();
+                            true
+                        } else if is_itunes_tag(tag, b"type") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.podcast_type = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"complete") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.complete = Some(text.trim().eq_ignore_ascii_case("Yes"));
+                            true
+                        } else if is_itunes_tag(tag, b"new-feed-url") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            if !text.is_empty() {
+                                let itunes = feed
+                                    .feed
+                                    .itunes
+                                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                                itunes.new_feed_url = Some(text.trim().to_string().into());
+                            }
+                            true
+                        } else if is_itunes_tag(tag, b"block") && !is_empty {
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            let itunes = feed
+                                .feed
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+                            itunes.block = Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
+                            true
                         } else {
                             false
                         };
@@ -579,6 +708,100 @@ fn parse_entry(
                                 *bozo |= had_bozo;
                                 slash::handle_wfw_entry_element(&wfw_elem, &text, &mut entry);
                             }
+                            true
+                        } else if is_itunes_tag(tag, b"image") {
+                            if let Some(url) = extract_href_attr(&element, limits) {
+                                let itunes = entry
+                                    .itunes
+                                    .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                                itunes.image = Some(
+                                    truncate_to_length(&url, limits.max_attribute_length).into(),
+                                );
+                            }
+                            if !is_empty {
+                                skip_element(reader, buf, limits, *depth)?;
+                            }
+                            true
+                        } else if is_itunes_tag(tag, b"title") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.title = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"author") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            if entry.author.is_none() {
+                                entry.set_author(Person::from_name(&text));
+                                entry
+                                    .authors
+                                    .try_push_limited(Person::from_name(&text), limits.max_authors);
+                            }
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.author = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"subtitle") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.subtitle = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"summary") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            if entry.summary.is_none() {
+                                entry.set_summary(TextConstruct::text(&text));
+                            }
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.summary = Some(text);
+                            true
+                        } else if is_itunes_tag(tag, b"duration") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.duration = parse_duration(&text);
+                            true
+                        } else if is_itunes_tag(tag, b"explicit") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.explicit = parse_explicit(&text);
+                            true
+                        } else if is_itunes_tag(tag, b"episode") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.episode = text.trim().parse().ok();
+                            true
+                        } else if is_itunes_tag(tag, b"season") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.season = text.trim().parse().ok();
+                            true
+                        } else if is_itunes_tag(tag, b"episodeType") && !is_empty {
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            let itunes = entry
+                                .itunes
+                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+                            itunes.episode_type = Some(text);
                             true
                         } else {
                             false
@@ -926,6 +1149,110 @@ fn parse_atom_source(
         rights,
         guidislink,
     })
+}
+
+/// Extract the `href` attribute value from an XML element, truncated to limit.
+fn extract_href_attr(
+    element: &quick_xml::events::BytesStart<'_>,
+    limits: &ParserLimits,
+) -> Option<String> {
+    for attr in element.attributes().flatten() {
+        if attr.key.as_ref() == b"href" && attr.value.len() <= limits.max_attribute_length {
+            return String::from_utf8(attr.value.into_owned()).ok();
+        }
+    }
+    None
+}
+
+/// Parse `<itunes:owner>` element (name and email children).
+fn parse_atom_itunes_owner(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+    depth: &mut usize,
+) -> Result<ItunesOwner> {
+    let mut owner = ItunesOwner::default();
+    loop {
+        buf.clear();
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                *depth += 1;
+                check_depth(*depth, limits.max_nesting_depth)?;
+                let tag_name = e.local_name();
+                if is_itunes_tag(tag_name.as_ref(), b"name") {
+                    owner.name = Some(read_text_str(reader, buf, limits)?);
+                } else if is_itunes_tag(tag_name.as_ref(), b"email") {
+                    owner.email = Some(read_text_str(reader, buf, limits)?);
+                } else {
+                    skip_element(reader, buf, limits, *depth)?;
+                }
+                *depth = depth.saturating_sub(1);
+            }
+            Ok(Event::End(_) | Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+    }
+    Ok(owner)
+}
+
+/// Parse `<itunes:category>` with optional nested subcategory.
+fn parse_atom_itunes_category(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &quick_xml::events::BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<()> {
+    let text = element
+        .attributes()
+        .flatten()
+        .find(|a| a.key.as_ref() == b"text")
+        .and_then(|a| String::from_utf8(a.value.into_owned()).ok())
+        .unwrap_or_default();
+
+    if text.is_empty() {
+        if !is_empty {
+            skip_element(reader, buf, limits, 0)?;
+        }
+        return Ok(());
+    }
+
+    let mut subcategory: Option<String> = None;
+
+    if !is_empty {
+        loop {
+            buf.clear();
+            match reader.read_event_into(buf) {
+                Ok(Event::Empty(e)) if is_itunes_tag(e.name().as_ref(), b"category") => {
+                    subcategory = e
+                        .attributes()
+                        .flatten()
+                        .find(|a| a.key.as_ref() == b"text")
+                        .and_then(|a| String::from_utf8(a.value.into_owned()).ok());
+                }
+                Ok(Event::Start(e)) if is_itunes_tag(e.name().as_ref(), b"category") => {
+                    subcategory = e
+                        .attributes()
+                        .flatten()
+                        .find(|a| a.key.as_ref() == b"text")
+                        .and_then(|a| String::from_utf8(a.value.into_owned()).ok());
+                    skip_to_end(reader, buf, b"category")?;
+                }
+                Ok(Event::End(_) | Event::Eof) => break,
+                Err(e) => return Err(e.into()),
+                _ => {}
+            }
+        }
+    }
+
+    let itunes = feed
+        .feed
+        .itunes
+        .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+    itunes.categories.push(ItunesCategory { text, subcategory });
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2025,5 +2352,117 @@ mod tests {
             feed.namespaces.get("").map(String::as_str),
             Some("http://purl.org/atom/ns#")
         );
+    }
+
+    #[test]
+    fn test_atom_itunes_feed_metadata() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Podcast Feed</title>
+            <itunes:author>Jane Doe</itunes:author>
+            <itunes:subtitle>A great show</itunes:subtitle>
+            <itunes:summary>Long description</itunes:summary>
+            <itunes:explicit>yes</itunes:explicit>
+            <itunes:image href="https://example.com/cover.jpg"/>
+            <itunes:type>serial</itunes:type>
+            <itunes:complete>Yes</itunes:complete>
+            <itunes:new-feed-url>https://example.com/new.xml</itunes:new-feed-url>
+            <itunes:block>yes</itunes:block>
+            <itunes:keywords>tech, rust</itunes:keywords>
+            <itunes:category text="Technology">
+                <itunes:category text="Software"/>
+            </itunes:category>
+            <itunes:owner>
+                <itunes:name>Owner Name</itunes:name>
+                <itunes:email>owner@example.com</itunes:email>
+            </itunes:owner>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let itunes = feed.feed.itunes.as_ref().unwrap();
+        assert_eq!(itunes.author.as_deref(), Some("Jane Doe"));
+        assert_eq!(itunes.subtitle.as_deref(), Some("A great show"));
+        assert_eq!(itunes.summary.as_deref(), Some("Long description"));
+        assert_eq!(itunes.explicit, Some(true));
+        assert_eq!(
+            itunes.image.as_deref(),
+            Some("https://example.com/cover.jpg")
+        );
+        assert_eq!(
+            feed.feed.image.as_ref().map(|i| i.url.as_str()),
+            Some("https://example.com/cover.jpg")
+        );
+        assert_eq!(itunes.podcast_type.as_deref(), Some("serial"));
+        assert_eq!(itunes.complete, Some(true));
+        assert_eq!(
+            itunes.new_feed_url.as_deref(),
+            Some("https://example.com/new.xml")
+        );
+        assert_eq!(itunes.block, Some(1));
+        assert_eq!(itunes.keywords, vec!["tech", "rust"]);
+        assert_eq!(itunes.categories.len(), 1);
+        assert_eq!(itunes.categories[0].text, "Technology");
+        assert_eq!(
+            itunes.categories[0].subcategory.as_deref(),
+            Some("Software")
+        );
+        let owner = itunes.owner.as_ref().unwrap();
+        assert_eq!(owner.name.as_deref(), Some("Owner Name"));
+        assert_eq!(owner.email.as_deref(), Some("owner@example.com"));
+        // itunes:author promotes to feed.author
+        assert_eq!(feed.feed.author.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn test_atom_itunes_entry_metadata() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>Podcast</title>
+            <entry>
+                <id>ep1</id>
+                <title>Episode One</title>
+                <itunes:title>iTunes Title</itunes:title>
+                <itunes:author>Episode Author</itunes:author>
+                <itunes:duration>1:23:45</itunes:duration>
+                <itunes:explicit>yes</itunes:explicit>
+                <itunes:image href="https://example.com/ep.jpg"/>
+                <itunes:episode>5</itunes:episode>
+                <itunes:season>2</itunes:season>
+                <itunes:episodeType>full</itunes:episodeType>
+                <itunes:subtitle>Ep subtitle</itunes:subtitle>
+                <itunes:summary>Ep summary</itunes:summary>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        let itunes = feed.entries[0].itunes.as_ref().unwrap();
+        assert_eq!(itunes.title.as_deref(), Some("iTunes Title"));
+        assert_eq!(itunes.author.as_deref(), Some("Episode Author"));
+        assert_eq!(itunes.duration, Some(5025)); // 1:23:45
+        assert_eq!(itunes.explicit, Some(true));
+        assert_eq!(itunes.image.as_deref(), Some("https://example.com/ep.jpg"));
+        assert_eq!(itunes.episode, Some(5));
+        assert_eq!(itunes.season, Some(2));
+        assert_eq!(itunes.episode_type.as_deref(), Some("full"));
+        assert_eq!(itunes.subtitle.as_deref(), Some("Ep subtitle"));
+        assert_eq!(itunes.summary.as_deref(), Some("Ep summary"));
+    }
+
+    #[test]
+    fn test_atom_itunes_explicit_no_returns_none() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <title>P</title>
+            <itunes:explicit>no</itunes:explicit>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        let itunes = feed.feed.itunes.as_ref().unwrap();
+        assert_eq!(itunes.explicit, None);
     }
 }

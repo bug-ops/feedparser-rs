@@ -674,6 +674,16 @@ fn parse_channel_itunes(
             }
         }
         Ok(true)
+    } else if is_itunes_tag(tag, b"block") {
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.block = Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
+        }
+        Ok(true)
     } else {
         Ok(false)
     }
