@@ -1651,8 +1651,8 @@ fn parse_atom_itunes_category(
     feed.feed.tags.try_push_limited(
         Tag {
             term: text.as_str().into(),
-            scheme: None,
-            label: Some(text.as_str().into()),
+            scheme: Some("http://www.itunes.com/".into()),
+            label: None,
         },
         limits.max_tags,
     );
@@ -1660,8 +1660,8 @@ fn parse_atom_itunes_category(
         feed.feed.tags.try_push_limited(
             Tag {
                 term: sub.as_str().into(),
-                scheme: None,
-                label: Some(sub.as_str().into()),
+                scheme: Some("http://www.itunes.com/".into()),
+                label: None,
             },
             limits.max_tags,
         );
@@ -3270,14 +3270,29 @@ mod tests {
             </itunes:category>
         </feed>"#;
         let feed = parse_atom10(xml).unwrap();
-        assert!(
-            feed.feed.tags.iter().any(|t| t.term == "Technology"),
-            "Technology category must appear in tags"
+        let tech_tag = feed
+            .feed
+            .tags
+            .iter()
+            .find(|t| t.term == "Technology")
+            .expect("Technology category must appear in tags");
+        assert_eq!(
+            tech_tag.scheme.as_deref(),
+            Some("http://www.itunes.com/"),
+            "itunes:category scheme must be http://www.itunes.com/"
         );
         assert!(
-            feed.feed.tags.iter().any(|t| t.term == "Software How-To"),
-            "Software How-To subcategory must appear in tags"
+            tech_tag.label.is_none(),
+            "itunes:category label must be None"
         );
+        let sub_tag = feed
+            .feed
+            .tags
+            .iter()
+            .find(|t| t.term == "Software How-To")
+            .expect("Software How-To subcategory must appear in tags");
+        assert_eq!(sub_tag.scheme.as_deref(), Some("http://www.itunes.com/"));
+        assert!(sub_tag.label.is_none());
         let itunes = feed.feed.itunes.as_ref().unwrap();
         assert_eq!(itunes.categories[0].text, "Technology");
         assert_eq!(
