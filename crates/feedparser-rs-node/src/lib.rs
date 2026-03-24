@@ -827,6 +827,8 @@ pub struct Content {
     pub language: Option<String>,
     /// Base URL for relative links
     pub base: Option<String>,
+    /// Out-of-line content URL (Atom `<content src="...">`)
+    pub src: Option<String>,
 }
 
 impl From<CoreContent> for Content {
@@ -836,6 +838,7 @@ impl From<CoreContent> for Content {
             content_type: core.content_type.map(|t| t.to_string()),
             language: core.language.map(|s| s.to_string()),
             base: core.base,
+            src: core.src,
         }
     }
 }
@@ -866,8 +869,12 @@ impl From<CoreGenerator> for Generator {
 pub struct Source {
     /// Source title
     pub title: Option<String>,
-    /// Primary source URL (renamed from `link` for Python feedparser API compatibility)
+    /// Primary source URL for RSS `<source url="...">` (RSS-only)
     pub href: Option<String>,
+    /// Primary source URL for Atom `<source><link href="..."/>` (Atom-only)
+    pub link: Option<String>,
+    /// Source author flat string (Atom `<source><author>`)
+    pub author: Option<String>,
     /// Source ID
     pub id: Option<String>,
     /// All links from the source element
@@ -885,6 +892,8 @@ impl From<CoreSource> for Source {
         Self {
             title: core.title,
             href: core.href,
+            link: core.link,
+            author: core.author,
             id: core.id.map(|s| s.to_string()),
             links: core.links.into_iter().map(Link::from).collect(),
             updated: core.updated_str,
