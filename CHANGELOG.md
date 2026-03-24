@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Python bindings: `FeedMeta`, `Entry`, and `FeedParserDict` now expose `.get(key, default=None)`, `.keys()`, `.values()`, and `.items()` methods, matching the `FeedParserDict` dict-compatible API from Python feedparser; `.get()` never raises `KeyError` (#162)
 - Core: `entry.rights_detail.value` was always empty due to `std::mem::take` consuming the value before assigning it to `rights_detail`; fixed by cloning the value instead (#161)
 - `media:content` elements now expose the `medium` attribute (`video`, `audio`, `image`, `document`, `executable`) in core, Python, and Node.js bindings, matching Python feedparser behavior (#158)
 - Rename `media_thumbnails` to `media_thumbnail` (singular) across core, Python, and Node.js bindings to match Python feedparser API (#157)
