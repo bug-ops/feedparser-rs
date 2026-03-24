@@ -921,6 +921,16 @@ fn parse_item(
                     b"enclosure" => {
                         if let Some(mut enclosure) = parse_enclosure(&attrs, limits) {
                             enclosure.url = base_ctx.resolve_safe(&enclosure.url).into();
+                            let link = Link {
+                                href: enclosure.url.clone(),
+                                rel: Some("enclosure".into()),
+                                link_type: enclosure.enclosure_type.clone(),
+                                length: enclosure.length.clone(),
+                                ..Link::default()
+                            };
+                            entry
+                                .links
+                                .try_push_limited(link, limits.max_links_per_entry);
                             entry
                                 .enclosures
                                 .try_push_limited(enclosure, limits.max_enclosures);
@@ -2038,6 +2048,36 @@ mod tests {
             feed.entries[0].enclosures[0].enclosure_type.as_deref(),
             Some("audio/mpeg")
         );
+    }
+
+    #[test]
+    fn test_enclosure_also_in_links() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <link>http://example.com/ep1</link>
+                    <enclosure url="http://example.com/audio.mp3"
+                               length="12345678"
+                               type="audio/mpeg"/>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+
+        assert_eq!(entry.enclosures.len(), 1);
+
+        let enc_link = entry
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("enclosure"));
+        assert!(enc_link.is_some(), "enclosure must appear in entry.links");
+        let enc_link = enc_link.unwrap();
+        assert_eq!(enc_link.href.as_str(), "http://example.com/audio.mp3");
+        assert_eq!(enc_link.link_type.as_deref(), Some("audio/mpeg"));
+        assert_eq!(enc_link.length.as_deref(), Some("12345678"));
     }
 
     #[test]

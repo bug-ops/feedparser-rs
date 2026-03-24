@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Test Enclosure Feed</title>
+    <link>http://example.com/</link>
+    <item>
+      <title>Episode 1</title>
+      <link>http://example.com/ep1</link>
+      <enclosure url="http://example.com/audio.mp3" length="12345678" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>

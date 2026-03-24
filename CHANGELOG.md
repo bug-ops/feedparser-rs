@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Core: RSS `<enclosure>` elements are now added to both `entry.enclosures` and `entry.links` (with `rel='enclosure'`), matching Python feedparser behavior (#192)
 - Core: syndication namespace elements (`updatePeriod`, `updateFrequency`, `updateBase`) are now recognized with both `sy:` and `syn:` prefixes; previously only `syn:` was recognized, causing `feed.syndication` to return `None` for feeds using the more common `sy:` prefix (#191)
 - Core, Python, Node.js bindings: GeoRSS location is now exposed as `entry.where` / `entry.where_` (was `entry.geo`), matching Python feedparser field name; coordinates now follow GeoJSON order `(lon, lat)` (was `(lat, lon)`); type names use GeoJSON capitalization (`Point`, `LineString`, `Polygon`); Python and Node.js bindings return a dict `{'type': 'Point', 'coordinates': (lon, lat)}` instead of a custom GeoLocation object (#185)
 - Core, Python, Node.js bindings: `MediaContent` now exposes `bitrate`, `lang`, `channels`, `codec`, `expression`, `isdefault`, `samplingrate` attributes; `duration` changed from integer to raw string matching Python feedparser behavior (#190)
