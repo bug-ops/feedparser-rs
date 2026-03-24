@@ -594,6 +594,34 @@ impl Tag {
     }
 }
 
+/// RSS 2.0 `<cloud>` element — subscription endpoint for updates
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Cloud {
+    /// Domain of the cloud server
+    pub domain: Option<String>,
+    /// Port of the cloud server
+    pub port: Option<String>,
+    /// Path of the cloud server
+    pub path: Option<String>,
+    /// Procedure to register for update notifications
+    pub register_procedure: Option<String>,
+    /// Protocol: xml-rpc, soap, or http-post
+    pub protocol: Option<String>,
+}
+
+/// RSS 2.0 `<textInput>` element — text input form associated with the channel
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct TextInput {
+    /// Title of the Submit button in the text input area
+    pub title: Option<String>,
+    /// Explains the text input area
+    pub description: Option<String>,
+    /// The name of the text object in the text input area
+    pub name: Option<String>,
+    /// The URL of the CGI script that processes text input requests
+    pub link: Option<String>,
+}
+
 /// Image metadata
 #[derive(Debug, Clone)]
 pub struct Image {

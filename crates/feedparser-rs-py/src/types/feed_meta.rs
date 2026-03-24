@@ -4,7 +4,9 @@ use pyo3::exceptions::{PyAttributeError, PyKeyError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use super::common::{PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct};
+use super::common::{
+    PyCloud, PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct, PyTextInput,
+};
 use super::compat::FEED_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
 use super::media::{PyMediaContent, PyMediaThumbnail, media_rating_to_py_dict};
@@ -346,6 +348,34 @@ impl PyFeedMeta {
         self.inner.media_keywords.as_deref()
     }
 
+    #[getter]
+    fn cloud(&self) -> Option<PyCloud> {
+        self.inner
+            .cloud
+            .as_ref()
+            .map(|c| PyCloud::from_core(c.clone()))
+    }
+
+    #[getter]
+    fn textinput(&self) -> Option<PyTextInput> {
+        self.inner
+            .textinput
+            .as_ref()
+            .map(|t| PyTextInput::from_core(t.clone()))
+    }
+
+    #[getter]
+    fn skiphours(&self, py: Python<'_>) -> PyResult<Py<pyo3::types::PyList>> {
+        let list = pyo3::types::PyList::new(py, &self.inner.skiphours)?;
+        Ok(list.unbind())
+    }
+
+    #[getter]
+    fn skipdays(&self, py: Python<'_>) -> PyResult<Py<pyo3::types::PyList>> {
+        let list = pyo3::types::PyList::new(py, self.inner.skipdays.iter().map(|s| s.as_str()))?;
+        Ok(list.unbind())
+    }
+
     /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
     ///
     /// Provides `dict.get()` compatibility for Python feedparser consumers.
@@ -405,6 +435,10 @@ impl PyFeedMeta {
             "media_content",
             "media_rating",
             "media_keywords",
+            "cloud",
+            "textinput",
+            "skiphours",
+            "skipdays",
         ];
         let mut result = Vec::new();
         for &key in ALL_KEYS {
@@ -939,6 +973,29 @@ impl PyFeedMeta {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
+            "cloud" => {
+                if let Some(ref c) = self.inner.cloud {
+                    Ok(Py::new(py, PyCloud::from_core(c.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "textinput" => {
+                if let Some(ref t) = self.inner.textinput {
+                    Ok(Py::new(py, PyTextInput::from_core(t.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "skiphours" => {
+                let list = pyo3::types::PyList::new(py, &self.inner.skiphours)?;
+                Ok(list.into_any().unbind())
+            }
+            "skipdays" => {
+                let list =
+                    pyo3::types::PyList::new(py, self.inner.skipdays.iter().map(|s| s.as_str()))?;
+                Ok(list.into_any().unbind())
+            }
             // Check for deprecated field name aliases
             _ => {
                 if let Some(new_names) = FEED_FIELD_MAP.get(key) {

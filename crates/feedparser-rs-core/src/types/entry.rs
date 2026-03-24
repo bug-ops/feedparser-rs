@@ -117,6 +117,8 @@ pub struct Entry {
     pub thr_total: Option<u32>,
     /// Slash namespace: comment count (`slash:comments`)
     pub slash_comments: Option<u32>,
+    /// Slash namespace: hit parade (`slash:hit_parade`)
+    pub slash_hit_parade: Option<String>,
     /// WFW namespace: comment RSS feed URL (`wfw:commentRss`)
     pub wfw_comment_rss: Option<String>,
     /// Whether the RSS `<guid>` is a permalink (`isPermaLink` attribute).

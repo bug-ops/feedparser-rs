@@ -1,5 +1,5 @@
 use super::{
-    common::{Generator, Image, Link, MediaRating, Person, Tag, TextConstruct},
+    common::{Cloud, Generator, Image, Link, MediaRating, Person, Tag, TextConstruct, TextInput},
     entry::Entry,
     generics::LimitedCollectionExt,
     podcast::{ItunesFeedMeta, PodcastMeta},
@@ -104,6 +104,14 @@ pub struct FeedMeta {
     pub media_rating: Option<MediaRating>,
     /// Media RSS keywords (`media:keywords`) at feed level, comma-separated string
     pub media_keywords: Option<String>,
+    /// RSS 2.0 `<cloud>` element — subscription endpoint for notifications
+    pub cloud: Option<Cloud>,
+    /// RSS 2.0 `<textInput>` element — text input form associated with the channel
+    pub textinput: Option<TextInput>,
+    /// RSS 2.0 `<skipHours>` — hours of the day when the channel may be skipped (0–23)
+    pub skiphours: Vec<u32>,
+    /// RSS 2.0 `<skipDays>` — days of the week when the channel may be skipped
+    pub skipdays: Vec<String>,
 }
 
 /// Parsed feed result

@@ -25,6 +25,8 @@ pub fn handle_slash_entry_element(element: &str, text: &str, entry: &mut Entry) 
     if element == "comments" {
         // Ignore non-integer values silently (bozo pattern: keep parsing)
         entry.slash_comments = text.trim().parse::<u32>().ok();
+    } else if element == "hit_parade" {
+        entry.slash_hit_parade = Some(text.trim().to_string());
     }
 }
 
