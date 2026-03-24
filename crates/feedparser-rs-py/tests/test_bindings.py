@@ -65,7 +65,7 @@ def test_media_content():
     video = entry.media_content[0]
     assert video.url == "http://example.com/video.mp4"
     assert video.type == "video/mp4"
-    assert video.filesize == 1048576
+    assert video.filesize == "1048576"
     assert video.width == "1920"
     assert video.height == "1080"
     assert video.duration == "300"
