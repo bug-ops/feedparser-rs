@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#">
+  <channel>
+    <title>W3C Geo RSS Feed</title>
+    <link>https://example.com</link>
+    <description>RSS feed with geo:lat/geo:long</description>
+    <item>
+      <title>Item with geo coordinates</title>
+      <link>https://example.com/item-1</link>
+      <description>Item at a known location</description>
+      <geo:lat>51.5074</geo:lat>
+      <geo:long>-0.1278</geo:long>
+    </item>
+  </channel>
+</rss>

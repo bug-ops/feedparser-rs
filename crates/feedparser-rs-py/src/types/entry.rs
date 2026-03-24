@@ -295,6 +295,16 @@ impl PyEntry {
     }
 
     #[getter]
+    fn geo_lat(&self) -> Option<&str> {
+        self.inner.geo_lat.as_deref()
+    }
+
+    #[getter]
+    fn geo_long(&self) -> Option<&str> {
+        self.inner.geo_long.as_deref()
+    }
+
+    #[getter]
     fn dc_creator(&self) -> Option<&str> {
         self.inner.dc_creator.as_deref()
     }
@@ -869,6 +879,20 @@ impl PyEntry {
                     Ok(py.None())
                 }
             }
+            "geo_lat" => Ok(self
+                .inner
+                .geo_lat
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "geo_long" => Ok(self
+                .inner
+                .geo_long
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "dc_creator" => Ok(self
                 .inner
                 .dc_creator

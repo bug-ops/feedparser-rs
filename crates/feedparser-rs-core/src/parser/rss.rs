@@ -20,8 +20,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_lang,
-    init_feed, is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag,
-    is_syn_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
+    init_feed, is_content_tag, is_dc_tag, is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag,
+    is_slash_tag, is_syn_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -869,6 +869,12 @@ fn parse_channel_namespace(
             georss::handle_feed_element(georss_element.as_bytes(), &text, &mut feed.feed, limits);
         }
         Ok(true)
+    } else if let Some(geo_element) = is_geo_tag(tag) {
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            georss::handle_feed_geo_element(geo_element.as_bytes(), &text, &mut feed.feed);
+        }
+        Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
         if !is_empty {
             feed.feed.license = Some(read_text_str(reader, buf, limits)?);
@@ -1511,6 +1517,13 @@ fn parse_item_namespace(
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
         georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
+        Ok(true)
+    } else if let Some(geo_element) = is_geo_tag(tag) {
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            georss::handle_entry_geo_element(geo_element.as_bytes(), &text, entry);
+        }
         Ok(true)
     } else if let Some(slash_element) = is_slash_tag(tag) {
         let slash_elem = slash_element.to_string();

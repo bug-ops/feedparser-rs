@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, media_rss, slash, threading},
+    namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
         Content, Enclosure, Entry, FeedVersion, Generator, Image, ItunesCategory, ItunesEntryMeta,
         ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
@@ -16,8 +16,8 @@ use quick_xml::{Reader, events::Event};
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
-    is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str,
-    read_xhtml_content_str, skip_element, skip_to_end,
+    is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
+    read_text, read_text_str, read_xhtml_content_str, skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -469,6 +469,25 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.block = Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
                             true
+                        } else if let Some(georss_element) = is_georss_tag(tag) {
+                            let georss_elem = georss_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let text = read_text_str(reader, &mut buf, limits)?;
+                                georss::handle_feed_element(
+                                    &georss_elem,
+                                    &text,
+                                    &mut feed.feed,
+                                    limits,
+                                );
+                            }
+                            true
+                        } else if let Some(geo_element) = is_geo_tag(tag) {
+                            let geo_elem = geo_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let text = read_text_str(reader, &mut buf, limits)?;
+                                georss::handle_feed_geo_element(&geo_elem, &text, &mut feed.feed);
+                            }
+                            true
                         } else {
                             false
                         };
@@ -831,6 +850,27 @@ fn parse_entry(
                                 .itunes
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.episode_type = Some(text);
+                            true
+                        } else if let Some(georss_element) = is_georss_tag(tag) {
+                            let georss_elem = georss_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
+                                georss::handle_entry_element(
+                                    &georss_elem,
+                                    &text,
+                                    &mut entry,
+                                    limits,
+                                );
+                            }
+                            true
+                        } else if let Some(geo_element) = is_geo_tag(tag) {
+                            let geo_elem = geo_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
+                                georss::handle_entry_geo_element(&geo_elem, &text, &mut entry);
+                            }
                             true
                         } else {
                             false

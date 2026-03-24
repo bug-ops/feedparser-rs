@@ -17,8 +17,8 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_syn_tag, is_thr_tag, read_text, read_text_str,
-    skip_element,
+    is_content_tag, is_dc_tag, is_geo_tag, is_georss_tag, is_syn_tag, is_thr_tag, read_text,
+    read_text_str, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -258,6 +258,14 @@ fn parse_channel(
                                 &mut feed.feed,
                                 limits,
                             );
+                        } else if let Some(geo_element) = is_geo_tag(full_name.as_ref()) {
+                            let geo_elem = geo_element.to_string();
+                            let text = read_text_str(reader, &mut buf, limits)?;
+                            georss::handle_feed_geo_element(
+                                geo_elem.as_bytes(),
+                                &text,
+                                &mut feed.feed,
+                            );
                         } else {
                             skip_element(reader, &mut buf, limits, *depth)?;
                         }
@@ -347,6 +355,15 @@ fn parse_item(
                                 &text,
                                 &mut entry,
                                 limits,
+                            );
+                        } else if let Some(geo_element) = is_geo_tag(full_name.as_ref()) {
+                            let geo_elem = geo_element.to_string();
+                            let (text, had_bozo) = read_text(reader, buf, limits)?;
+                            *bozo |= had_bozo;
+                            georss::handle_entry_geo_element(
+                                geo_elem.as_bytes(),
+                                &text,
+                                &mut entry,
                             );
                         } else if let Some(thr_element) = is_thr_tag(full_name.as_ref()) {
                             // Atom Threading Extensions (RFC 4685)

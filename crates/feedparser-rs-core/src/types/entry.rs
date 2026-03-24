@@ -89,6 +89,10 @@ pub struct Entry {
     pub podcast: Option<Box<PodcastEntryMeta>>,
     /// `GeoRSS` location data (exposed as `where` per Python feedparser API)
     pub r#where: Option<Box<crate::namespace::georss::GeoLocation>>,
+    /// W3C Basic Geo latitude (`geo:lat`)
+    pub geo_lat: Option<String>,
+    /// W3C Basic Geo longitude (`geo:long`)
+    pub geo_long: Option<String>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
     /// Atom Threading Extensions: entries this is a reply to (thr:in-reply-to)

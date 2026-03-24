@@ -49,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: Atom `entry.guidislink` is now `Some(true)` when `entry.link` is promoted from `entry.id` (no explicit `<link>`), and `Some(false)` when an explicit `<link>` is present; previously always hardcoded to `Some(false)` (#285)
 - Core: `dc:creator` in Atom entries is now used as fallback for `entry.author` when no `<author>` element is present, matching RSS behavior and Python feedparser (#278)
 - Core: RSS 0.92 and 0.90 feeds now report `"rss092"` and `"rss090"` instead of `"rss20"`; RSS 0.91 with Netscape DOCTYPE reports `"rss091n"`, without DOCTYPE reports `"rss091u"`, matching Python feedparser behavior (#283)
+- Core: `georss:point`, `georss:polygon`, and `georss:line` are now parsed in Atom `<entry>` elements and populate `entry.where`; previously only RSS `<item>` elements were supported (#291)
+- Core, Python, Node.js bindings: `geo:lat` and `geo:long` (W3C Basic Geo namespace) are now parsed at feed and entry level; `feed.geo_lat`, `feed.geo_long`, `entry.geo_lat`, `entry.geo_long` are exposed as flat strings; `feed.where`/`entry.where` are auto-constructed as a GeoJSON Point when both are present (#248)
 
 ## [0.5.0] - 2026-03-24
 
