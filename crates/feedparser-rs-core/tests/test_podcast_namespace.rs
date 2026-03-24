@@ -247,7 +247,7 @@ fn test_podcast_entry_meta_default() {
     assert!(meta.transcript.is_empty());
     assert!(meta.chapters.is_none());
     assert!(meta.soundbite.is_empty());
-    assert!(meta.person.is_empty());
+    assert!(meta.persons.is_empty());
 }
 
 #[test]

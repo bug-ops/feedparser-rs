@@ -584,7 +584,9 @@ export interface PodcastEntryMeta {
   /** Episode soundbites */
   soundbite: Array<PodcastSoundbite>
   /** Episode persons */
-  person: Array<PodcastPerson>
+  persons: Array<PodcastPerson>
+  /** Content medium type (podcast:medium) */
+  medium?: string
 }
 
 /** Podcast funding link */
@@ -611,6 +613,12 @@ export interface PodcastMeta {
   guid?: string
   /** Value-for-value payment information */
   value?: PodcastValue
+  /** Content medium type (podcast:medium) */
+  medium?: string
+  /** Ownership transfer lock value: "yes" or "no" (podcast:locked) */
+  locked?: string
+  /** Email of the lock owner (podcast:locked owner attribute) */
+  lockedOwner?: string
 }
 
 /** Podcast person metadata */

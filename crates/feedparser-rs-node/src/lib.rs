@@ -1396,6 +1396,10 @@ pub struct PodcastMeta {
     pub value: Option<PodcastValue>,
     /// Content medium type (podcast:medium)
     pub medium: Option<String>,
+    /// Ownership transfer lock value: "yes" or "no" (podcast:locked)
+    pub locked: Option<String>,
+    /// Email of the lock owner (podcast:locked owner attribute)
+    pub locked_owner: Option<String>,
 }
 
 impl From<CorePodcastMeta> for PodcastMeta {
@@ -1411,6 +1415,8 @@ impl From<CorePodcastMeta> for PodcastMeta {
             guid: core.guid,
             value: core.value.map(PodcastValue::from),
             medium: core.medium,
+            locked: core.locked,
+            locked_owner: core.locked_owner,
         }
     }
 }
@@ -1502,7 +1508,9 @@ pub struct PodcastEntryMeta {
     /// Episode soundbites
     pub soundbite: Vec<PodcastSoundbite>,
     /// Episode persons
-    pub person: Vec<PodcastPerson>,
+    pub persons: Vec<PodcastPerson>,
+    /// Content medium type (podcast:medium)
+    pub medium: Option<String>,
 }
 
 impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
@@ -1519,7 +1527,8 @@ impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
                 .into_iter()
                 .map(PodcastSoundbite::from)
                 .collect(),
-            person: core.person.into_iter().map(PodcastPerson::from).collect(),
+            persons: core.persons.into_iter().map(PodcastPerson::from).collect(),
+            medium: core.medium,
         }
     }
 }
