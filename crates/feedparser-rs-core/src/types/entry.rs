@@ -102,6 +102,11 @@ pub struct Entry {
     pub slash_comments: Option<u32>,
     /// WFW namespace: comment RSS feed URL (`wfw:commentRss`)
     pub wfw_comment_rss: Option<String>,
+    /// Whether the RSS `<guid>` is a permalink (`isPermaLink` attribute).
+    ///
+    /// `true` when `isPermaLink="true"` or the attribute is absent (RSS 2.0 default).
+    /// `false` when `isPermaLink="false"`. `None` when no `<guid>` element is present.
+    pub guidislink: Option<bool>,
 }
 
 impl Entry {

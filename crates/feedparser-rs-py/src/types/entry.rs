@@ -275,6 +275,11 @@ impl PyEntry {
     }
 
     #[getter]
+    fn guidislink(&self) -> Option<bool> {
+        self.inner.guidislink
+    }
+
+    #[getter]
     fn dc_date(&self) -> Option<String> {
         self.inner.dc_date.map(|dt| dt.to_rfc3339())
     }
@@ -418,6 +423,7 @@ impl PyEntry {
             "podcast",
             "thr_in_reply_to",
             "thr_total",
+            "guidislink",
         ];
         let mut result = Vec::new();
         for &key in ALL_KEYS {
@@ -943,6 +949,7 @@ impl PyEntry {
                 let value = self.inner.thr_total.map(|n| n.to_string());
                 Ok(value.into_pyobject(py)?.into_any().unbind())
             }
+            "guidislink" => Ok(self.inner.guidislink.into_pyobject(py)?.into_any().unbind()),
             // Check for deprecated field name aliases
             _ => {
                 if let Some(new_names) = ENTRY_FIELD_MAP.get(key) {

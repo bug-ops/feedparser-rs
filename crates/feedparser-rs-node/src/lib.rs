@@ -567,6 +567,12 @@ pub struct Entry {
     /// WFW namespace: comment RSS feed URL
     #[napi(js_name = "wfwCommentRss")]
     pub wfw_comment_rss: Option<String>,
+    /// Whether the RSS `<guid>` is a permalink (`isPermaLink` attribute).
+    ///
+    /// `true` when `isPermaLink="true"` or attribute absent (RSS 2.0 default).
+    /// `false` when `isPermaLink="false"`. `null` when no `<guid>` element present.
+    #[napi(js_name = "guidislink")]
+    pub guidislink: Option<bool>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -635,6 +641,7 @@ impl From<CoreEntry> for Entry {
             thr_total: core.thr_total,
             slash_comments: core.slash_comments.map(|n| n.to_string()),
             wfw_comment_rss: core.wfw_comment_rss,
+            guidislink: core.guidislink,
         }
     }
 }
