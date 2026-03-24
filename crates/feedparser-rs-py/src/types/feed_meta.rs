@@ -548,6 +548,31 @@ impl PyFeedMeta {
                     Ok(py.None())
                 }
             }
+            // Flat itunes_* keys for Python feedparser compatibility
+            "itunes_author" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.author.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_explicit" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.explicit)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_image" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.image.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "podcast" => {
                 if let Some(ref p) = self.inner.podcast {
                     Ok(Py::new(py, PyPodcastMeta::from_core(p.as_ref().clone()))?.into_any())

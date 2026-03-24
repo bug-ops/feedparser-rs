@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Python bindings: `entry['itunes_duration']`, `entry['itunes_episode']`, `entry['itunes_season']`, `entry['itunes_explicit']`, `entry['itunes_episodetype']`, `entry['itunes_author']`, `entry['itunes_title']`, `entry['itunes_image']` now work via `__getitem__`, matching Python feedparser flat key access; feed-level `feed['itunes_author']`, `feed['itunes_explicit']`, `feed['itunes_image']` also supported (#164)
 - `media:content` elements now expose the `medium` attribute (`video`, `audio`, `image`, `document`, `executable`) in core, Python, and Node.js bindings, matching Python feedparser behavior (#158)
 - Rename `media_thumbnails` to `media_thumbnail` (singular) across core, Python, and Node.js bindings to match Python feedparser API (#157)
 - Map Atom `xml:lang` attribute on `<feed>` to `feed.language`; propagate to `TextConstruct.language` and `Content.language` on feed-level and entry-level constructs; entry-level `xml:lang` overrides feed-level (#149)

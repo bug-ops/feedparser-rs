@@ -641,6 +641,71 @@ impl PyEntry {
                     Ok(py.None())
                 }
             }
+            // Flat itunes_* keys for Python feedparser compatibility
+            "itunes_author" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.author.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_duration" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.duration)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_episode" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.episode)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_season" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.season)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_explicit" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.explicit)
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_episodetype" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.episode_type.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_image" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.image.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "itunes_title" => Ok(self
+                .inner
+                .itunes
+                .as_ref()
+                .and_then(|i| i.title.as_deref())
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "podcast_transcripts" => {
                 let transcripts: Vec<_> = self
                     .inner
