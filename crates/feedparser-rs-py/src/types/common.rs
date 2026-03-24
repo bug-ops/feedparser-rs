@@ -5,6 +5,7 @@ use feedparser_rs::{
     Tag as CoreTag, TextConstruct as CoreTextConstruct, TextType,
 };
 use pyo3::prelude::*;
+use pyo3::types::PyList;
 
 #[pyclass(name = "TextConstruct", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]
@@ -266,8 +267,45 @@ impl PyImage {
     }
 
     #[getter]
+    fn url(&self) -> &str {
+        &self.inner.url
+    }
+
+    #[getter]
+    fn description(&self) -> Option<&str> {
+        self.inner.description.as_deref()
+    }
+
+    #[getter]
     fn subtitle(&self) -> Option<&str> {
         self.inner.description.as_deref()
+    }
+
+    #[getter]
+    fn subtitle_detail(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some(desc) = self.inner.description.as_deref() else {
+            return Ok(None);
+        };
+        let tc = PyTextConstruct::from_core(CoreTextConstruct::text(desc));
+        Ok(Some(tc.into_pyobject(py)?.into_any().unbind()))
+    }
+
+    #[getter]
+    fn title_detail(&self, py: Python<'_>) -> PyResult<Option<Py<PyAny>>> {
+        let Some(title) = self.inner.title.as_deref() else {
+            return Ok(None);
+        };
+        let tc = PyTextConstruct::from_core(CoreTextConstruct::text(title));
+        Ok(Some(tc.into_pyobject(py)?.into_any().unbind()))
+    }
+
+    #[getter]
+    fn links(&self, py: Python<'_>) -> PyResult<Py<PyList>> {
+        use feedparser_rs::Link as CoreLink;
+        let link = CoreLink::alternate(self.inner.url.clone());
+        let py_link = PyLink::from_core(link);
+        let list = PyList::new(py, [py_link])?;
+        Ok(list.unbind())
     }
 
     fn __repr__(&self) -> String {
@@ -276,10 +314,10 @@ impl PyImage {
 
     fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
         match key {
-            "href" => Ok(Some(self.inner.url.to_string())),
+            "href" | "url" => Ok(Some(self.inner.url.to_string())),
             "title" => Ok(self.inner.title.as_deref().map(str::to_owned)),
             "link" => Ok(self.inner.link.as_deref().map(str::to_owned)),
-            "description" => Ok(self.inner.description.as_deref().map(str::to_owned)),
+            "description" | "subtitle" => Ok(self.inner.description.as_deref().map(str::to_owned)),
             "width" => Ok(self.inner.width.map(|v| v.to_string())),
             "height" => Ok(self.inner.height.map(|v| v.to_string())),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
