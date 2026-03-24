@@ -174,7 +174,14 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
             Ok(Event::End(_)) => {
                 depth = depth.saturating_sub(1);
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                if depth > 1 {
+                    feed.bozo = true;
+                    feed.bozo_exception =
+                        Some("Feed is truncated or has unclosed XML elements".to_string());
+                }
+                break;
+            }
             Err(e) => {
                 feed.bozo = true;
                 feed.bozo_exception = Some(format!("XML parsing error: {e}"));

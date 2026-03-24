@@ -113,11 +113,13 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
     let mut base_ctx = BaseUrlContext::new();
+    let mut found_channel = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"channel" => {
                 let channel_lang = extract_xml_lang(&e, limits.max_attribute_length);
+                found_channel = true;
                 depth += 1;
                 if let Err(e) = parse_channel(
                     &mut reader,
@@ -132,7 +134,14 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                 }
                 depth = depth.saturating_sub(1);
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                if !found_channel {
+                    feed.bozo = true;
+                    feed.bozo_exception =
+                        Some("Feed is truncated or has unclosed XML elements".to_string());
+                }
+                break;
+            }
             Err(e) => {
                 feed.bozo = true;
                 feed.bozo_exception = Some(format!("XML parsing error: {e}"));
@@ -239,7 +248,12 @@ fn parse_channel(
             Ok(Event::End(e)) if e.local_name().as_ref() == b"channel" => {
                 break;
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                feed.bozo = true;
+                feed.bozo_exception =
+                    Some("Feed is truncated or has unclosed XML elements".to_string());
+                break;
+            }
             Err(e) => return Err(e.into()),
             _ => {}
         }

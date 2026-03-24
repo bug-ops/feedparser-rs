@@ -64,6 +64,7 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
     let mut base_ctx = BaseUrlContext::new();
+    let mut found_feed_element = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -86,6 +87,7 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                     }
                 }
 
+                found_feed_element = true;
                 depth += 1;
                 if let Err(e) = parse_feed_element(
                     &mut reader,
@@ -100,7 +102,14 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                 }
                 depth = depth.saturating_sub(1);
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                if !found_feed_element {
+                    feed.bozo = true;
+                    feed.bozo_exception =
+                        Some("Feed is truncated or has unclosed XML elements".to_string());
+                }
+                break;
+            }
             Err(e) => {
                 feed.bozo = true;
                 feed.bozo_exception = Some(format!("XML parsing error: {e}"));
@@ -323,7 +332,12 @@ fn parse_feed_element(
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(e)) if e.local_name().as_ref() == b"feed" => break,
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                feed.bozo = true;
+                feed.bozo_exception =
+                    Some("Feed is truncated or has unclosed XML elements".to_string());
+                break;
+            }
             Err(e) => return Err(e.into()),
             _ => {}
         }
