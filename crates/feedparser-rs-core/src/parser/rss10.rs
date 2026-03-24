@@ -391,6 +391,11 @@ fn parse_item(
         buf.clear();
     }
 
+    // dc:creator takes precedence over <author>
+    if let Some(dc) = &entry.dc_creator {
+        entry.author = Some(dc.clone());
+    }
+
     Ok(entry)
 }
 
