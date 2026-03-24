@@ -273,7 +273,7 @@ fn parse_channel_item(
     let effective_lang = item_lang.or(channel_lang);
 
     match parse_item(reader, buf, limits, depth, base_ctx, effective_lang) {
-        Ok((entry, has_attr_errors, has_entity_bozo)) => {
+        Ok((mut entry, has_attr_errors, has_entity_bozo)) => {
             if has_attr_errors {
                 feed.bozo = true;
                 feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
@@ -281,6 +281,9 @@ fn parse_channel_item(
             if has_entity_bozo && !feed.bozo {
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+            }
+            if entry.summary.is_none() {
+                entry.summary = entry.content.first().map(|c| c.value.clone());
             }
             feed.entries.push(entry);
         }
@@ -2848,5 +2851,16 @@ mod tests {
         assert_eq!(pub_detail.name.as_deref(), Some("Web Master"));
         assert_eq!(pub_detail.email.as_deref(), Some("webmaster@example.com"));
         assert_eq!(feed.feed.publisher.as_deref(), Some("Web Master"));
+    }
+
+    #[test]
+    fn test_rss_content_encoded_fallback_to_summary() {
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/content/">
+<channel><title>T</title><link>http://x.com</link><description>D</description>
+  <item><title>I</title><content:encoded>&lt;p&gt;Full HTML&lt;/p&gt;</content:encoded></item>
+</channel></rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].summary.as_deref(), Some("<p>Full HTML</p>"));
     }
 }

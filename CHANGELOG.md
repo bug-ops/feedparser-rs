@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Core: when an RSS item has only `content:encoded` (no `<description>`), or an Atom entry has only `<content>` (no `<summary>`), set `entry.summary` from `content[0].value` as a fallback, matching Python feedparser behavior (#150)
 - Map RSS 2.0 `<lastBuildDate>` channel element to `feed.updated` / `feed.updated_parsed`, matching Python feedparser behavior (#147)
 - Atom `<link>` elements without an explicit `type` attribute now get a default MIME type based on `rel`: `text/html` for `alternate`, `hub`, `enclosure`, and unknown relations; `application/atom+xml` for `self` — matching Python feedparser behavior (#146)
 - RFC2822 date parsing now tolerates incorrect day-of-week names, matching Python feedparser behavior (#143)
