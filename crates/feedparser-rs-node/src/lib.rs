@@ -766,29 +766,55 @@ impl From<CoreTag> for Tag {
 /// Image metadata
 #[napi(object)]
 pub struct Image {
-    /// Image URL
+    /// Image URL (primary field)
     pub href: String,
+    /// Image URL alias (same as href, Python feedparser compatibility)
+    pub url: String,
     /// Image title
     pub title: Option<String>,
+    /// Detailed title with type metadata
+    pub title_detail: Option<TextConstruct>,
     /// Link associated with the image
     pub link: Option<String>,
     /// Image width in pixels
     pub width: Option<u32>,
     /// Image height in pixels
     pub height: Option<u32>,
-    /// Image description
+    /// Image description (alias for subtitle)
+    pub description: Option<String>,
+    /// Image subtitle (alias for description)
     pub subtitle: Option<String>,
+    /// Detailed subtitle/description with type metadata
+    pub subtitle_detail: Option<TextConstruct>,
+    /// Links synthesized from href
+    pub links: Vec<Link>,
 }
 
 impl From<CoreImage> for Image {
     fn from(core: CoreImage) -> Self {
+        let href = core.url.into_inner();
+        let link = CoreLink::alternate(href.clone());
+        let links = vec![Link::from(link)];
+        let title_detail = core
+            .title
+            .as_deref()
+            .map(|t| TextConstruct::from(CoreTextConstruct::text(t)));
+        let subtitle_detail = core
+            .description
+            .as_deref()
+            .map(|d| TextConstruct::from(CoreTextConstruct::text(d)));
         Self {
-            href: core.url.into_inner(),
+            url: href.clone(),
+            href,
             title: core.title,
+            title_detail,
             link: core.link,
             width: core.width,
             height: core.height,
+            description: core.description.clone(),
             subtitle: core.description,
+            subtitle_detail,
+            links,
         }
     }
 }

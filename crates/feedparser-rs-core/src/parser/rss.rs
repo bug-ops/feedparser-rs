@@ -2194,6 +2194,27 @@ mod tests {
         assert_eq!(img.title.as_deref(), Some("Example Logo"));
         assert_eq!(img.width, Some(144));
         assert_eq!(img.height, Some(36));
+        assert!(img.description.is_none());
+    }
+
+    #[test]
+    fn test_parse_rss_image_description() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <image>
+                    <url>http://example.com/logo.png</url>
+                    <title>Example Logo</title>
+                    <link>http://example.com</link>
+                    <description>Feed logo description</description>
+                </image>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let img = feed.feed.image.as_ref().unwrap();
+        assert_eq!(img.url, "http://example.com/logo.png");
+        assert_eq!(img.description.as_deref(), Some("Feed logo description"));
     }
 
     #[test]
