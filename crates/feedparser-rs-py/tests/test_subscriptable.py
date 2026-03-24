@@ -118,7 +118,7 @@ def test_content_getitem():
     entry = result.entries[0]
     content = entry.content[0]
     assert "Hello" in content["value"]
-    assert content["type"] == "html"
+    assert content["type"] == "text/html"
     # language and base from xml:lang/xml:base — may be None depending on parser support
     assert content["language"] is None or isinstance(content["language"], str)
     assert content["base"] is None or isinstance(content["base"], str)
