@@ -51,6 +51,10 @@ pub struct ItunesFeedMeta {
     pub subtitle: Option<String>,
     /// Podcast summary (itunes:summary)
     pub summary: Option<String>,
+    /// Block flag: 1 = blocked ("yes"), 0 = not blocked ("no" or absent)
+    ///
+    /// Normalized from itunes:block: "yes" → 1, any other value → 0.
+    pub block: Option<u8>,
 }
 
 /// iTunes podcast metadata for episodes
@@ -518,10 +522,8 @@ pub fn parse_duration(s: &str) -> Option<u32> {
 
 /// Parse iTunes explicit flag from various string representations
 ///
-/// Accepts multiple boolean representations:
-/// - True values: "yes", "true", "explicit"
-/// - False values: "no", "false", "clean"
-/// - Unknown values return None
+/// Maps "yes"/"true"/"explicit" to `Some(true)`.
+/// Maps "no"/"false"/"clean" and absent values to `None` (per Python feedparser compatibility).
 ///
 /// Case-insensitive matching.
 ///
@@ -539,9 +541,9 @@ pub fn parse_duration(s: &str) -> Option<u32> {
 /// assert_eq!(parse_explicit("true"), Some(true));
 /// assert_eq!(parse_explicit("explicit"), Some(true));
 ///
-/// assert_eq!(parse_explicit("no"), Some(false));
-/// assert_eq!(parse_explicit("false"), Some(false));
-/// assert_eq!(parse_explicit("clean"), Some(false));
+/// assert_eq!(parse_explicit("no"), None);
+/// assert_eq!(parse_explicit("false"), None);
+/// assert_eq!(parse_explicit("clean"), None);
 ///
 /// assert_eq!(parse_explicit("unknown"), None);
 /// ```
@@ -552,11 +554,6 @@ pub fn parse_explicit(s: &str) -> Option<bool> {
         || s.eq_ignore_ascii_case("explicit")
     {
         Some(true)
-    } else if s.eq_ignore_ascii_case("no")
-        || s.eq_ignore_ascii_case("false")
-        || s.eq_ignore_ascii_case("clean")
-    {
-        Some(false)
     } else {
         None
     }
@@ -615,20 +612,21 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_explicit_false_variants() {
-        assert_eq!(parse_explicit("no"), Some(false));
-        assert_eq!(parse_explicit("NO"), Some(false));
-        assert_eq!(parse_explicit("No"), Some(false));
-        assert_eq!(parse_explicit("false"), Some(false));
-        assert_eq!(parse_explicit("FALSE"), Some(false));
-        assert_eq!(parse_explicit("clean"), Some(false));
-        assert_eq!(parse_explicit("CLEAN"), Some(false));
+    fn test_parse_explicit_false_variants_return_none() {
+        // "no"/"false"/"clean" → None (Python feedparser compat: only "yes" is truthy)
+        assert_eq!(parse_explicit("no"), None);
+        assert_eq!(parse_explicit("NO"), None);
+        assert_eq!(parse_explicit("No"), None);
+        assert_eq!(parse_explicit("false"), None);
+        assert_eq!(parse_explicit("FALSE"), None);
+        assert_eq!(parse_explicit("clean"), None);
+        assert_eq!(parse_explicit("CLEAN"), None);
     }
 
     #[test]
     fn test_parse_explicit_whitespace() {
         assert_eq!(parse_explicit("  yes  "), Some(true));
-        assert_eq!(parse_explicit("  no  "), Some(false));
+        assert_eq!(parse_explicit("  no  "), None);
     }
 
     #[test]

@@ -1040,6 +1040,8 @@ pub struct ItunesFeedMeta {
     /// Note: URL from untrusted feed input. Validate before fetching.
     #[napi(js_name = "newFeedUrl")]
     pub new_feed_url: Option<String>,
+    /// Block flag: 1 = blocked ("yes"), 0 = not blocked
+    pub block: Option<u8>,
 }
 
 impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
@@ -1058,6 +1060,7 @@ impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
             podcast_type: core.podcast_type,
             complete: core.complete,
             new_feed_url: core.new_feed_url.map(|u| u.into_inner()),
+            block: core.block,
         }
     }
 }

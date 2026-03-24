@@ -188,7 +188,7 @@ fn test_parse_itunes_podcast_feed() {
     let itunes = feed.feed.itunes.as_ref().unwrap();
 
     assert_eq!(itunes.author.as_deref(), Some("John Doe"));
-    assert_eq!(itunes.explicit, Some(false));
+    assert_eq!(itunes.explicit, None); // "no" maps to None per Python feedparser compat
     assert_eq!(
         itunes.image.as_deref(),
         Some("https://example.com/podcast-cover.jpg")
