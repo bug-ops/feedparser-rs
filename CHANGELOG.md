@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Python and Node.js bindings: `entry.slash_comments` now returns a string (e.g. `'42'`) instead of an integer, matching Python feedparser behavior and the existing `thr_total` string convention (#168)
 - Python bindings: `FeedMeta`, `Entry`, and `FeedParserDict` now expose `.get(key, default=None)`, `.keys()`, `.values()`, and `.items()` methods, matching the `FeedParserDict` dict-compatible API from Python feedparser; `.get()` never raises `KeyError` (#162)
 - Core: `entry.rights_detail.value` was always empty due to `std::mem::take` consuming the value before assigning it to `rights_detail`; fixed by cloning the value instead (#161)
 - `media:content` elements now expose the `medium` attribute (`video`, `audio`, `image`, `document`, `executable`) in core, Python, and Node.js bindings, matching Python feedparser behavior (#158)
