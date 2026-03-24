@@ -533,8 +533,9 @@ mod tests {
 
         assert_eq!(feed.entries.len(), 1);
         let entry = &feed.entries[0];
-        assert!(entry.published.is_some());
-        let dt = entry.published.unwrap();
+        assert!(entry.updated.is_some());
+        assert!(entry.published.is_none());
+        let dt = entry.updated.unwrap();
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 12);
         assert_eq!(dt.day(), 15);
@@ -658,6 +659,27 @@ mod tests {
         assert!(is_dc_tag(b"title").is_none());
         assert!(is_dc_tag(b"link").is_none());
         assert!(is_dc_tag(b"atom:title").is_none());
+    }
+
+    #[test]
+    fn test_dc_date_maps_to_updated_not_published() {
+        let xml = include_bytes!("../../../../tests/fixtures/rss10_dc_date.xml");
+        let feed = parse_rss10(xml).unwrap();
+        assert_eq!(feed.entries.len(), 1);
+        let entry = &feed.entries[0];
+        assert!(
+            entry.updated.is_some(),
+            "entry.updated should be set from dc:date"
+        );
+        assert!(
+            entry.published.is_none(),
+            "entry.published should not be set from dc:date"
+        );
+        let dt = entry.updated.unwrap();
+        assert_eq!(dt.year(), 2025);
+        assert_eq!(dt.month(), 1);
+        assert_eq!(dt.day(), 15);
+        assert_eq!(entry.updated_str.as_deref(), Some("2025-01-15T10:00:00Z"));
     }
 
     #[test]

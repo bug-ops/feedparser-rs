@@ -107,16 +107,17 @@ fn test_rss10_with_dublin_core() {
     let entry = &feed.entries[0];
     assert_eq!(entry.author.as_deref(), Some("John Doe"));
     assert!(
-        entry.published.is_some(),
-        "dc:date should be parsed as published date"
+        entry.updated.is_some(),
+        "dc:date should be parsed as updated date"
     );
+    assert!(entry.published.is_none(), "dc:date must not set published");
 
-    if let Some(published) = entry.published {
-        assert_eq!(published.year(), 2024);
-        assert_eq!(published.month(), 12);
-        assert_eq!(published.day(), 18);
-        assert_eq!(published.hour(), 9);
-        assert_eq!(published.minute(), 30);
+    if let Some(updated) = entry.updated {
+        assert_eq!(updated.year(), 2024);
+        assert_eq!(updated.month(), 12);
+        assert_eq!(updated.day(), 18);
+        assert_eq!(updated.hour(), 9);
+        assert_eq!(updated.minute(), 30);
     }
 }
 
@@ -436,7 +437,7 @@ fn test_rss10_real_world_slashdot_like() {
     let first = &feed.entries[0];
     assert_eq!(first.title.as_deref(), Some("New Technology Breakthrough"));
     assert_eq!(first.author.as_deref(), Some("BeauHD"));
-    assert!(first.published.is_some());
+    assert!(first.updated.is_some());
 
     let second = &feed.entries[1];
     assert_eq!(

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Core: `dc:date` in RSS 1.0 (RDF) feeds now maps to `entry.updated`/`entry.updated_parsed` instead of `entry.published`/`entry.published_parsed`, matching Python feedparser behavior (#175)
 - Core, Python, Node.js bindings: `Link.length`, `Enclosure.length`, `MediaContent.width`, `MediaContent.height`, `MediaThumbnail.width`, and `MediaThumbnail.height` now return `str` (raw XML attribute value) instead of an integer, matching Python feedparser behavior; non-numeric values are preserved as-is rather than silently dropped (#173)
 - Core: when an RSS entry (or feed) has both `<author>` and `<dc:creator>`, `entry.author` now returns the `dc:creator` value (dc:creator always wins); previously dc:creator only set `entry.author` if it was not already set (#172)
 - Core: when an RSS `<author>` element contains the `email@x.com (Name)` format, `entry.author` now returns the raw string (e.g. `"email@x.com (Name)"`); `entry.author_detail` still contains the parsed name and email fields; previously only the parsed name was stored in `entry.author` (#172)
