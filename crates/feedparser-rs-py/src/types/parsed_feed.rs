@@ -131,6 +131,59 @@ impl PyParsedFeed {
         self.headers.as_ref().map(|h| h.clone_ref(py))
     }
 
+    /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
+    ///
+    /// Provides `dict.get()` compatibility for Python feedparser consumers.
+    /// Unlike `__getitem__`, this method never raises `KeyError`.
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    /// Returns a list of field names whose values are not None.
+    fn keys(&self, py: Python<'_>) -> PyResult<Vec<&'static str>> {
+        const ALL_KEYS: &[&str] = &[
+            "feed",
+            "entries",
+            "bozo",
+            "bozo_exception",
+            "encoding",
+            "version",
+            "namespaces",
+            "status",
+            "href",
+            "etag",
+            "modified",
+        ];
+        let mut result = Vec::new();
+        for &key in ALL_KEYS {
+            let value = self.__getitem__(py, key)?;
+            if !value.is_none(py) {
+                result.push(key);
+            }
+        }
+        Ok(result)
+    }
+
+    /// Returns a list of field values for all non-None fields.
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        let keys = self.keys(py)?;
+        keys.into_iter()
+            .map(|key| self.__getitem__(py, key))
+            .collect()
+    }
+
+    /// Returns a list of `(key, value)` pairs for all non-None fields.
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
+        let keys = self.keys(py)?;
+        keys.into_iter()
+            .map(|key| Ok((key.to_string(), self.__getitem__(py, key)?)))
+            .collect()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "FeedParserDict(version='{}', bozo={}, entries={})",
