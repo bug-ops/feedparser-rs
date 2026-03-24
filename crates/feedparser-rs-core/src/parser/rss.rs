@@ -895,6 +895,8 @@ fn parse_item(
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
     let mut has_entity_bozo = false;
+    let mut has_explicit_link = false;
+    let mut guid_is_permalink: Option<bool> = None;
 
     loop {
         match reader.read_event_into(buf) {
@@ -930,6 +932,8 @@ fn parse_item(
                             base_ctx,
                             item_lang,
                             &mut has_entity_bozo,
+                            &mut has_explicit_link,
+                            &mut guid_is_permalink,
                         )?;
                     }
                     b"enclosure" => {
@@ -1006,6 +1010,16 @@ fn parse_item(
         buf.clear();
     }
 
+    // guidislink = isPermaLink AND no explicit <link> element was present in the item.
+    // Per Python feedparser semantics: when <link> exists, guid is just an identifier.
+    if let Some(is_permalink) = guid_is_permalink {
+        entry.guidislink = Some(is_permalink && !has_explicit_link);
+        // If an explicit <link> was present, remove the guid-as-link fallback from entry.link
+        // only if it was set as fallback (i.e., entry.link equals entry.id). We detect this
+        // by checking: if has_explicit_link, entry.link was already overwritten by <link> arm.
+        // No additional cleanup needed — <link> arm overwrites entry.link directly.
+    }
+
     // dc:creator takes precedence over <author>
     if let Some(dc) = &entry.dc_creator {
         entry.author = Some(dc.clone());
@@ -1027,6 +1041,8 @@ fn parse_item_standard(
     base_ctx: &BaseUrlContext,
     item_lang: Option<&str>,
     bozo: &mut bool,
+    has_explicit_link: &mut bool,
+    guid_is_permalink: &mut Option<bool>,
 ) -> Result<()> {
     match tag {
         b"title" => {
@@ -1051,6 +1067,7 @@ fn parse_item_standard(
                 },
                 limits.max_links_per_entry,
             );
+            *has_explicit_link = true;
         }
         b"description" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -1069,8 +1086,12 @@ fn parse_item_standard(
             let (text, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
             entry.id = Some(text.clone().into());
-            entry.guidislink = Some(is_permalink);
-            // Use guid as entry.link fallback when it is a permalink and no <link> present
+            // Defer guidislink computation: need to know if explicit <link> was present.
+            // guidislink = isPermaLink AND no explicit <link> element in the item.
+            // Order is not guaranteed, so we track in guid_is_permalink and compute after loop.
+            *guid_is_permalink = Some(is_permalink);
+            // Use guid as entry.link fallback when it is a permalink and no <link> present yet.
+            // If <link> appears after <guid>, the fallback will be overwritten — that is correct.
             if is_permalink && entry.link.is_none() {
                 let resolved = base_ctx.resolve_safe(&text);
                 entry.link = Some(resolved.clone());
@@ -2279,7 +2300,7 @@ mod tests {
     #[test]
     fn test_parse_rss_guid_permalink_does_not_override_explicit_link() {
         // When both <link> and <guid isPermaLink="true"> are present,
-        // <link> takes priority for entry.link
+        // guidislink must be false — guid is just an identifier when <link> exists.
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
@@ -2295,7 +2316,98 @@ mod tests {
             feed.entries[0].link.as_deref(),
             Some("http://example.com/explicit-link")
         );
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_guid_before_link() {
+        // <guid> appears before <link> — order must not affect guidislink result
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="true">http://example.com/guid</guid>
+                    <link>http://example.com/explicit-link</link>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/explicit-link")
+        );
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_no_link_permalink_true() {
+        // No <link>, isPermaLink=true — guidislink must be true
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="true">http://example.com/guid</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
         assert_eq!(feed.entries[0].guidislink, Some(true));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_no_link_permalink_false() {
+        // No <link>, isPermaLink=false — guidislink must be false
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="false">tag:example.com,2024:item1</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_explicit_link_permalink_false() {
+        // Has <link>, isPermaLink=false — guidislink must be false
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <link>http://example.com/link</link>
+                    <guid isPermaLink="false">tag:example.com,2024:item2</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_default_guid_with_explicit_link() {
+        // Has <link> + default guid (isPermaLink defaults to true) — guidislink must be false
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <link>http://example.com/link</link>
+                    <guid>http://example.com/guid</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/link")
+        );
     }
 
     #[test]
