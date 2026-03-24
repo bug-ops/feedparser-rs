@@ -743,6 +743,34 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_rss10_with_syndication_sy_prefix() {
+        let xml = br#"<?xml version="1.0"?>
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+                 xmlns="http://purl.org/rss/1.0/"
+                 xmlns:sy="http://purl.org/rss/1.0/modules/syndication/">
+            <channel rdf:about="http://example.com/">
+                <title>Test</title>
+                <link>http://example.com</link>
+                <description>Test</description>
+                <sy:updatePeriod>daily</sy:updatePeriod>
+                <sy:updateFrequency>1</sy:updateFrequency>
+                <sy:updateBase>2024-06-01T00:00:00Z</sy:updateBase>
+            </channel>
+        </rdf:RDF>"#;
+
+        let feed = parse_rss10(xml).unwrap();
+        assert!(feed.feed.syndication.is_some());
+
+        let syn = feed.feed.syndication.as_ref().unwrap();
+        assert_eq!(
+            syn.update_period,
+            Some(crate::namespace::syndication::UpdatePeriod::Daily)
+        );
+        assert_eq!(syn.update_frequency, Some(1));
+        assert_eq!(syn.update_base.as_deref(), Some("2024-06-01T00:00:00Z"));
+    }
+
+    #[test]
     fn test_rss10_namespaces_on_rdf_root() {
         let xml = br#"<?xml version="1.0"?>
 <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"

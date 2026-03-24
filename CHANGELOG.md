@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Core: syndication namespace elements (`updatePeriod`, `updateFrequency`, `updateBase`) are now recognized with both `sy:` and `syn:` prefixes; previously only `syn:` was recognized, causing `feed.syndication` to return `None` for feeds using the more common `sy:` prefix (#191)
 - Core, Python, Node.js bindings: expose `entry.guidislink` (`bool`) indicating whether an RSS `<guid>` has `isPermaLink="true"` (or attribute absent, which defaults to true per RSS 2.0 spec); when `guidislink` is true and no `<link>` element is present, `entry.link` now falls back to the guid URL, matching Python feedparser behavior (#179)
 - Core: `entry.podcast.transcript` and `entry.podcast.person` are now populated from the same data as `entry.podcast_transcripts` and `entry.podcast_persons`; `entry.podcast` is now non-None whenever any Podcast 2.0 namespace element (transcript, person, soundbite, or chapters) is present (#183)
 - Core: `<media:content>` elements nested inside a `<media:group>` wrapper are now parsed into `entry.media_content` (and `entry.media_thumbnail` for `<media:thumbnail>`) for both RSS and Atom feeds; previously only top-level `<media:content>` elements were recognized (#184)
