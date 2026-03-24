@@ -86,6 +86,76 @@ impl PyItunesFeedMeta {
             self.inner.categories.len()
         )
     }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<pyo3::Py<pyo3::PyAny>> {
+        use pyo3::IntoPyObjectExt;
+        match key {
+            "author" => self.inner.author.as_deref().into_py_any(py),
+            "explicit" => self.inner.explicit.into_py_any(py),
+            "image" => self.inner.image.as_deref().into_py_any(py),
+            "keywords" => self.inner.keywords.clone().into_py_any(py),
+            "podcast_type" => self.inner.podcast_type.as_deref().into_py_any(py),
+            "complete" => self.inner.complete.into_py_any(py),
+            "new_feed_url" => self.inner.new_feed_url.as_deref().into_py_any(py),
+            "block" => self.inner.block.into_py_any(py),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(
+            key,
+            "author"
+                | "explicit"
+                | "image"
+                | "keywords"
+                | "podcast_type"
+                | "complete"
+                | "new_feed_url"
+                | "block"
+        )
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(
+        &self,
+        py: Python<'_>,
+        key: &str,
+        default: Option<pyo3::Py<pyo3::PyAny>>,
+    ) -> PyResult<pyo3::Py<pyo3::PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec![
+            "author",
+            "explicit",
+            "image",
+            "keywords",
+            "podcast_type",
+            "complete",
+            "new_feed_url",
+            "block",
+        ]
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<pyo3::Py<pyo3::PyAny>>> {
+        self.keys()
+            .into_iter()
+            .map(|key| self.__getitem__(py, key))
+            .collect()
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, pyo3::Py<pyo3::PyAny>)>> {
+        self.keys()
+            .into_iter()
+            .map(|key| Ok((key.to_string(), self.__getitem__(py, key)?)))
+            .collect()
+    }
 }
 
 #[pyclass(name = "ItunesEntryMeta", module = "feedparser_rs", from_py_object)]
@@ -150,6 +220,76 @@ impl PyItunesEntryMeta {
         } else {
             "ItunesEntryMeta()".to_string()
         }
+    }
+
+    fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<pyo3::Py<pyo3::PyAny>> {
+        use pyo3::IntoPyObjectExt;
+        match key {
+            "title" => self.inner.title.as_deref().into_py_any(py),
+            "author" => self.inner.author.as_deref().into_py_any(py),
+            "duration" => self.inner.duration.as_deref().into_py_any(py),
+            "explicit" => self.inner.explicit.into_py_any(py),
+            "image" => self.inner.image.as_deref().into_py_any(py),
+            "episode" => self.inner.episode.as_deref().into_py_any(py),
+            "season" => self.inner.season.as_deref().into_py_any(py),
+            "episode_type" => self.inner.episode_type.as_deref().into_py_any(py),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(
+            key,
+            "title"
+                | "author"
+                | "duration"
+                | "explicit"
+                | "image"
+                | "episode"
+                | "season"
+                | "episode_type"
+        )
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(
+        &self,
+        py: Python<'_>,
+        key: &str,
+        default: Option<pyo3::Py<pyo3::PyAny>>,
+    ) -> PyResult<pyo3::Py<pyo3::PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec![
+            "title",
+            "author",
+            "duration",
+            "explicit",
+            "image",
+            "episode",
+            "season",
+            "episode_type",
+        ]
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<pyo3::Py<pyo3::PyAny>>> {
+        self.keys()
+            .into_iter()
+            .map(|key| self.__getitem__(py, key))
+            .collect()
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, pyo3::Py<pyo3::PyAny>)>> {
+        self.keys()
+            .into_iter()
+            .map(|key| Ok((key.to_string(), self.__getitem__(py, key)?)))
+            .collect()
     }
 }
 

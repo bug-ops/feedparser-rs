@@ -53,6 +53,49 @@ impl PyTextConstruct {
             &self.inner.value.chars().take(50).collect::<String>()
         )
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "value" => Ok(Some(self.inner.value.clone())),
+            "type" => Ok(Some(self.content_type().to_owned())),
+            "language" => Ok(self.inner.language.as_deref().map(str::to_owned)),
+            "base" => Ok(self.inner.base.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "value" | "type" | "language" | "base")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["value", "type", "language", "base"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.value.clone()),
+            Some(self.content_type().to_owned()),
+            self.inner.language.as_deref().map(str::to_owned),
+            self.inner.base.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
 }
 
 #[pyclass(name = "Link", module = "feedparser_rs", from_py_object)]
@@ -133,6 +176,40 @@ impl PyLink {
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "href" | "rel" | "type" | "title" | "hreflang")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["href", "rel", "type", "title", "hreflang"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.href.to_string()),
+            self.inner.rel.as_deref().map(str::to_owned),
+            self.inner.link_type.as_deref().map(str::to_owned),
+            self.inner.title.as_deref().map(str::to_owned),
+            self.inner.hreflang.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
 }
 
 #[pyclass(name = "Person", module = "feedparser_rs", from_py_object)]
@@ -171,6 +248,38 @@ impl PyPerson {
             "href" => Ok(self.inner.uri.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "name" | "email" | "href")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["name", "email", "href"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            self.inner.name.as_deref().map(str::to_owned),
+            self.inner.email.as_deref().map(str::to_owned),
+            self.inner.uri.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 
     fn __repr__(&self) -> String {
@@ -224,6 +333,38 @@ impl PyTag {
             "label" => Ok(self.inner.label.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "term" | "scheme" | "label")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["term", "scheme", "label"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.term.to_string()),
+            self.inner.scheme.as_deref().map(str::to_owned),
+            self.inner.label.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 }
 
@@ -323,6 +464,44 @@ impl PyImage {
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(
+            key,
+            "href" | "title" | "link" | "description" | "width" | "height"
+        )
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["href", "title", "link", "description", "width", "height"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.url.to_string()),
+            self.inner.title.as_deref().map(str::to_owned),
+            self.inner.link.as_deref().map(str::to_owned),
+            self.inner.description.as_deref().map(str::to_owned),
+            self.inner.width.map(|v| v.to_string()),
+            self.inner.height.map(|v| v.to_string()),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
 }
 
 #[pyclass(name = "Enclosure", module = "feedparser_rs", from_py_object)]
@@ -370,6 +549,38 @@ impl PyEnclosure {
             "length" => Ok(self.inner.length.clone()),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "href" | "type" | "length")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["href", "type", "length"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.url.to_string()),
+            self.inner.enclosure_type.as_deref().map(str::to_owned),
+            self.inner.length.clone(),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 }
 
@@ -432,6 +643,39 @@ impl PyContent {
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "value" | "type" | "language" | "base")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["value", "type", "language", "base"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.value.clone()),
+            self.inner.content_type.as_deref().map(str::to_owned),
+            self.inner.language.as_deref().map(str::to_owned),
+            self.inner.base.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
 }
 
 #[pyclass(name = "Generator", module = "feedparser_rs", from_py_object)]
@@ -486,6 +730,38 @@ impl PyGenerator {
             "version" => Ok(self.inner.version.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "name" | "href" | "version")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["name", "href", "version"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.name.clone()),
+            self.inner.href.as_deref().map(str::to_owned),
+            self.inner.version.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 }
 
@@ -568,6 +844,59 @@ impl PySource {
         } else {
             "Source()".to_string()
         }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(
+            key,
+            "title"
+                | "href"
+                | "link"
+                | "id"
+                | "links"
+                | "updated"
+                | "updated_parsed"
+                | "rights"
+                | "guidislink"
+        )
+    }
+
+    /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, py: Python<'_>, key: &str, default: Option<Py<PyAny>>) -> PyResult<Py<PyAny>> {
+        match self.__getitem__(py, key) {
+            Ok(v) if v.is_none(py) => Ok(default.unwrap_or_else(|| py.None())),
+            Ok(v) => Ok(v),
+            Err(_) => Ok(default.unwrap_or_else(|| py.None())),
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec![
+            "title",
+            "href",
+            "link",
+            "id",
+            "links",
+            "updated",
+            "updated_parsed",
+            "rights",
+            "guidislink",
+        ]
+    }
+
+    fn values(&self, py: Python<'_>) -> PyResult<Vec<Py<PyAny>>> {
+        self.keys()
+            .into_iter()
+            .map(|key| self.__getitem__(py, key))
+            .collect()
+    }
+
+    fn items(&self, py: Python<'_>) -> PyResult<Vec<(String, Py<PyAny>)>> {
+        self.keys()
+            .into_iter()
+            .map(|key| Ok((key.to_string(), self.__getitem__(py, key)?)))
+            .collect()
     }
 
     fn __getitem__(&self, py: Python<'_>, key: &str) -> PyResult<Py<PyAny>> {

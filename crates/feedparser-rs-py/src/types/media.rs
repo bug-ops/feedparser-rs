@@ -46,6 +46,47 @@ impl PyMediaThumbnail {
             && self.inner.width == other.inner.width
             && self.inner.height == other.inner.height
     }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "url" => Ok(Some(self.inner.url.to_string())),
+            "width" => Ok(self.inner.width.as_deref().map(str::to_owned)),
+            "height" => Ok(self.inner.height.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "url" | "width" | "height")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["url", "width", "height"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.url.to_string()),
+            self.inner.width.as_deref().map(str::to_owned),
+            self.inner.height.as_deref().map(str::to_owned),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
 }
 
 /// Represents a Media RSS content item.
@@ -143,6 +184,60 @@ impl PyMediaContent {
             self.inner.url,
             self.inner.content_type.as_deref().unwrap_or("unknown")
         )
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "url" => Ok(Some(self.inner.url.to_string())),
+            "type" => Ok(self.inner.content_type.as_deref().map(str::to_owned)),
+            "medium" => Ok(self.inner.medium.as_deref().map(str::to_owned)),
+            "width" => Ok(self.inner.width.as_deref().map(str::to_owned)),
+            "height" => Ok(self.inner.height.as_deref().map(str::to_owned)),
+            "duration" => Ok(self.inner.duration.as_deref().map(str::to_owned)),
+            "filesize" => Ok(self.inner.filesize.map(|v| v.to_string())),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(
+            key,
+            "url" | "type" | "medium" | "width" | "height" | "duration" | "filesize"
+        )
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec![
+            "url", "type", "medium", "width", "height", "duration", "filesize",
+        ]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            Some(self.inner.url.to_string()),
+            self.inner.content_type.as_deref().map(str::to_owned),
+            self.inner.medium.as_deref().map(str::to_owned),
+            self.inner.width.as_deref().map(str::to_owned),
+            self.inner.height.as_deref().map(str::to_owned),
+            self.inner.duration.as_deref().map(str::to_owned),
+            self.inner.filesize.map(|v| v.to_string()),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 
     fn __eq__(&self, other: &Self) -> bool {
