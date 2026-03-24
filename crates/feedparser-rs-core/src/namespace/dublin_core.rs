@@ -117,10 +117,9 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
         "date" => {
             if let Some(dt) = parse_date(text) {
                 entry.dc_date = Some(dt);
-                // Prefer published over updated for entries
-                if entry.published.is_none() {
-                    entry.published = Some(dt);
-                    entry.published_str = Some(text.to_string());
+                if entry.updated.is_none() {
+                    entry.updated = Some(dt);
+                    entry.updated_str = Some(text.to_string());
                 }
             }
         }
@@ -240,11 +239,12 @@ mod tests {
     }
 
     #[test]
-    fn test_entry_published_from_dc_date() {
+    fn test_entry_updated_from_dc_date() {
         let mut entry = Entry::default();
         handle_entry_element("date", "2024-01-15T10:30:00Z", &mut entry);
 
-        assert!(entry.published.is_some());
+        assert!(entry.updated.is_some());
+        assert!(entry.published.is_none());
     }
 
     #[test]
