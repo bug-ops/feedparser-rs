@@ -19,8 +19,8 @@ use crate::{
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
-    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_xml_lang, init_feed,
-    is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag,
+    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_lang,
+    init_feed, is_content_tag, is_dc_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag,
     is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
 };
 
@@ -116,7 +116,12 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
 
     loop {
         match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == b"rss" => {
+                extract_namespaces(&e, &mut feed, &limits);
+            }
             Ok(Event::Start(e)) if e.local_name().as_ref() == b"channel" => {
+                // Some feeds declare xmlns on <channel> rather than <rss>
+                extract_namespaces(&e, &mut feed, &limits);
                 let channel_lang = extract_xml_lang(&e, limits.max_attribute_length);
                 depth += 1;
                 if let Err(e) = parse_channel(
@@ -2864,5 +2869,80 @@ mod tests {
 </channel></rss>"#;
         let feed = parse_rss20(xml).unwrap();
         assert_eq!(feed.entries[0].summary.as_deref(), Some("<p>Full HTML</p>"));
+    }
+
+    #[test]
+    fn test_rss_namespaces_on_rss_element() {
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0"
+     xmlns:dc="http://purl.org/dc/elements/1.1/"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:media="http://search.yahoo.com/mrss/">
+<channel><title>T</title><link>http://x.com</link></channel>
+</rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.namespaces.get("dc").map(String::as_str),
+            Some("http://purl.org/dc/elements/1.1/")
+        );
+        assert_eq!(
+            feed.namespaces.get("content").map(String::as_str),
+            Some("http://purl.org/rss/1.0/modules/content/")
+        );
+        assert_eq!(
+            feed.namespaces.get("media").map(String::as_str),
+            Some("http://search.yahoo.com/mrss/")
+        );
+    }
+
+    #[test]
+    fn test_rss_namespaces_on_channel_element() {
+        // Some feeds (e.g., WordPress.com) declare xmlns on <channel> instead of <rss>
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0">
+<channel xmlns:dc="http://purl.org/dc/elements/1.1/"
+         xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<title>T</title><link>http://x.com</link>
+</channel>
+</rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.namespaces.get("dc").map(String::as_str),
+            Some("http://purl.org/dc/elements/1.1/")
+        );
+        assert_eq!(
+            feed.namespaces.get("content").map(String::as_str),
+            Some("http://purl.org/rss/1.0/modules/content/")
+        );
+    }
+
+    #[test]
+    fn test_rss_no_namespaces() {
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0"><channel><title>T</title></channel></rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.namespaces.is_empty());
+    }
+
+    #[test]
+    fn test_rss_namespace_limit_exceeded() {
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0"
+     xmlns:a="http://example.com/a"
+     xmlns:b="http://example.com/b"
+     xmlns:c="http://example.com/c"
+     xmlns:d="http://example.com/d">
+<channel><title>T</title></channel>
+</rss>"#;
+        let limits = crate::ParserLimits {
+            max_namespaces: 2,
+            ..crate::ParserLimits::default()
+        };
+        let feed = parse_rss20_with_limits(xml, limits).unwrap();
+        assert!(feed.bozo);
+        assert_eq!(feed.namespaces.len(), 2);
     }
 }
