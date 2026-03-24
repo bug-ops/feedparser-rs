@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Atom `<link>` elements without an explicit `type` attribute now get a default MIME type based on `rel`: `text/html` for `alternate`, `hub`, `enclosure`, and unknown relations; `application/atom+xml` for `self` — matching Python feedparser behavior (#146)
 - Core/bindings: `updated` and `published` string fields now preserve the original timezone string from the feed instead of normalizing to UTC; `*_parsed` fields remain correctly normalized (#140)
 - Map RSS 2.0 `<copyright>` channel element to `feed.rights` (#144)
 - Parse Atom `<rights>` at entry level into `entry.rights` and `entry.rights_detail`; map `dc:rights` on entries to `entry.rights` (when not already set by Atom) and `entry.dc_rights`; expose `rights`, `rights_detail`, `copyright`, `copyright_detail` in Python bindings and `rights`, `rightsDetail` in Node.js bindings (#139)
