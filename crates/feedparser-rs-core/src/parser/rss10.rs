@@ -16,8 +16,9 @@ use crate::{
 use quick_xml::{Reader, events::Event};
 
 use super::common::{
-    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, init_feed, is_content_tag, is_dc_tag,
-    is_georss_tag, is_syn_tag, is_thr_tag, read_text, read_text_str, skip_element,
+    EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, init_feed,
+    is_content_tag, is_dc_tag, is_georss_tag, is_syn_tag, is_thr_tag, read_text, read_text_str,
+    skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -82,7 +83,7 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
 
                 // Handle RDF root element - continue to parse children
                 if name.as_ref() == b"RDF" || full_name.as_ref() == b"rdf:RDF" {
-                    // RDF root - nothing more to do, continue parsing children
+                    extract_namespaces(&e, &mut feed, &limits);
                 } else if name.as_ref() == b"channel" {
                     // Extract rdf:about as feed ID
                     for attr in e.attributes().flatten() {
@@ -174,7 +175,14 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
             Ok(Event::End(_)) => {
                 depth = depth.saturating_sub(1);
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                if depth > 1 {
+                    feed.bozo = true;
+                    feed.bozo_exception =
+                        Some("Feed is truncated or has unclosed XML elements".to_string());
+                }
+                break;
+            }
             Err(e) => {
                 feed.bozo = true;
                 feed.bozo_exception = Some(format!("XML parsing error: {e}"));
@@ -705,5 +713,44 @@ mod tests {
         );
         assert_eq!(syn.update_frequency, Some(2));
         assert_eq!(syn.update_base.as_deref(), Some("2024-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn test_rss10_namespaces_on_rdf_root() {
+        let xml = br#"<?xml version="1.0"?>
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns="http://purl.org/rss/1.0/"
+         xmlns:dc="http://purl.org/dc/elements/1.1/"
+         xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+<channel rdf:about="http://example.com/">
+<title>T</title><link>http://example.com/</link><description>D</description>
+</channel>
+</rdf:RDF>"#;
+        let feed = parse_rss10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.namespaces.get("rdf").map(String::as_str),
+            Some("http://www.w3.org/1999/02/22-rdf-syntax-ns#")
+        );
+        assert_eq!(
+            feed.namespaces.get("").map(String::as_str),
+            Some("http://purl.org/rss/1.0/")
+        );
+        assert_eq!(
+            feed.namespaces.get("dc").map(String::as_str),
+            Some("http://purl.org/dc/elements/1.1/")
+        );
+        assert_eq!(
+            feed.namespaces.get("syn").map(String::as_str),
+            Some("http://purl.org/rss/1.0/modules/syndication/")
+        );
+    }
+
+    #[test]
+    fn test_rss10_no_namespaces() {
+        let xml = br#"<?xml version="1.0"?>
+<RDF><channel><title>T</title><link>http://x.com</link><description>D</description></channel></RDF>"#;
+        let feed = parse_rss10(xml).unwrap();
+        assert!(feed.namespaces.is_empty());
     }
 }

@@ -14,8 +14,9 @@ use quick_xml::{Reader, events::Event};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag, is_media_tag,
-    is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element, skip_to_end,
+    extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
+    is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
+    skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -64,6 +65,7 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
     let mut base_ctx = BaseUrlContext::new();
+    let mut found_feed_element = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -78,14 +80,18 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                     feed.feed.language = Some(lang.as_str().into());
                 }
 
-                for attr in e.attributes().flatten() {
-                    if attr.key.as_ref() == b"xmlns"
-                        && attr.value.as_ref() == b"http://purl.org/atom/ns#"
-                    {
-                        feed.version = FeedVersion::Atom03;
-                    }
+                extract_namespaces(&e, &mut feed, &limits);
+
+                // Use populated namespaces map to detect Atom 0.3 (avoids re-iterating attributes)
+                if feed
+                    .namespaces
+                    .get("")
+                    .is_some_and(|uri| uri == "http://purl.org/atom/ns#")
+                {
+                    feed.version = FeedVersion::Atom03;
                 }
 
+                found_feed_element = true;
                 depth += 1;
                 if let Err(e) = parse_feed_element(
                     &mut reader,
@@ -100,7 +106,14 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
                 }
                 depth = depth.saturating_sub(1);
             }
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                if !found_feed_element {
+                    feed.bozo = true;
+                    feed.bozo_exception =
+                        Some("Feed is truncated or has unclosed XML elements".to_string());
+                }
+                break;
+            }
             Err(e) => {
                 feed.bozo = true;
                 feed.bozo_exception = Some(format!("XML parsing error: {e}"));
@@ -323,7 +336,12 @@ fn parse_feed_element(
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(e)) if e.local_name().as_ref() == b"feed" => break,
-            Ok(Event::Eof) => break,
+            Ok(Event::Eof) => {
+                feed.bozo = true;
+                feed.bozo_exception =
+                    Some("Feed is truncated or has unclosed XML elements".to_string());
+                break;
+            }
             Err(e) => return Err(e.into()),
             _ => {}
         }
@@ -1652,6 +1670,47 @@ mod tests {
         assert_eq!(
             feed.entries[0].summary.as_deref(),
             Some("<p>Content only</p>")
+        );
+    }
+
+    #[test]
+    fn test_atom_namespaces_default_and_prefixed() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:dc="http://purl.org/dc/elements/1.1/">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.namespaces.get("").map(String::as_str),
+            Some("http://www.w3.org/2005/Atom")
+        );
+        assert_eq!(
+            feed.namespaces.get("dc").map(String::as_str),
+            Some("http://purl.org/dc/elements/1.1/")
+        );
+    }
+
+    #[test]
+    fn test_atom_no_namespaces() {
+        let xml = br#"<?xml version="1.0"?>
+<feed><title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated></feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert!(feed.namespaces.is_empty());
+    }
+
+    #[test]
+    fn test_atom03_detected_via_namespaces() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://purl.org/atom/ns#">
+<title>T</title><id>u</id><modified>2004-01-01T00:00:00Z</modified>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.version, crate::types::FeedVersion::Atom03);
+        assert_eq!(
+            feed.namespaces.get("").map(String::as_str),
+            Some("http://purl.org/atom/ns#")
         );
     }
 }
