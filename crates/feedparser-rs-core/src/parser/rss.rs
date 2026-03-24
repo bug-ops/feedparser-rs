@@ -493,6 +493,8 @@ fn parse_channel_standard(
         b"webMaster" => {
             let text = read_text_str(reader, buf, limits)?;
             feed.feed.set_publisher(parse_rss_person(&text));
+            // Preserve raw string in publisher flat field; publisher_detail has parsed fields
+            feed.feed.publisher = Some(text.into());
         }
         b"copyright" => {
             let text = read_text_str(reader, buf, limits)?;
@@ -3713,7 +3715,69 @@ mod tests {
         let pub_detail = feed.feed.publisher_detail.as_ref().unwrap();
         assert_eq!(pub_detail.name.as_deref(), Some("Web Master"));
         assert_eq!(pub_detail.email.as_deref(), Some("webmaster@example.com"));
-        assert_eq!(feed.feed.publisher.as_deref(), Some("Web Master"));
+        assert_eq!(
+            feed.feed.publisher.as_deref(),
+            Some("webmaster@example.com (Web Master)")
+        );
+    }
+
+    #[test]
+    fn test_rss_webmaster_email_only() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>T</title>
+                <link>http://x.com</link>
+                <webMaster>webmaster@example.com</webMaster>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        let pub_detail = feed.feed.publisher_detail.as_ref().unwrap();
+        assert_eq!(pub_detail.email.as_deref(), Some("webmaster@example.com"));
+        assert!(pub_detail.name.is_none());
+        assert_eq!(
+            feed.feed.publisher.as_deref(),
+            Some("webmaster@example.com")
+        );
+    }
+
+    #[test]
+    fn test_rss_webmaster_missing() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>T</title>
+                <link>http://x.com</link>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.publisher.is_none());
+        assert!(feed.feed.publisher_detail.is_none());
+    }
+
+    #[test]
+    fn test_rss_webmaster_malformed_no_email() {
+        // No @ sign — treated as plain name, publisher raw string still set
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>T</title>
+                <link>http://x.com</link>
+                <webMaster>not-an-email</webMaster>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.feed.publisher.as_deref(), Some("not-an-email"));
+        let pub_detail = feed.feed.publisher_detail.as_ref().unwrap();
+        assert_eq!(pub_detail.name.as_deref(), Some("not-an-email"));
+        assert!(pub_detail.email.is_none());
     }
 
     #[test]
