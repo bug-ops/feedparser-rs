@@ -296,6 +296,12 @@ fn parse_feed_element(
                                 if entry.summary.is_none() {
                                     entry.summary = entry.content.first().map(|c| c.value.clone());
                                 }
+                                // #278: dc:creator fallback for author
+                                if entry.author.is_none()
+                                    && let Some(dc) = &entry.dc_creator
+                                {
+                                    entry.author = Some(dc.clone());
+                                }
                                 // #273: promote entry.id → entry.link when no explicit link
                                 promote_entry_id_to_link(&mut entry);
                                 // #275: fallback entry.updated from entry.published
@@ -843,21 +849,21 @@ fn parse_entry(
         buf.clear();
     }
 
-    // Atom uses <id> not <guid>; guidislink is always false when <id> is present.
-    // Python feedparser never sets guidislink=true for Atom entries.
-    entry.guidislink = entry.id.as_ref().map(|_| false);
-
     Ok(entry)
 }
 
 /// Promote entry.id → entry.link when no explicit `<link>` is present (#273).
 ///
-/// `guidislink` is always `Some(false)` for Atom entries (set before this call).
+/// Sets `guidislink = Some(true)` when link is promoted from id, `Some(false)` when
+/// an explicit `<link>` was present. `guidislink` remains `None` when no `<id>` exists.
 fn promote_entry_id_to_link(entry: &mut Entry) {
-    if entry.link.is_none()
-        && let Some(id) = entry.id.as_deref()
-    {
-        entry.link = Some(id.to_string());
+    if let Some(id) = entry.id.as_deref() {
+        if entry.link.is_none() {
+            entry.link = Some(id.to_string());
+            entry.guidislink = Some(true);
+        } else {
+            entry.guidislink = Some(false);
+        }
     }
 }
 
@@ -2672,8 +2678,8 @@ mod tests {
     }
 
     #[test]
-    fn test_atom_entry_guidislink_is_false_when_id_present() {
-        // Atom entries with <id> must have guidislink=Some(false)
+    fn test_atom_entry_guidislink_true_when_id_promoted_to_link() {
+        // #285: when id is promoted to link, guidislink must be Some(true)
         let xml = br#"<?xml version="1.0"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
             <title>Test</title>
@@ -2685,7 +2691,30 @@ mod tests {
         </feed>"#;
 
         let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(true));
+        assert_eq!(feed.entries[0].link.as_deref(), Some("urn:uuid:1234"));
+    }
+
+    #[test]
+    fn test_atom_entry_guidislink_false_when_explicit_link_present() {
+        // #285: when explicit <link> is present, guidislink must be Some(false)
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <link href="https://example.com/entry"/>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
         assert_eq!(feed.entries[0].guidislink, Some(false));
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("https://example.com/entry")
+        );
     }
 
     #[test]
@@ -2702,5 +2731,44 @@ mod tests {
 
         let feed = parse_atom10(xml).unwrap();
         assert_eq!(feed.entries[0].guidislink, None);
+    }
+
+    #[test]
+    fn test_atom_entry_dc_creator_fallback_author() {
+        // #278: dc:creator must be used as fallback for entry.author
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <dc:creator>Jane Doe</dc:creator>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].author.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn test_atom_entry_author_takes_precedence_over_dc_creator() {
+        // #278: explicit <author> must take precedence over dc:creator
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <author><name>John Smith</name></author>
+                <dc:creator>Jane Doe</dc:creator>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].author.as_deref(), Some("John Smith"));
     }
 }
