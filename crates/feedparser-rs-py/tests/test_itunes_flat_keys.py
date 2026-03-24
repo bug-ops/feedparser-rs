@@ -34,17 +34,17 @@ def parsed():
 
 def test_entry_itunes_duration_flat(parsed):
     e = parsed.entries[0]
-    assert e["itunes_duration"] == 1800
+    assert e["itunes_duration"] == "1800"
 
 
 def test_entry_itunes_episode_flat(parsed):
     e = parsed.entries[0]
-    assert e["itunes_episode"] == 1
+    assert e["itunes_episode"] == "1"
 
 
 def test_entry_itunes_season_flat(parsed):
     e = parsed.entries[0]
-    assert e["itunes_season"] == 2
+    assert e["itunes_season"] == "2"
 
 
 def test_entry_itunes_explicit_flat(parsed):
@@ -64,8 +64,8 @@ def test_entry_itunes_author_flat(parsed):
 
 def test_entry_nested_still_works(parsed):
     e = parsed.entries[0]
-    assert e.itunes.duration == 1800
-    assert e.itunes.episode == 1
+    assert e.itunes.duration == "1800"
+    assert e.itunes.episode == "1"
 
 
 def test_unknown_key_raises_keyerror(parsed):

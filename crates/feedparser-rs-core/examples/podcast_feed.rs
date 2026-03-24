@@ -192,25 +192,15 @@ fn display_episodes(feed: &feedparser_rs::ParsedFeed) {
         if let Some(itunes) = &entry.itunes {
             println!("  iTunes:");
 
-            if let Some(duration) = itunes.duration {
-                println!("    Duration: {duration} seconds");
-
-                // Convert to human-readable format
-                let hours = duration / 3600;
-                let minutes = (duration % 3600) / 60;
-                let seconds = duration % 60;
-                if hours > 0 {
-                    println!("    ({hours:02}:{minutes:02}:{seconds:02})");
-                } else {
-                    println!("    ({minutes}:{seconds:02})");
-                }
+            if let Some(duration) = &itunes.duration {
+                println!("    Duration: {duration}");
             }
 
-            if let Some(episode_num) = itunes.episode {
+            if let Some(episode_num) = &itunes.episode {
                 println!("    Episode Number: {episode_num}");
             }
 
-            if let Some(season) = itunes.season {
+            if let Some(season) = &itunes.season {
                 println!("    Season: {season}");
             }
 

@@ -8,7 +8,7 @@ use crate::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person, PodcastChapters,
         PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
-        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
+        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{
         base_url::BaseUrlContext,
@@ -1184,7 +1184,9 @@ fn parse_item_itunes(
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-        itunes.duration = parse_duration(&text);
+        if !text.is_empty() {
+            itunes.duration = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit") {
         let text = read_text_str(reader, buf, limits)?;
@@ -1209,14 +1211,18 @@ fn parse_item_itunes(
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-        itunes.episode = text.parse().ok();
+        if !text.is_empty() {
+            itunes.episode = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"season") {
         let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-        itunes.season = text.parse().ok();
+        if !text.is_empty() {
+            itunes.season = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"episodeType") {
         let text = read_text_str(reader, buf, limits)?;
@@ -2518,14 +2524,14 @@ mod tests {
         let itunes = entry.itunes.as_ref().unwrap();
 
         assert_eq!(itunes.title.as_deref(), Some("iTunes Override Title"));
-        assert_eq!(itunes.duration, Some(5025)); // 1:23:45 in seconds
+        assert_eq!(itunes.duration.as_deref(), Some("1:23:45"));
         assert_eq!(
             itunes.image.as_deref(),
             Some("https://example.com/episode-cover.jpg")
         );
         assert_eq!(itunes.explicit, Some(true));
-        assert_eq!(itunes.episode, Some(42));
-        assert_eq!(itunes.season, Some(3));
+        assert_eq!(itunes.episode.as_deref(), Some("42"));
+        assert_eq!(itunes.season.as_deref(), Some("3"));
         assert_eq!(itunes.episode_type.as_deref(), Some("full"));
     }
 
@@ -2540,8 +2546,13 @@ mod tests {
         </rss>"#;
         let feed1 = parse_rss20(xml1).unwrap();
         assert_eq!(
-            feed1.entries[0].itunes.as_ref().unwrap().duration,
-            Some(5025)
+            feed1.entries[0]
+                .itunes
+                .as_ref()
+                .unwrap()
+                .duration
+                .as_deref(),
+            Some("1:23:45")
         );
 
         // Test MM:SS format
@@ -2553,8 +2564,13 @@ mod tests {
         </rss>"#;
         let feed2 = parse_rss20(xml2).unwrap();
         assert_eq!(
-            feed2.entries[0].itunes.as_ref().unwrap().duration,
-            Some(1425)
+            feed2.entries[0]
+                .itunes
+                .as_ref()
+                .unwrap()
+                .duration
+                .as_deref(),
+            Some("23:45")
         );
 
         // Test seconds-only format
@@ -2566,21 +2582,26 @@ mod tests {
         </rss>"#;
         let feed3 = parse_rss20(xml3).unwrap();
         assert_eq!(
-            feed3.entries[0].itunes.as_ref().unwrap().duration,
-            Some(3661)
+            feed3.entries[0]
+                .itunes
+                .as_ref()
+                .unwrap()
+                .duration
+                .as_deref(),
+            Some("3661")
         );
 
-        // Test invalid format
+        // Test empty duration produces None
         let xml4 = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
             <channel>
-                <item><itunes:duration>invalid</itunes:duration></item>
+                <item><itunes:duration></itunes:duration></item>
             </channel>
         </rss>"#;
         let feed4 = parse_rss20(xml4).unwrap();
         assert!(
             feed4.entries[0].itunes.as_ref().unwrap().duration.is_none(),
-            "Invalid duration should result in None"
+            "Empty duration should result in None"
         );
     }
 
