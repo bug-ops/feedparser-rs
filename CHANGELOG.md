@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- RFC2822 date parsing now tolerates incorrect day-of-week names, matching Python feedparser behavior (#143)
 - `TextConstruct.value` (`title_detail.value`, `summary_detail.value`, `subtitle_detail.value`, `rights_detail.value`) was always empty due to `mem::take` moving the string into the shorthand field; fixed by cloning instead (#136)
 - `TextConstruct.type` now returns MIME types matching Python feedparser: `text/plain`, `text/html`, `application/xhtml+xml` instead of short forms `text`, `html`, `xhtml` (#136)
 - Python binding: nested objects (`Enclosure`, `Tag`, `Image`, `Content`, `Generator`, `Link`, `Source`) now support dict-like subscript access (`obj['key']`), matching Python feedparser `FeedParserDict` behaviour; unknown keys raise `KeyError` (#134)
