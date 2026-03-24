@@ -147,6 +147,41 @@ def test_case_insensitive_update_period():
     assert d.feed.syndication.update_period == "hourly"
 
 
+def test_syndication_flat_keys():
+    """Test flat sy_* key access on feed for Python feedparser compatibility (#293)."""
+    feed_xml = b"""<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:syn="http://purl.org/rss/1.0/modules/syndication/">
+      <channel>
+        <title>Test</title>
+        <link>https://example.com</link>
+        <syn:updatePeriod>daily</syn:updatePeriod>
+        <syn:updateFrequency>2</syn:updateFrequency>
+        <syn:updateBase>2024-01-01T00:00:00Z</syn:updateBase>
+      </channel>
+    </rdf:RDF>"""
+    d = feedparser_rs.parse(feed_xml)
+    assert d.feed["sy_updateperiod"] == "daily"
+    assert d.feed["sy_updatefrequency"] == "2"
+    assert d.feed["sy_updatebase"] == "2024-01-01T00:00:00Z"
+
+
+def test_syndication_flat_keys_absent():
+    """Test that flat sy_* keys return None when syndication is absent."""
+    feed_xml = b"""<?xml version="1.0"?>
+    <rss version="2.0">
+      <channel>
+        <title>Test</title>
+        <link>https://example.com</link>
+      </channel>
+    </rss>"""
+    d = feedparser_rs.parse(feed_xml)
+    assert d.feed.get("sy_updateperiod") is None
+    assert d.feed.get("sy_updatefrequency") is None
+    assert d.feed.get("sy_updatebase") is None
+
+
 def test_partial_syndication():
     """Test feed with only some syndication fields"""
     feed_xml = b"""<?xml version="1.0"?>

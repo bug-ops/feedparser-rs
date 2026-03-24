@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: `itunes:owner` was already parsed in Atom feeds with both `<itunes:name>` and `<itunes:email>` children; no change needed (#266)
 - Core: `itunes:explicit` values `"false"`, `"no"`, `"clean"` now return `None` (not `Some(false)`); only `"yes"`, `"true"`, `"explicit"` return `Some(true)` — matches Python feedparser behavior (#206)
 
+- Python bindings: expose flat `itunes_block`, `itunes_complete`, `itunes_type`, `itunes_new-feed-url` fields directly on feed dict, matching Python feedparser API (#232)
+- Python bindings: expose flat `sy_updateperiod`, `sy_updatefrequency`, `sy_updatebase` fields directly on feed dict, matching Python feedparser API (#293)
+- Python bindings: `PodcastPerson` now supports dict protocol (`__getitem__`, `get`, `keys`, `values`, `items`), consistent with other struct types (#300)
+
 - Core: syndication module (`syn:`/`sy:` namespace) is now parsed in RSS 2.0 feeds; previously only RSS 1.0 feeds were supported — RSS 2.0 feeds with `<syn:updatePeriod>` etc. returned `feed.syndication = None` (#237)
 - Core: `syn:updateFrequency` / `sy:updateFrequency` now returns the raw string value (e.g. `"2"`) instead of an integer, matching Python feedparser behavior (#268, #220)
 - Python bindings: expose `thr:in-reply-to` as `entry['thr_in-reply-to']` returning the first element as a plain dict with keys `ref`, `href`, `type`, `source` (non-None only), matching Python feedparser API; `entry.thr_in_reply_to` (underscore) retains the full list of `InReplyTo` objects (#267, #245)
