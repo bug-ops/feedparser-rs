@@ -184,7 +184,8 @@ fn parse_channel(
                 // Use full qualified name to distinguish standard RSS tags from namespaced tags
                 match tag.as_slice() {
                     b"title" | b"link" | b"description" | b"language" | b"pubDate"
-                    | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"copyright"
+                    | b"lastBuildDate" | b"managingEditor" | b"webMaster" | b"generator"
+                    | b"ttl" | b"copyright"
                         if !is_empty =>
                     {
                         parse_channel_standard(
@@ -271,7 +272,7 @@ fn parse_channel_item(
     let effective_lang = item_lang.or(channel_lang);
 
     match parse_item(reader, buf, limits, depth, base_ctx, effective_lang) {
-        Ok((entry, has_attr_errors, has_entity_bozo)) => {
+        Ok((mut entry, has_attr_errors, has_entity_bozo)) => {
             if has_attr_errors {
                 feed.bozo = true;
                 feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
@@ -279,6 +280,9 @@ fn parse_channel_item(
             if has_entity_bozo && !feed.bozo {
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+            }
+            if entry.summary.is_none() {
+                entry.summary = entry.content.first().map(|c| c.value.clone());
             }
             feed.entries.push(entry);
         }
@@ -438,6 +442,20 @@ fn parse_channel_standard(
                 None if !text.is_empty() => {
                     feed.bozo = true;
                     feed.bozo_exception = Some("Invalid pubDate format".to_string());
+                }
+                None => {}
+            }
+        }
+        b"lastBuildDate" => {
+            let text = read_text_str(reader, buf, limits)?;
+            match parse_date(&text) {
+                Some(dt) => {
+                    feed.feed.updated = Some(dt);
+                    feed.feed.updated_str = Some(text);
+                }
+                None if !text.is_empty() => {
+                    feed.bozo = true;
+                    feed.bozo_exception = Some("Invalid lastBuildDate format".to_string());
                 }
                 None => {}
             }
@@ -1722,6 +1740,51 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_rss_last_build_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <lastBuildDate>Sat, 14 Dec 2024 10:30:00 +0000</lastBuildDate>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "valid feed must not be bozo");
+        assert!(
+            feed.feed.updated.is_some(),
+            "feed.updated must be populated from lastBuildDate"
+        );
+        assert_eq!(
+            feed.feed.updated_str.as_deref(),
+            Some("Sat, 14 Dec 2024 10:30:00 +0000")
+        );
+        let dt = feed.feed.updated.unwrap();
+        assert_eq!(dt.year(), 2024);
+        assert_eq!(dt.month(), 12);
+        assert_eq!(dt.day(), 14);
+    }
+
+    #[test]
+    fn test_parse_rss_invalid_last_build_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <lastBuildDate>not a date</lastBuildDate>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(
+            feed.bozo_exception
+                .as_deref()
+                .unwrap_or("")
+                .contains("Invalid lastBuildDate")
+        );
+    }
+
+    #[test]
     fn test_parse_rss_with_categories() {
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0">
@@ -2787,5 +2850,16 @@ mod tests {
         assert_eq!(pub_detail.name.as_deref(), Some("Web Master"));
         assert_eq!(pub_detail.email.as_deref(), Some("webmaster@example.com"));
         assert_eq!(feed.feed.publisher.as_deref(), Some("Web Master"));
+    }
+
+    #[test]
+    fn test_rss_content_encoded_fallback_to_summary() {
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/content/">
+<channel><title>T</title><link>http://x.com</link><description>D</description>
+  <item><title>I</title><content:encoded>&lt;p&gt;Full HTML&lt;/p&gt;</content:encoded></item>
+</channel></rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].summary.as_deref(), Some("<p>Full HTML</p>"));
     }
 }
