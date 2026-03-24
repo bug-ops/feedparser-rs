@@ -95,6 +95,19 @@ impl PyFeedMeta {
     }
 
     #[getter]
+    fn summary(&self) -> Option<&str> {
+        self.inner.summary.as_deref()
+    }
+
+    #[getter]
+    fn summary_detail(&self) -> Option<PyTextConstruct> {
+        self.inner
+            .summary_detail
+            .as_ref()
+            .map(|tc| PyTextConstruct::from_core(tc.clone()))
+    }
+
+    #[getter]
     fn updated(&self) -> Option<&str> {
         self.inner.updated_str.as_deref()
     }
@@ -322,6 +335,8 @@ impl PyFeedMeta {
             "links",
             "subtitle",
             "subtitle_detail",
+            "summary",
+            "summary_detail",
             "updated",
             "updated_parsed",
             "published",
@@ -417,10 +432,10 @@ impl PyFeedMeta {
                     }),
                     "summary" => self
                         .inner
-                        .subtitle
+                        .summary
                         .as_deref()
                         .and_then(|v| v.into_pyobject(py).map(|o| o.unbind().into()).ok()),
-                    "summary_detail" => self.inner.subtitle_detail.as_ref().and_then(|tc| {
+                    "summary_detail" => self.inner.summary_detail.as_ref().and_then(|tc| {
                         Py::new(py, PyTextConstruct::from_core(tc.clone()))
                             .ok()
                             .map(|p: Py<PyTextConstruct>| p.into_any())
@@ -523,6 +538,20 @@ impl PyFeedMeta {
                 .unbind()),
             "subtitle_detail" => {
                 if let Some(ref tc) = self.inner.subtitle_detail {
+                    Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "summary" => Ok(self
+                .inner
+                .summary
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "summary_detail" => {
+                if let Some(ref tc) = self.inner.summary_detail {
                     Ok(Py::new(py, PyTextConstruct::from_core(tc.clone()))?.into_any())
                 } else {
                     Ok(py.None())
@@ -726,7 +755,7 @@ impl PyFeedMeta {
                 .inner
                 .itunes
                 .as_ref()
-                .and_then(|i| i.complete.map(|b| if b { "yes" } else { "no" }))
+                .and_then(|i| i.complete.as_deref())
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -858,11 +887,11 @@ impl PyFeedMeta {
                                             .map(|p: Py<PyTextConstruct>| p.into_any())
                                     })
                                 }
-                                "summary" => self.inner.subtitle.as_deref().and_then(|v| {
+                                "summary" => self.inner.summary.as_deref().and_then(|v| {
                                     v.into_pyobject(py).map(|o| o.unbind().into()).ok()
                                 }),
                                 "summary_detail" => {
-                                    self.inner.subtitle_detail.as_ref().and_then(|tc| {
+                                    self.inner.summary_detail.as_ref().and_then(|tc| {
                                         Py::new(py, PyTextConstruct::from_core(tc.clone()))
                                             .ok()
                                             .map(|p: Py<PyTextConstruct>| p.into_any())

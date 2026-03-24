@@ -139,7 +139,11 @@ fn test_itunes_complete_yes() {
     );
 
     let itunes = feed.feed.itunes.as_ref().unwrap();
-    assert_eq!(itunes.complete, Some(true), "Podcast should be complete");
+    assert_eq!(
+        itunes.complete.as_deref(),
+        Some("Yes"),
+        "Podcast should be complete"
+    );
 }
 
 #[test]
@@ -155,8 +159,8 @@ fn test_itunes_complete_no() {
     let feed = parse(xml.as_bytes()).expect("Failed to parse feed");
     let itunes = feed.feed.itunes.as_ref().unwrap();
     assert_eq!(
-        itunes.complete,
-        Some(false),
+        itunes.complete.as_deref(),
+        Some("No"),
         "Podcast should not be complete"
     );
 }
@@ -339,16 +343,15 @@ fn test_podcast_chapters_missing_url() {
 }
 
 #[test]
-fn test_itunes_complete_case_insensitive() {
+fn test_itunes_complete_stores_raw_string() {
+    // complete now stores the raw XML text value verbatim (trimmed), not a bool.
     let test_cases = vec![
-        ("YES", Some(true)),
-        ("yes", Some(true)),
-        ("Yes", Some(true)),
-        ("yEs", Some(true)),
-        ("NO", Some(false)),
-        ("no", Some(false)),
-        ("No", Some(false)),
-        ("nO", Some(false)),
+        ("YES", "YES"),
+        ("yes", "yes"),
+        ("Yes", "Yes"),
+        ("No", "No"),
+        ("no", "no"),
+        ("maybe", "maybe"),
     ];
 
     for (value, expected) in test_cases {
@@ -365,8 +368,9 @@ fn test_itunes_complete_case_insensitive() {
         let feed = parse(xml.as_bytes()).expect("Failed to parse feed");
         let itunes = feed.feed.itunes.as_ref().unwrap();
         assert_eq!(
-            itunes.complete, expected,
-            "complete='{value}' should parse as {expected:?}"
+            itunes.complete.as_deref(),
+            Some(expected),
+            "complete='{value}' should store raw string '{expected}'"
         );
     }
 }
@@ -384,8 +388,8 @@ fn test_itunes_complete_whitespace() {
     let feed = parse(xml.as_bytes()).expect("Failed to parse feed");
     let itunes = feed.feed.itunes.as_ref().unwrap();
     assert_eq!(
-        itunes.complete,
-        Some(true),
+        itunes.complete.as_deref(),
+        Some("Yes"),
         "Whitespace around 'Yes' should be trimmed"
     );
 }
@@ -403,9 +407,9 @@ fn test_itunes_complete_invalid_value() {
     let feed = parse(xml.as_bytes()).expect("Failed to parse feed");
     let itunes = feed.feed.itunes.as_ref().unwrap();
     assert_eq!(
-        itunes.complete,
-        Some(false),
-        "Invalid value should be treated as false"
+        itunes.complete.as_deref(),
+        Some("maybe"),
+        "Raw value should be stored verbatim"
     );
 }
 

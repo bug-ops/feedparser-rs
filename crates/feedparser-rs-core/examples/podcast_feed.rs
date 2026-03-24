@@ -94,7 +94,11 @@ fn display_podcast_metadata(feed: &feedparser_rs::ParsedFeed) {
             println!("  Type: {podcast_type}");
         }
 
-        if itunes.complete == Some(true) {
+        if itunes
+            .complete
+            .as_deref()
+            .is_some_and(|v| v.eq_ignore_ascii_case("yes"))
+        {
             println!("  Status: Complete (no more episodes will be released)");
         }
     }

@@ -65,8 +65,8 @@ impl PyItunesFeedMeta {
     }
 
     #[getter]
-    fn complete(&self) -> Option<bool> {
-        self.inner.complete
+    fn complete(&self) -> Option<&str> {
+        self.inner.complete.as_deref()
     }
 
     #[getter]
@@ -77,6 +77,16 @@ impl PyItunesFeedMeta {
     #[getter]
     fn block(&self) -> Option<u8> {
         self.inner.block
+    }
+
+    #[getter]
+    fn subtitle(&self) -> Option<&str> {
+        self.inner.subtitle.as_deref()
+    }
+
+    #[getter]
+    fn summary(&self) -> Option<&str> {
+        self.inner.summary.as_deref()
     }
 
     fn __repr__(&self) -> String {
@@ -95,9 +105,11 @@ impl PyItunesFeedMeta {
             "image" => self.inner.image.as_deref().into_py_any(py),
             "keywords" => self.inner.keywords.clone().into_py_any(py),
             "podcast_type" => self.inner.podcast_type.as_deref().into_py_any(py),
-            "complete" => self.inner.complete.into_py_any(py),
+            "complete" => self.inner.complete.as_deref().into_py_any(py),
             "new_feed_url" => self.inner.new_feed_url.as_deref().into_py_any(py),
             "block" => self.inner.block.into_py_any(py),
+            "subtitle" => self.inner.subtitle.as_deref().into_py_any(py),
+            "summary" => self.inner.summary.as_deref().into_py_any(py),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
@@ -113,6 +125,8 @@ impl PyItunesFeedMeta {
                 | "complete"
                 | "new_feed_url"
                 | "block"
+                | "subtitle"
+                | "summary"
         )
     }
 
@@ -140,6 +154,8 @@ impl PyItunesFeedMeta {
             "complete",
             "new_feed_url",
             "block",
+            "subtitle",
+            "summary",
         ]
     }
 
@@ -212,6 +228,16 @@ impl PyItunesEntryMeta {
         self.inner.episode_type.as_deref()
     }
 
+    #[getter]
+    fn subtitle(&self) -> Option<&str> {
+        self.inner.subtitle.as_deref()
+    }
+
+    #[getter]
+    fn summary(&self) -> Option<&str> {
+        self.inner.summary.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         if let (Some(season), Some(episode)) =
             (self.inner.season.as_deref(), self.inner.episode.as_deref())
@@ -233,6 +259,8 @@ impl PyItunesEntryMeta {
             "episode" => self.inner.episode.as_deref().into_py_any(py),
             "season" => self.inner.season.as_deref().into_py_any(py),
             "episode_type" => self.inner.episode_type.as_deref().into_py_any(py),
+            "subtitle" => self.inner.subtitle.as_deref().into_py_any(py),
+            "summary" => self.inner.summary.as_deref().into_py_any(py),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
@@ -248,6 +276,8 @@ impl PyItunesEntryMeta {
                 | "episode"
                 | "season"
                 | "episode_type"
+                | "subtitle"
+                | "summary"
         )
     }
 
@@ -275,6 +305,8 @@ impl PyItunesEntryMeta {
             "episode",
             "season",
             "episode_type",
+            "subtitle",
+            "summary",
         ]
     }
 

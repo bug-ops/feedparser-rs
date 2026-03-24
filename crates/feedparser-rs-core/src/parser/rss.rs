@@ -5,10 +5,10 @@ use crate::{
     error::{FeedError, Result},
     namespace::{content, dublin_core, georss, media_rss, slash, syndication, threading},
     types::{
-        Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
-        ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person, PodcastChapters,
-        PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
-        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_explicit,
+        Enclosure, Entry, FeedMeta, FeedVersion, Image, ItunesCategory, ItunesEntryMeta,
+        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
+        PodcastChapters, PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson,
+        PodcastSoundbite, PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{
         base_url::BaseUrlContext,
@@ -160,6 +160,53 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     Ok(feed)
 }
 
+/// Apply iTunes subtitle/summary promotions to feed-level fields.
+///
+/// Called after all XML elements in a channel/feed have been parsed, so promotion
+/// is order-independent regardless of where itunes: elements appear in the document.
+/// Empty/whitespace-only iTunes values are filtered and do not override valid data.
+fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
+    // Clone to avoid simultaneous immutable + mutable borrow on `feed`.
+    let subtitle = feed.itunes.as_ref().and_then(|it| it.subtitle.clone());
+    let summary = feed.itunes.as_ref().and_then(|it| it.summary.clone());
+
+    if let Some(ref s) = subtitle
+        && !s.trim().is_empty()
+    {
+        feed.set_subtitle(TextConstruct::text(s));
+    }
+    if let Some(ref s) = summary
+        && !s.trim().is_empty()
+    {
+        feed.set_summary(TextConstruct::text(s));
+        if feed.subtitle.is_none() {
+            feed.set_subtitle(TextConstruct::text(s));
+        }
+    }
+}
+
+/// Apply iTunes subtitle/summary promotions to entry-level fields.
+///
+/// Called after all XML elements in an item/entry have been parsed. In RSS, entry.subtitle
+/// is iTunes-only (no native RSS <subtitle> for entries), so this always sets a previously-None
+/// field when itunes:subtitle is present. Entry.summary may already be set from <description>.
+fn apply_itunes_entry_promotions(entry: &mut Entry) {
+    // Clone to avoid simultaneous immutable + mutable borrow on `entry`.
+    let subtitle = entry.itunes.as_ref().and_then(|it| it.subtitle.clone());
+    let summary = entry.itunes.as_ref().and_then(|it| it.summary.clone());
+
+    if let Some(ref s) = subtitle
+        && !s.trim().is_empty()
+    {
+        entry.set_subtitle(TextConstruct::text(s));
+    }
+    if let Some(ref s) = summary
+        && !s.trim().is_empty()
+    {
+        entry.set_summary(TextConstruct::text(s));
+    }
+}
+
 /// Parse <channel> element (feed metadata and items)
 fn parse_channel(
     reader: &mut Reader<&[u8]>,
@@ -265,6 +312,9 @@ fn parse_channel(
         buf.clear();
     }
 
+    // Post-process: iTunes subtitle/summary always win over <description> (order-independent)
+    apply_itunes_feed_promotions(&mut feed.feed);
+
     Ok(())
 }
 
@@ -303,6 +353,12 @@ fn parse_channel_item(
             if entry.summary.is_none() {
                 entry.summary = entry.content.first().map(|c| c.value.clone());
             }
+            // Post-process: iTunes subtitle/summary promotion (order-independent).
+            // Note: RSS entry.subtitle is iTunes-only — there is no native RSS <subtitle> for
+            // entries. Unlike feed-level where <description> maps to feed.subtitle, entry
+            // <description> maps to entry.summary, so entry.subtitle is always None before
+            // itunes post-processing.
+            apply_itunes_entry_promotions(&mut entry);
             feed.entries.push(entry);
         }
         Err(e) => {
@@ -563,10 +619,6 @@ fn parse_channel_itunes(
     } else if is_itunes_tag(tag, b"subtitle") {
         if !is_empty {
             let text = read_text_str(reader, buf, limits)?;
-            // Promote to feed.subtitle if not already set
-            if feed.feed.subtitle.is_none() {
-                feed.feed.set_subtitle(TextConstruct::text(&text));
-            }
             let itunes = feed
                 .feed
                 .itunes
@@ -577,11 +629,6 @@ fn parse_channel_itunes(
     } else if is_itunes_tag(tag, b"summary") {
         if !is_empty {
             let text = read_text_str(reader, buf, limits)?;
-            // feed.subtitle doubles as summary in RSS (no separate summary field on FeedMeta)
-            // promote to subtitle only when subtitle is absent
-            if feed.feed.subtitle.is_none() {
-                feed.feed.set_subtitle(TextConstruct::text(&text));
-            }
             let itunes = feed
                 .feed
                 .itunes
@@ -672,7 +719,7 @@ fn parse_channel_itunes(
                 .feed
                 .itunes
                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-            itunes.complete = Some(text.trim().eq_ignore_ascii_case("Yes"));
+            itunes.complete = Some(text.trim().to_string());
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"new-feed-url") {
@@ -1210,10 +1257,6 @@ fn parse_item_itunes(
     } else if is_itunes_tag(tag, b"subtitle") {
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
-        // Promote to entry.subtitle if not already set
-        if entry.subtitle.is_none() {
-            entry.set_subtitle(TextConstruct::text(&text));
-        }
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
@@ -1222,10 +1265,6 @@ fn parse_item_itunes(
     } else if is_itunes_tag(tag, b"summary") {
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
-        // Promote to entry.summary if not already set
-        if entry.summary.is_none() {
-            entry.set_summary(TextConstruct::text(&text));
-        }
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
@@ -3869,7 +3908,8 @@ mod tests {
     }
 
     #[test]
-    fn test_itunes_subtitle_does_not_overwrite_existing_feed_subtitle() {
+    fn test_itunes_subtitle_overrides_existing_feed_subtitle() {
+        // itunes:subtitle always wins over <description> (post-processing is order-independent)
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
             <channel>
@@ -3879,7 +3919,7 @@ mod tests {
             </channel>
         </rss>"#;
         let feed = parse_rss20(xml).unwrap();
-        assert_eq!(feed.feed.subtitle.as_deref(), Some("Existing Subtitle"));
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("iTunes Subtitle"));
         assert_eq!(
             feed.feed.itunes.as_ref().unwrap().subtitle.as_deref(),
             Some("iTunes Subtitle")
@@ -3993,7 +4033,8 @@ mod tests {
     }
 
     #[test]
-    fn test_entry_itunes_summary_does_not_overwrite_existing() {
+    fn test_entry_itunes_summary_overrides_existing() {
+        // itunes:summary always wins over <description> for entry.summary (post-processing)
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
             <channel>
@@ -4007,7 +4048,7 @@ mod tests {
         </rss>"#;
         let feed = parse_rss20(xml).unwrap();
         let entry = &feed.entries[0];
-        assert_eq!(entry.summary.as_deref(), Some("Existing Summary"));
+        assert_eq!(entry.summary.as_deref(), Some("iTunes Summary"));
         assert_eq!(
             entry.itunes.as_ref().unwrap().summary.as_deref(),
             Some("iTunes Summary")
@@ -4155,5 +4196,260 @@ mod tests {
         );
         assert_eq!(syn.update_frequency, Some("1".to_string()));
         assert_eq!(syn.update_base.as_deref(), Some("2024-06-01T00:00:00Z"));
+    }
+
+    // =========================================================================
+    // Regression tests for #257, #281, #265
+    // =========================================================================
+
+    // TC-257-1: itunes:subtitle overrides <description> (description BEFORE subtitle)
+    #[test]
+    fn test_tc_257_1_itunes_subtitle_overrides_description_after() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <description>RSS description</description>
+                <itunes:subtitle>iTunes subtitle</itunes:subtitle>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("iTunes subtitle"));
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().subtitle.as_deref(),
+            Some("iTunes subtitle")
+        );
+    }
+
+    // TC-257-2: itunes:subtitle overrides even when it appears BEFORE description
+    #[test]
+    fn test_tc_257_2_itunes_subtitle_before_description_post_processing() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <itunes:subtitle>iTunes subtitle</itunes:subtitle>
+                <description>RSS description</description>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("iTunes subtitle"),
+            "Post-processing must override <description> with itunes:subtitle"
+        );
+    }
+
+    // TC-257-3: itunes:summary populates feed.summary, not feed.subtitle
+    #[test]
+    fn test_tc_257_3_itunes_summary_populates_feed_summary() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <description>RSS description</description>
+                <itunes:summary>iTunes summary</itunes:summary>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.summary.as_deref(), Some("iTunes summary"));
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("RSS description"),
+            "subtitle stays as <description> when itunes:subtitle is absent"
+        );
+    }
+
+    // TC-257-4: itunes:summary falls back to subtitle when no description present
+    #[test]
+    fn test_tc_257_4_itunes_summary_fallback_to_subtitle() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <itunes:summary>iTunes summary</itunes:summary>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.summary.as_deref(), Some("iTunes summary"));
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("iTunes summary"),
+            "subtitle gets summary as fallback when no <description> and no itunes:subtitle"
+        );
+    }
+
+    // TC-257-5: All three coexist — subtitle != summary != description
+    #[test]
+    fn test_tc_257_5_all_three_fields_coexist() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <description>Channel description</description>
+                <itunes:subtitle>Podcast subtitle</itunes:subtitle>
+                <itunes:summary>Podcast summary</itunes:summary>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("Podcast subtitle"));
+        assert_eq!(feed.feed.summary.as_deref(), Some("Podcast summary"));
+    }
+
+    // TC-257-6: Empty itunes:subtitle does NOT override valid <description>
+    #[test]
+    fn test_tc_257_6_empty_itunes_subtitle_no_override() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <description>Valid description</description>
+                <itunes:subtitle></itunes:subtitle>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("Valid description"),
+            "Empty itunes:subtitle must not override valid <description>"
+        );
+    }
+
+    // TC-257-7: Whitespace-only itunes:subtitle does NOT override valid <description>
+    #[test]
+    fn test_tc_257_7_whitespace_itunes_subtitle_no_override() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <description>Valid description</description>
+                <itunes:subtitle>   </itunes:subtitle>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.subtitle.as_deref(),
+            Some("Valid description"),
+            "Whitespace-only itunes:subtitle must not override valid <description>"
+        );
+    }
+
+    // TC-257-8: Entry itunes:subtitle overrides <description> for entry.subtitle
+    #[test]
+    fn test_tc_257_8_entry_itunes_subtitle_overrides_description() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel><item>
+                <description>Item description</description>
+                <itunes:subtitle>Episode subtitle</itunes:subtitle>
+            </item></channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(entry.subtitle.as_deref(), Some("Episode subtitle"));
+        // <description> maps to entry.summary, itunes:subtitle maps to entry.subtitle
+        assert_eq!(entry.summary.as_deref(), Some("Item description"));
+    }
+
+    // TC-257-M3: entry itunes:summary overrides <description> for entry.summary
+    #[test]
+    fn test_tc_257_m3_entry_itunes_summary_overrides_description() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel><item>
+                <description>Item description</description>
+                <itunes:summary>Episode summary</itunes:summary>
+            </item></channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(
+            entry.summary.as_deref(),
+            Some("Episode summary"),
+            "itunes:summary must override <description> for entry.summary"
+        );
+    }
+
+    // TC-281-1: itunes:complete 'Yes' returns raw string
+    #[test]
+    fn test_tc_281_1_itunes_complete_yes_raw_string() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel><title>P</title><itunes:complete>Yes</itunes:complete></channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().complete.as_deref(),
+            Some("Yes")
+        );
+    }
+
+    // TC-281-2: itunes:complete 'no' returns raw string
+    #[test]
+    fn test_tc_281_2_itunes_complete_no_raw_string() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel><title>P</title><itunes:complete>no</itunes:complete></channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().complete.as_deref(),
+            Some("no")
+        );
+    }
+
+    // TC-265-1: itunes:duration numeric stays as string (regression)
+    #[test]
+    fn test_tc_265_1_itunes_duration_numeric_stays_string() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel><item><itunes:duration>3600</itunes:duration></item></channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].itunes.as_ref().unwrap().duration.as_deref(),
+            Some("3600")
+        );
+    }
+
+    // TC-265-2: itunes:duration H:M:S format stays as string (regression)
+    #[test]
+    fn test_tc_265_2_itunes_duration_hms_stays_string() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel><item><itunes:duration>1:00:00</itunes:duration></item></channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].itunes.as_ref().unwrap().duration.as_deref(),
+            Some("1:00:00")
+        );
+    }
+
+    // TC-257-12: Integration — full podcast feed with all three fields
+    #[test]
+    fn test_tc_257_12_integration_full_podcast_feed() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <description>Channel description</description>
+                <itunes:subtitle>Podcast subtitle</itunes:subtitle>
+                <itunes:summary>Podcast summary</itunes:summary>
+                <itunes:complete>Yes</itunes:complete>
+                <item>
+                    <description>Episode description</description>
+                    <itunes:subtitle>Episode subtitle</itunes:subtitle>
+                    <itunes:summary>Episode summary</itunes:summary>
+                    <itunes:duration>1:23:45</itunes:duration>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("Podcast subtitle"));
+        assert_eq!(feed.feed.summary.as_deref(), Some("Podcast summary"));
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().complete.as_deref(),
+            Some("Yes")
+        );
+        let entry = &feed.entries[0];
+        assert_eq!(entry.subtitle.as_deref(), Some("Episode subtitle"));
+        assert_eq!(entry.summary.as_deref(), Some("Episode summary"));
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().duration.as_deref(),
+            Some("1:23:45")
+        );
     }
 }
