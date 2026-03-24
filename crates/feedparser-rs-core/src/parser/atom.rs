@@ -701,7 +701,13 @@ fn parse_content(
             continue;
         }
         if attr.key.as_ref() == b"type" {
-            content_type = Some(bytes_to_string(&attr.value).into());
+            let normalized = match attr.value.as_ref() {
+                b"xhtml" => "application/xhtml+xml".to_string(),
+                b"html" => "text/html".to_string(),
+                b"text" => "text/plain".to_string(),
+                _ => bytes_to_string(&attr.value),
+            };
+            content_type = Some(normalized.into());
         }
     }
 
