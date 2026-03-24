@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Core, Python, Node.js bindings: `media:rating` is now parsed at both feed level and entry level with `scheme` attribute; exposed as `feed.media_rating` / `entry.media_rating` dict `{"scheme": ..., "content": ...}` (#302, #208)
+- Core, Python, Node.js bindings: `media:keywords` is now parsed at feed level and exposed as `feed.media_keywords` string (#302)
+
 - Core: `media:content` attributes `bitrate`, `channels`, `samplingrate`, and `framerate` are now parsed and exposed as strings on `MediaContent`, matching Python feedparser behavior (#294, #253)
 - Core, Python, Node.js bindings: `media:thumbnail` elements nested inside `<media:content>` are now collected into `entry.media_thumbnail` alongside top-level thumbnails, matching Python feedparser behavior (#270)
 - Python bindings: `bitrate`, `channels`, `samplingrate`, `framerate`, `lang`, `codec`, `expression`, and `isdefault` attributes are now accessible via `MediaContent.__getitem__` / `__contains__` / `keys` / `values` dict protocol (#294)

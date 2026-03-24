@@ -7,6 +7,7 @@ use pyo3::types::PyDict;
 use super::common::{PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct};
 use super::compat::FEED_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
+use super::media::media_rating_to_py_dict;
 use super::podcast::{PyItunesFeedMeta, PyPodcastMeta};
 use super::syndication::PySyndicationMeta;
 
@@ -313,6 +314,20 @@ impl PyFeedMeta {
         self.inner.next_url.as_deref()
     }
 
+    #[getter]
+    fn media_rating(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        if let Some(ref r) = self.inner.media_rating {
+            media_rating_to_py_dict(py, r)
+        } else {
+            Ok(py.None())
+        }
+    }
+
+    #[getter]
+    fn media_keywords(&self) -> Option<&str> {
+        self.inner.media_keywords.as_deref()
+    }
+
     /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
     ///
     /// Provides `dict.get()` compatibility for Python feedparser consumers.
@@ -368,6 +383,8 @@ impl PyFeedMeta {
             "dc_rights",
             "where",
             "next_url",
+            "media_rating",
+            "media_keywords",
         ];
         let mut result = Vec::new();
         for &key in ALL_KEYS {
@@ -866,6 +883,20 @@ impl PyFeedMeta {
             "next_url" => Ok(self
                 .inner
                 .next_url
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "media_rating" => {
+                if let Some(ref r) = self.inner.media_rating {
+                    media_rating_to_py_dict(py, r)
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "media_keywords" => Ok(self
+                .inner
+                .media_keywords
                 .as_deref()
                 .into_pyobject(py)?
                 .into_any()

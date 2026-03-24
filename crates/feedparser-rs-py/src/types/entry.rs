@@ -7,7 +7,7 @@ use pyo3::types::PyDict;
 use super::common::{PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct};
 use super::compat::ENTRY_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
-use super::media::{PyMediaContent, PyMediaThumbnail};
+use super::media::{PyMediaContent, PyMediaThumbnail, media_rating_to_py_dict};
 use super::podcast::{PyItunesEntryMeta, PyPodcastEntryMeta, PyPodcastPerson, PyPodcastTranscript};
 use super::thread::PyInReplyTo;
 
@@ -376,6 +376,15 @@ impl PyEntry {
     }
 
     #[getter]
+    fn media_rating(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        if let Some(ref r) = self.inner.media_rating {
+            media_rating_to_py_dict(py, r)
+        } else {
+            Ok(py.None())
+        }
+    }
+
+    #[getter]
     fn podcast(&self) -> Option<PyPodcastEntryMeta> {
         self.inner
             .podcast
@@ -465,6 +474,7 @@ impl PyEntry {
             "dc_subject",
             "media_thumbnail",
             "media_content",
+            "media_rating",
             "podcast",
             "thr_in_reply_to",
             "thr_total",
@@ -984,6 +994,13 @@ impl PyEntry {
                     .map(|c| PyMediaContent::from_core(c.clone()))
                     .collect();
                 Ok(content.into_pyobject(py)?.into_any().unbind())
+            }
+            "media_rating" => {
+                if let Some(ref r) = self.inner.media_rating {
+                    media_rating_to_py_dict(py, r)
+                } else {
+                    Ok(py.None())
+                }
             }
             "podcast" => {
                 if let Some(ref p) = self.inner.podcast {

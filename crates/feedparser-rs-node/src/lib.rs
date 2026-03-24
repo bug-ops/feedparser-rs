@@ -10,14 +10,15 @@ use feedparser_rs::{
     InReplyTo as CoreInReplyTo, ItunesCategory as CoreItunesCategory,
     ItunesEntryMeta as CoreItunesEntryMeta, ItunesFeedMeta as CoreItunesFeedMeta,
     ItunesOwner as CoreItunesOwner, Link as CoreLink, MediaContent as CoreMediaContent,
-    MediaThumbnail as CoreMediaThumbnail, ParsedFeed as CoreParsedFeed, ParserLimits,
-    Person as CorePerson, PodcastChapters as CorePodcastChapters,
-    PodcastEntryMeta as CorePodcastEntryMeta, PodcastFunding as CorePodcastFunding,
-    PodcastMeta as CorePodcastMeta, PodcastPerson as CorePodcastPerson,
-    PodcastSoundbite as CorePodcastSoundbite, PodcastTranscript as CorePodcastTranscript,
-    PodcastValue as CorePodcastValue, PodcastValueRecipient as CorePodcastValueRecipient,
-    Source as CoreSource, SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag,
-    TextConstruct as CoreTextConstruct, TextType,
+    MediaRating as CoreMediaRating, MediaThumbnail as CoreMediaThumbnail,
+    ParsedFeed as CoreParsedFeed, ParserLimits, Person as CorePerson,
+    PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
+    PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
+    PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
+    PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
+    PodcastValueRecipient as CorePodcastValueRecipient, Source as CoreSource,
+    SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag, TextConstruct as CoreTextConstruct,
+    TextType,
 };
 
 /// Default maximum feed size (100 MB) - prevents DoS attacks
@@ -397,6 +398,12 @@ pub struct FeedMeta {
     pub podcast: Option<PodcastMeta>,
     /// JSON Feed next_url for pagination (JSON Feed 1.1)
     pub next_url: Option<String>,
+    /// Media RSS rating (`media:rating`) at feed level
+    #[napi(js_name = "mediaRating")]
+    pub media_rating: Option<MediaRating>,
+    /// Media RSS keywords (`media:keywords`) at feed level
+    #[napi(js_name = "mediaKeywords")]
+    pub media_keywords: Option<String>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -443,6 +450,8 @@ impl From<CoreFeedMeta> for FeedMeta {
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
             next_url: core.next_url,
+            media_rating: core.media_rating.map(MediaRating::from),
+            media_keywords: core.media_keywords,
         }
     }
 }
@@ -469,6 +478,24 @@ impl From<CoreInReplyTo> for InReplyTo {
             href: core.href.map(|s| s.to_string()),
             type_field: core.type_.map(|s| s.to_string()),
             source: core.source.map(|s| s.to_string()),
+        }
+    }
+}
+
+/// Media RSS rating (`media:rating`)
+#[napi(object)]
+pub struct MediaRating {
+    /// Rating scheme URI (e.g. "urn:simple", "urn:mpaa")
+    pub scheme: Option<String>,
+    /// Rating value (e.g. "adult", "nonadult", "pg-13")
+    pub content: String,
+}
+
+impl From<CoreMediaRating> for MediaRating {
+    fn from(core: CoreMediaRating) -> Self {
+        Self {
+            scheme: core.scheme,
+            content: core.content,
         }
     }
 }
@@ -576,6 +603,9 @@ pub struct Entry {
     /// Media RSS content
     #[napi(js_name = "mediaContent")]
     pub media_content: Vec<MediaContent>,
+    /// Media RSS rating (`media:rating`)
+    #[napi(js_name = "mediaRating")]
+    pub media_rating: Option<MediaRating>,
     /// iTunes episode metadata
     pub itunes: Option<ItunesEntryMeta>,
     /// Podcast 2.0 episode metadata
@@ -662,6 +692,7 @@ impl From<CoreEntry> for Entry {
                 .into_iter()
                 .map(MediaContent::from)
                 .collect(),
+            media_rating: core.media_rating.map(MediaRating::from),
             itunes: core.itunes.map(|b| ItunesEntryMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
             thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),

@@ -466,3 +466,84 @@ fn test_media_thumbnail_nested_in_media_content_atom() {
     assert!(urls.contains(&"http://example.com/nested-thumb.jpg"));
     assert!(urls.contains(&"http://example.com/top-thumb.jpg"));
 }
+
+#[test]
+fn test_rss_media_rating_feed_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>Rating Feed</title>
+            <link>http://example.com</link>
+            <media:rating scheme="urn:simple">nonadult</media:rating>
+            <media:keywords>tech, programming, rust</media:keywords>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    let rating = feed.feed.media_rating.as_ref().unwrap();
+    assert_eq!(rating.scheme.as_deref(), Some("urn:simple"));
+    assert_eq!(rating.content, "nonadult");
+    assert_eq!(
+        feed.feed.media_keywords.as_deref(),
+        Some("tech, programming, rust")
+    );
+}
+
+#[test]
+fn test_rss_media_rating_entry_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>Rating Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Rated Entry</title>
+                <media:rating scheme="urn:mpaa">pg-13</media:rating>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert_eq!(feed.entries.len(), 1);
+    let rating = feed.entries[0].media_rating.as_ref().unwrap();
+    assert_eq!(rating.scheme.as_deref(), Some("urn:mpaa"));
+    assert_eq!(rating.content, "pg-13");
+}
+
+#[test]
+fn test_atom_media_rating_feed_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Rating Atom Feed</title>
+        <id>http://example.com/rating-feed</id>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <media:rating scheme="urn:simple">adult</media:rating>
+        <media:keywords>video, streaming</media:keywords>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    let rating = feed.feed.media_rating.as_ref().unwrap();
+    assert_eq!(rating.scheme.as_deref(), Some("urn:simple"));
+    assert_eq!(rating.content, "adult");
+    assert_eq!(
+        feed.feed.media_keywords.as_deref(),
+        Some("video, streaming")
+    );
+}
+
+#[test]
+fn test_rss_media_rating_no_scheme() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel>
+            <title>Feed</title>
+            <link>http://example.com</link>
+            <media:rating>adult</media:rating>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    let rating = feed.feed.media_rating.as_ref().unwrap();
+    assert!(rating.scheme.is_none());
+    assert_eq!(rating.content, "adult");
+}
