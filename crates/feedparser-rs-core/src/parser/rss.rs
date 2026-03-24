@@ -1001,9 +1001,26 @@ fn parse_item_standard(
             });
         }
         b"guid" => {
+            // isPermaLink defaults to true per RSS 2.0 spec when attribute is absent
+            let is_permalink = find_attribute(attrs, b"isPermaLink")
+                .is_none_or(|v| v.eq_ignore_ascii_case("true"));
             let (text, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
-            entry.id = Some(text.into());
+            entry.id = Some(text.clone().into());
+            entry.guidislink = Some(is_permalink);
+            // Use guid as entry.link fallback when it is a permalink and no <link> present
+            if is_permalink && entry.link.is_none() {
+                let resolved = base_ctx.resolve_safe(&text);
+                entry.link = Some(resolved.clone());
+                entry.links.try_push_limited(
+                    Link {
+                        href: resolved.into(),
+                        rel: Some("alternate".into()),
+                        ..Default::default()
+                    },
+                    limits.max_links_per_entry,
+                );
+            }
         }
         b"pubDate" => {
             let text = read_text_str(reader, buf, limits)?;
@@ -1974,6 +1991,91 @@ mod tests {
 
         let feed = parse_rss20(xml).unwrap();
         assert_eq!(feed.entries[0].id.as_deref(), Some("http://example.com/1"));
+        assert_eq!(feed.entries[0].guidislink, Some(true));
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/1")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_guid_not_permalink() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="false">tag:example.com,2024:1</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].id.as_deref(),
+            Some("tag:example.com,2024:1")
+        );
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+        assert!(
+            feed.entries[0].link.is_none(),
+            "non-permalink guid must not set entry.link"
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_guid_default_is_permalink() {
+        // Per RSS 2.0 spec, isPermaLink defaults to true when attribute is absent
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid>http://example.com/default</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(true));
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/default")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_guid_permalink_does_not_override_explicit_link() {
+        // When both <link> and <guid isPermaLink="true"> are present,
+        // <link> takes priority for entry.link
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <link>http://example.com/explicit-link</link>
+                    <guid isPermaLink="true">http://example.com/guid</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/explicit-link")
+        );
+        assert_eq!(feed.entries[0].guidislink, Some(true));
+    }
+
+    #[test]
+    fn test_parse_rss_no_guid_guidislink_is_none() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>No guid here</title>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.entries[0].guidislink.is_none());
     }
 
     #[test]
