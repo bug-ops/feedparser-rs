@@ -17,11 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Core, Python, Node.js bindings: `PodcastMeta.medium` field exposes `podcast:medium` feed-level element (Podcast 2.0 spec: content type string such as `podcast`, `music`, `video`, etc.) (#255)
+- Core: `podcast:person` elements at feed/channel level are now collected into `feed.podcast.persons`; previously only entry-level persons were parsed (#292)
 - Core, Python, Node.js bindings: `FeedMeta.summary` and `FeedMeta.summary_detail` fields populated from `itunes:summary` (#257)
 - Python binding: `feed.summary` and `feed["summary"]` now return the `itunes:summary` value (#257)
 
 ### Fixed
 
+- Core: `podcast:person` default role changed from `"unknown"` to `"host"` per Podcast 2.0 spec; Python binding now returns `"host"` instead of `None` when no `role` attribute is present (#236)
 - Core, Python, Node.js bindings: `MediaContent.filesize` is now a `String` (was `u64`/`i64`), matching Python feedparser which preserves raw attribute values; non-numeric values like `"not_a_number"` are now retained as-is (#221)
 - Core, Python, Node.js bindings: `media:credit`, `media:copyright`, `media:rating`, `media:keywords`, and `media:description` are now parsed from RSS and Atom feeds and exposed on `Entry` as `media_credit`, `media_copyright`, `media_rating`, `media_keywords`, and `media_description` (#246, #288)
 - Core, Python, Node.js bindings: `media:rating` and `media:keywords` are now parsed at feed level and exposed as `feed.media_rating` / `feed.media_keywords` (#302, #208)

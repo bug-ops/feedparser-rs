@@ -445,11 +445,17 @@ impl PyPodcastMeta {
         self.inner.guid.as_deref()
     }
 
+    #[getter]
+    fn medium(&self) -> Option<&str> {
+        self.inner.medium.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
-            "PodcastMeta(guid='{}', persons={})",
+            "PodcastMeta(guid='{}', persons={}, medium='{}')",
             self.inner.guid.as_deref().unwrap_or("none"),
-            self.inner.persons.len()
+            self.inner.persons.len(),
+            self.inner.medium.as_deref().unwrap_or("none"),
         )
     }
 }
