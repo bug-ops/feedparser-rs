@@ -7,7 +7,9 @@ use pyo3::types::PyDict;
 use super::common::{PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct};
 use super::compat::ENTRY_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
-use super::media::{PyMediaContent, PyMediaThumbnail, media_rating_to_py_dict};
+use super::media::{
+    PyMediaContent, PyMediaCopyright, PyMediaCredit, PyMediaRating, PyMediaThumbnail,
+};
 use super::podcast::{PyItunesEntryMeta, PyPodcastEntryMeta, PyPodcastPerson, PyPodcastTranscript};
 use super::thread::PyInReplyTo;
 
@@ -376,12 +378,38 @@ impl PyEntry {
     }
 
     #[getter]
-    fn media_rating(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
-        if let Some(ref r) = self.inner.media_rating {
-            media_rating_to_py_dict(py, r)
-        } else {
-            Ok(py.None())
-        }
+    fn media_credit(&self) -> Vec<PyMediaCredit> {
+        self.inner
+            .media_credit
+            .iter()
+            .map(|c| PyMediaCredit::from_core(c.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn media_copyright(&self) -> Option<PyMediaCopyright> {
+        self.inner
+            .media_copyright
+            .as_ref()
+            .map(|c| PyMediaCopyright::from_core(c.clone()))
+    }
+
+    #[getter]
+    fn media_rating(&self) -> Option<PyMediaRating> {
+        self.inner
+            .media_rating
+            .as_ref()
+            .map(|r| PyMediaRating::from_core(r.clone()))
+    }
+
+    #[getter]
+    fn media_keywords(&self) -> Option<&str> {
+        self.inner.media_keywords.as_deref()
+    }
+
+    #[getter]
+    fn media_description(&self) -> Option<&str> {
+        self.inner.media_description.as_deref()
     }
 
     #[getter]
@@ -474,7 +502,11 @@ impl PyEntry {
             "dc_subject",
             "media_thumbnail",
             "media_content",
+            "media_credit",
+            "media_copyright",
             "media_rating",
+            "media_keywords",
+            "media_description",
             "podcast",
             "thr_in_reply_to",
             "thr_total",
@@ -995,13 +1027,43 @@ impl PyEntry {
                     .collect();
                 Ok(content.into_pyobject(py)?.into_any().unbind())
             }
-            "media_rating" => {
-                if let Some(ref r) = self.inner.media_rating {
-                    media_rating_to_py_dict(py, r)
+            "media_credit" => {
+                let credits: Vec<_> = self
+                    .inner
+                    .media_credit
+                    .iter()
+                    .map(|c| PyMediaCredit::from_core(c.clone()))
+                    .collect();
+                Ok(credits.into_pyobject(py)?.into_any().unbind())
+            }
+            "media_copyright" => {
+                if let Some(ref c) = self.inner.media_copyright {
+                    Ok(Py::new(py, PyMediaCopyright::from_core(c.clone()))?.into_any())
                 } else {
                     Ok(py.None())
                 }
             }
+            "media_rating" => {
+                if let Some(ref r) = self.inner.media_rating {
+                    Ok(Py::new(py, PyMediaRating::from_core(r.clone()))?.into_any())
+                } else {
+                    Ok(py.None())
+                }
+            }
+            "media_keywords" => Ok(self
+                .inner
+                .media_keywords
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "media_description" => Ok(self
+                .inner
+                .media_description
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "podcast" => {
                 if let Some(ref p) = self.inner.podcast {
                     Ok(Py::new(py, PyPodcastEntryMeta::from_core(p.as_ref().clone()))?.into_any())

@@ -789,8 +789,8 @@ pub struct MediaContent {
     pub content_type: Option<MimeType>,
     /// Medium type: "image", "video", "audio", "document", "executable"
     pub medium: Option<String>,
-    /// File size in bytes
-    pub filesize: Option<u64>,
+    /// File size in bytes (raw string value, as in Python feedparser)
+    pub filesize: Option<String>,
     /// Media width in pixels (raw string value, as in Python feedparser)
     pub width: Option<String>,
     /// Media height in pixels (raw string value, as in Python feedparser)
@@ -1005,7 +1005,7 @@ impl FromAttributes for MediaContent {
                 b"url" => url = Some(bytes_to_string(&attr.value)),
                 b"type" => content_type = Some(bytes_to_string(&attr.value)),
                 b"medium" => medium = Some(bytes_to_string(&attr.value)),
-                b"fileSize" => filesize = bytes_to_string(&attr.value).parse().ok(),
+                b"fileSize" => filesize = Some(bytes_to_string(&attr.value)),
                 b"width" => width = Some(bytes_to_string(&attr.value)),
                 b"height" => height = Some(bytes_to_string(&attr.value)),
                 b"duration" => duration = Some(bytes_to_string(&attr.value)),
@@ -1078,6 +1078,24 @@ impl ParseFrom<&Value> for Enclosure {
                 .map(MimeType::new),
         })
     }
+}
+
+/// Media RSS credit element (media:credit)
+#[derive(Debug, Clone, Default)]
+pub struct MediaCredit {
+    /// Credit role (e.g., "author", "producer")
+    pub role: Option<String>,
+    /// Credit scheme URI (default: "urn:ebu")
+    pub scheme: Option<String>,
+    /// Credit text content (person/entity name)
+    pub content: String,
+}
+
+/// Media RSS copyright element (media:copyright)
+#[derive(Debug, Clone, Default)]
+pub struct MediaCopyright {
+    /// Copyright URL
+    pub url: Option<String>,
 }
 
 #[cfg(test)]

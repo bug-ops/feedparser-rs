@@ -22,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Core, Python, Node.js bindings: `media:rating` is now parsed at both feed level and entry level with `scheme` attribute; exposed as `feed.media_rating` / `entry.media_rating` dict `{"scheme": ..., "content": ...}` (#302, #208)
-- Core, Python, Node.js bindings: `media:keywords` is now parsed at feed level and exposed as `feed.media_keywords` string (#302)
+- Core, Python, Node.js bindings: `MediaContent.filesize` is now a `String` (was `u64`/`i64`), matching Python feedparser which preserves raw attribute values; non-numeric values like `"not_a_number"` are now retained as-is (#221)
+- Core, Python, Node.js bindings: `media:credit`, `media:copyright`, `media:rating`, `media:keywords`, and `media:description` are now parsed from RSS and Atom feeds and exposed on `Entry` as `media_credit`, `media_copyright`, `media_rating`, `media_keywords`, and `media_description` (#246, #288)
+- Core, Python, Node.js bindings: `media:rating` and `media:keywords` are now parsed at feed level and exposed as `feed.media_rating` / `feed.media_keywords` (#302, #208)
 
 - Core: `media:content` attributes `bitrate`, `channels`, `samplingrate`, and `framerate` are now parsed and exposed as strings on `MediaContent`, matching Python feedparser behavior (#294, #253)
 - Core, Python, Node.js bindings: `media:thumbnail` elements nested inside `<media:content>` are now collected into `entry.media_thumbnail` alongside top-level thumbnails, matching Python feedparser behavior (#270)
@@ -32,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: `itunes:owner` in RSS feeds now promotes to `feed.publisher_detail` (name + email) if no publisher is already set; existing publisher from `<webMaster>` is not overridden (#280)
 - Core: `itunes:owner` was already parsed in Atom feeds with both `<itunes:name>` and `<itunes:email>` children; no change needed (#266)
 - Core: `itunes:explicit` values `"false"`, `"no"`, `"clean"` now return `None` (not `Some(false)`); only `"yes"`, `"true"`, `"explicit"` return `Some(true)` — matches Python feedparser behavior (#206)
+- Python bindings: expose flat `itunes_block`, `itunes_complete`, `itunes_type`, `itunes_new-feed-url` fields directly on feed dict, matching Python feedparser API (#232)
+- Python bindings: expose flat `sy_updateperiod`, `sy_updatefrequency`, `sy_updatebase` fields directly on feed dict, matching Python feedparser API (#293)
+- Python bindings: `PodcastPerson` now supports dict protocol (`__getitem__`, `get`, `keys`, `values`, `items`), consistent with other struct types (#300)
 - `itunes:duration` confirmed as string type in core and all bindings (regression test added) (#265)
 - Core: syndication module (`syn:`/`sy:` namespace) is now parsed in RSS 2.0 feeds; previously only RSS 1.0 feeds were supported — RSS 2.0 feeds with `<syn:updatePeriod>` etc. returned `feed.syndication = None` (#237)
 - Core: `syn:updateFrequency` / `sy:updateFrequency` now returns the raw string value (e.g. `"2"`) instead of an integer, matching Python feedparser behavior (#268, #220)

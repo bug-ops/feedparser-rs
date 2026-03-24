@@ -10,6 +10,7 @@ use feedparser_rs::{
     InReplyTo as CoreInReplyTo, ItunesCategory as CoreItunesCategory,
     ItunesEntryMeta as CoreItunesEntryMeta, ItunesFeedMeta as CoreItunesFeedMeta,
     ItunesOwner as CoreItunesOwner, Link as CoreLink, MediaContent as CoreMediaContent,
+    MediaCopyright as CoreMediaCopyright, MediaCredit as CoreMediaCredit,
     MediaRating as CoreMediaRating, MediaThumbnail as CoreMediaThumbnail,
     ParsedFeed as CoreParsedFeed, ParserLimits, Person as CorePerson,
     PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
@@ -603,9 +604,21 @@ pub struct Entry {
     /// Media RSS content
     #[napi(js_name = "mediaContent")]
     pub media_content: Vec<MediaContent>,
-    /// Media RSS rating (`media:rating`)
+    /// Media RSS credits (media:credit elements)
+    #[napi(js_name = "mediaCredit")]
+    pub media_credit: Vec<MediaCredit>,
+    /// Media RSS copyright (media:copyright element)
+    #[napi(js_name = "mediaCopyright")]
+    pub media_copyright: Option<MediaCopyright>,
+    /// Media RSS rating (media:rating element)
     #[napi(js_name = "mediaRating")]
     pub media_rating: Option<MediaRating>,
+    /// Media RSS keywords (raw comma-separated string)
+    #[napi(js_name = "mediaKeywords")]
+    pub media_keywords: Option<String>,
+    /// Media RSS description (plain text only)
+    #[napi(js_name = "mediaDescription")]
+    pub media_description: Option<String>,
     /// iTunes episode metadata
     pub itunes: Option<ItunesEntryMeta>,
     /// Podcast 2.0 episode metadata
@@ -692,7 +705,15 @@ impl From<CoreEntry> for Entry {
                 .into_iter()
                 .map(MediaContent::from)
                 .collect(),
+            media_credit: core
+                .media_credit
+                .into_iter()
+                .map(MediaCredit::from)
+                .collect(),
+            media_copyright: core.media_copyright.map(MediaCopyright::from),
             media_rating: core.media_rating.map(MediaRating::from),
+            media_keywords: core.media_keywords,
+            media_description: core.media_description,
             itunes: core.itunes.map(|b| ItunesEntryMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
             thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),
@@ -1056,8 +1077,8 @@ pub struct MediaContent {
     pub content_type: Option<String>,
     /// Medium type: "image", "video", "audio", "document", "executable"
     pub medium: Option<String>,
-    /// File size in bytes (converted from u64 with i64::MAX cap)
-    pub filesize: Option<i64>,
+    /// File size in bytes (raw string value, as in Python feedparser)
+    pub filesize: Option<String>,
     /// Width in pixels (raw string value, as in Python feedparser)
     pub width: Option<String>,
     /// Height in pixels (raw string value, as in Python feedparser)
@@ -1088,7 +1109,7 @@ impl From<CoreMediaContent> for MediaContent {
             url: core.url.into_inner(),
             content_type: core.content_type.map(|t| t.to_string()),
             medium: core.medium,
-            filesize: core.filesize.map(|f| i64::try_from(f).unwrap_or(i64::MAX)),
+            filesize: core.filesize,
             width: core.width,
             height: core.height,
             duration: core.duration,
@@ -1101,6 +1122,40 @@ impl From<CoreMediaContent> for MediaContent {
             samplingrate: core.samplingrate,
             framerate: core.framerate,
         }
+    }
+}
+
+/// Media RSS credit (media:credit element)
+#[napi(object)]
+pub struct MediaCredit {
+    /// Credit role (e.g., "author", "producer")
+    pub role: Option<String>,
+    /// Credit scheme URI (default: "urn:ebu")
+    pub scheme: Option<String>,
+    /// Credit text content (person/entity name)
+    pub content: String,
+}
+
+impl From<CoreMediaCredit> for MediaCredit {
+    fn from(core: CoreMediaCredit) -> Self {
+        Self {
+            role: core.role,
+            scheme: core.scheme,
+            content: core.content,
+        }
+    }
+}
+
+/// Media RSS copyright (media:copyright element)
+#[napi(object)]
+pub struct MediaCopyright {
+    /// Copyright URL
+    pub url: Option<String>,
+}
+
+impl From<CoreMediaCopyright> for MediaCopyright {
+    fn from(core: CoreMediaCopyright) -> Self {
+        Self { url: core.url }
     }
 }
 

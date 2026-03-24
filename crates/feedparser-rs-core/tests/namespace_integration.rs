@@ -110,7 +110,7 @@ fn test_rss_with_media_rss() {
         entry.media_content[0].content_type.as_deref(),
         Some("video/mp4")
     );
-    assert_eq!(entry.media_content[0].filesize, Some(1_024_000));
+    assert_eq!(entry.media_content[0].filesize.as_deref(), Some("1024000"));
     assert_eq!(entry.media_content[0].width.as_deref(), Some("1920"));
     assert_eq!(entry.media_content[0].height.as_deref(), Some("1080"));
     assert_eq!(entry.media_content[0].duration.as_deref(), Some("600"));
@@ -465,6 +465,54 @@ fn test_media_thumbnail_nested_in_media_content_atom() {
         .collect();
     assert!(urls.contains(&"http://example.com/nested-thumb.jpg"));
     assert!(urls.contains(&"http://example.com/top-thumb.jpg"));
+}
+
+#[test]
+fn test_media_credit_copyright_rating() {
+    let xml = include_bytes!("../../../tests/fixtures/media/media_credit_copyright_rating.xml");
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let entry = &feed.entries[0];
+
+    // filesize is now a string
+    assert_eq!(entry.media_content[0].filesize.as_deref(), Some("1024000"));
+    assert_eq!(entry.media_content[0].duration.as_deref(), Some("120"));
+
+    // media_credit
+    assert_eq!(entry.media_credit.len(), 2);
+    assert_eq!(entry.media_credit[0].role.as_deref(), Some("author"));
+    assert_eq!(entry.media_credit[0].scheme.as_deref(), Some("urn:ebu"));
+    assert_eq!(entry.media_credit[0].content, "John Doe");
+    assert_eq!(entry.media_credit[1].role.as_deref(), Some("producer"));
+    assert_eq!(entry.media_credit[1].scheme, None);
+    assert_eq!(entry.media_credit[1].content, "Jane Smith");
+
+    // media_copyright
+    let copyright = entry
+        .media_copyright
+        .as_ref()
+        .expect("media_copyright should be Some");
+    assert_eq!(
+        copyright.url.as_deref(),
+        Some("http://example.com/copyright")
+    );
+
+    // media_rating
+    let rating = entry
+        .media_rating
+        .as_ref()
+        .expect("media_rating should be Some");
+    assert_eq!(rating.scheme.as_deref(), Some("urn:simple"));
+    assert_eq!(rating.content, "nonadult");
+
+    // media_keywords
+    assert_eq!(entry.media_keywords.as_deref(), Some("tech, demo, rust"));
+
+    // media_description
+    assert_eq!(
+        entry.media_description.as_deref(),
+        Some("A test description")
+    );
 }
 
 #[test]

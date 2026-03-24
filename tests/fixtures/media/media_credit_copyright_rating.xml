@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Test Media Feed</title>
+    <link>http://example.com</link>
+    <description>Test feed for media:credit, media:copyright, media:rating</description>
+    <item>
+      <title>Test Media Fields</title>
+      <link>http://example.com/item1</link>
+      <media:content url="http://example.com/video.mp4" type="video/mp4" fileSize="1024000" duration="120"/>
+      <media:credit role="author" scheme="urn:ebu">John Doe</media:credit>
+      <media:credit role="producer">Jane Smith</media:credit>
+      <media:copyright url="http://example.com/copyright">Copyright 2024</media:copyright>
+      <media:rating scheme="urn:simple">nonadult</media:rating>
+      <media:keywords>tech, demo, rust</media:keywords>
+      <media:description type="plain">A test description</media:description>
+    </item>
+  </channel>
+</rss>

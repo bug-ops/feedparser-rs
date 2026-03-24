@@ -25,6 +25,9 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::geo::PyGeoLocation>()?;
     m.add_class::<types::media::PyMediaThumbnail>()?;
     m.add_class::<types::media::PyMediaContent>()?;
+    m.add_class::<types::media::PyMediaCredit>()?;
+    m.add_class::<types::media::PyMediaCopyright>()?;
+    m.add_class::<types::media::PyMediaRating>()?;
     m.add_class::<types::podcast::PyItunesFeedMeta>()?;
     m.add_class::<types::podcast::PyItunesEntryMeta>()?;
     m.add_class::<types::podcast::PyItunesOwner>()?;
