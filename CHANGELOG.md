@@ -17,11 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Core, Python, Node.js bindings: `PodcastMeta.medium` field exposes `podcast:medium` feed-level element (Podcast 2.0 spec: content type string such as `podcast`, `music`, `video`, etc.) (#255)
+- Core: `podcast:person` elements at feed/channel level are now collected into `feed.podcast.persons`; previously only entry-level persons were parsed (#292)
 - Core, Python, Node.js bindings: `FeedMeta.summary` and `FeedMeta.summary_detail` fields populated from `itunes:summary` (#257)
 - Python binding: `feed.summary` and `feed["summary"]` now return the `itunes:summary` value (#257)
 
 ### Fixed
 
+- Core: `podcast:person` default role changed from `"unknown"` to `"host"` per Podcast 2.0 spec; Python binding now returns `"host"` instead of `None` when no `role` attribute is present (#236)
 - Core: `itunes:summary`-only no longer incorrectly sets `feed.subtitle`; only `itunes:subtitle` promotes to `feed.subtitle` (#308)
 - Core: `feed.author` now uses `itunes:owner.name` (with email in `author_detail`) when both `itunes:owner` and `itunes:author` are present, matching Python feedparser priority (#297)
 - Core: `itunes:image` now overrides RSS `<image>` for `feed.image` regardless of element order, matching Python feedparser behavior (#287)

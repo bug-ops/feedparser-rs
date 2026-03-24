@@ -173,6 +173,8 @@ pub struct PodcastMeta {
     pub guid: Option<String>,
     /// Value-for-value payment information (podcast:value)
     pub value: Option<PodcastValue>,
+    /// Content medium type (podcast:medium)
+    pub medium: Option<String>,
 }
 
 /// Podcast 2.0 value element for monetization
