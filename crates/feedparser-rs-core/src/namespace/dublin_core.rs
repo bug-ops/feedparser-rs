@@ -47,6 +47,7 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
                 && feed.updated.is_none()
             {
                 feed.updated = Some(dt);
+                feed.updated_str = Some(text.to_string());
             }
         }
         "subject" => {
@@ -123,6 +124,7 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
                 // Prefer published over updated for entries
                 if entry.published.is_none() {
                     entry.published = Some(dt);
+                    entry.published_str = Some(text.to_string());
                 }
             }
         }

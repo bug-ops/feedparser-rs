@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Timezone Test Feed +05:30</title>
+  <link href="http://example.com"/>
+  <updated>2024-12-14T15:30:00+05:30</updated>
+  <id>http://example.com/feed</id>
+
+  <entry>
+    <title>Entry with +05:30 timezone (IST)</title>
+    <link href="http://example.com/entry1"/>
+    <id>http://example.com/entry1</id>
+    <updated>2024-12-14T14:30:00+05:30</updated>
+    <published>2024-12-13T12:00:00+05:30</published>
+    <summary>Entry with Indian Standard Time offset</summary>
+  </entry>
+</feed>

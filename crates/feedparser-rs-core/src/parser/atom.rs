@@ -175,10 +175,12 @@ fn parse_feed_element(
                     b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.updated = parse_date(&text);
+                        feed.feed.updated_str = Some(text);
                     }
                     b"published" | b"issued" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.published = parse_date(&text);
+                        feed.feed.published_str = Some(text);
                     }
                     b"author" if !is_empty => {
                         if let Ok(person) = parse_person(reader, &mut buf, limits, depth) {
@@ -377,10 +379,12 @@ fn parse_entry(
                     b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
                         entry.updated = parse_date(&text);
+                        entry.updated_str = Some(text);
                     }
                     b"published" | b"issued" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
                         entry.published = parse_date(&text);
+                        entry.published_str = Some(text);
                     }
                     b"subtitle" if !is_empty => {
                         let text = parse_text_construct(reader, buf, &element, limits)?;

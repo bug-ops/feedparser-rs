@@ -321,8 +321,12 @@ pub struct FeedMeta {
     pub subtitle_detail: Option<TextConstruct>,
     /// Last update date (milliseconds since epoch)
     pub updated: Option<i64>,
+    /// Original update date string as found in the feed (timezone preserved)
+    pub updated_str: Option<String>,
     /// Initial publication date (milliseconds since epoch)
     pub published: Option<i64>,
+    /// Original publication date string as found in the feed (timezone preserved)
+    pub published_str: Option<String>,
     /// Primary author name
     pub author: Option<String>,
     /// Detailed author information
@@ -390,7 +394,9 @@ impl From<CoreFeedMeta> for FeedMeta {
             subtitle: core.subtitle,
             subtitle_detail: core.subtitle_detail.map(TextConstruct::from),
             updated: core.updated.map(|dt| dt.timestamp_millis()),
+            updated_str: core.updated_str,
             published: core.published.map(|dt| dt.timestamp_millis()),
+            published_str: core.published_str,
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
@@ -476,8 +482,12 @@ pub struct Entry {
     pub content: Vec<Content>,
     /// Publication date (milliseconds since epoch)
     pub published: Option<i64>,
+    /// Original publication date string as found in the feed (timezone preserved)
+    pub published_str: Option<String>,
     /// Last update date (milliseconds since epoch)
     pub updated: Option<i64>,
+    /// Original update date string as found in the feed (timezone preserved)
+    pub updated_str: Option<String>,
     /// Creation date (milliseconds since epoch)
     pub created: Option<i64>,
     /// Expiration date (milliseconds since epoch)
@@ -562,7 +572,9 @@ impl From<CoreEntry> for Entry {
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),
             published: core.published.map(|dt| dt.timestamp_millis()),
+            published_str: core.published_str,
             updated: core.updated.map(|dt| dt.timestamp_millis()),
+            updated_str: core.updated_str,
             created: core.created.map(|dt| dt.timestamp_millis()),
             expired: core.expired.map(|dt| dt.timestamp_millis()),
             author: core.author.map(|s| s.to_string()),

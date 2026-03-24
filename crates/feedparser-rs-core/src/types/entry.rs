@@ -37,8 +37,12 @@ pub struct Entry {
     pub content: Vec<Content>,
     /// Publication date
     pub published: Option<DateTime<Utc>>,
+    /// Original publication date string as found in the feed (timezone preserved)
+    pub published_str: Option<String>,
     /// Last update date
     pub updated: Option<DateTime<Utc>>,
+    /// Original update date string as found in the feed (timezone preserved)
+    pub updated_str: Option<String>,
     /// Creation date
     pub created: Option<DateTime<Utc>>,
     /// Expiration date
