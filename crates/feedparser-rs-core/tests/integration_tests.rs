@@ -689,3 +689,156 @@ fn test_rss20_entity_whitespace_preserved() {
     // &amp; entity with adjacent spaces
     assert_eq!(feed.entries[4].summary.as_deref(), Some("foo & bar"));
 }
+
+#[test]
+fn test_atom_xhtml_content_preserves_markup() {
+    let xml = load_fixture("atom/xhtml-content.xml");
+    let feed = parse(&xml).unwrap();
+
+    // Entry 0: content type="xhtml" with <p>Hello <b>world</b></p>
+    let entry = &feed.entries[0];
+    assert!(!feed.bozo, "valid xhtml feed must not set bozo");
+    assert!(!entry.content.is_empty(), "xhtml content must be populated");
+    let value = &entry.content[0].value;
+    assert!(
+        value.contains("<b>world</b>"),
+        "markup must be preserved: {value}"
+    );
+    assert!(
+        value.contains("<p>"),
+        "paragraph tag must be preserved: {value}"
+    );
+    assert!(
+        !value.contains("<div"),
+        "outer div must be stripped: {value}"
+    );
+}
+
+#[test]
+fn test_atom_xhtml_summary_preserves_markup() {
+    let xml = load_fixture("atom/xhtml-content.xml");
+    let feed = parse(&xml).unwrap();
+
+    // Entry 1: summary type="xhtml" with <p>Summary with <em>markup</em></p>
+    let entry = &feed.entries[1];
+    let summary = entry.summary.as_deref().unwrap_or("");
+    assert!(
+        summary.contains("<em>markup</em>"),
+        "xhtml summary markup must be preserved: {summary}"
+    );
+    assert!(
+        !summary.contains("<div"),
+        "outer div must be stripped from summary: {summary}"
+    );
+}
+
+#[test]
+fn test_atom_xhtml_empty_content_no_panic() {
+    let xml = load_fixture("atom/xhtml-content.xml");
+    let feed = parse(&xml).unwrap();
+
+    // Entry 2: content type="xhtml" with empty <div>
+    let entry = &feed.entries[2];
+    if !entry.content.is_empty() {
+        assert_eq!(
+            entry.content[0].value, "",
+            "empty xhtml content must yield empty string"
+        );
+    }
+}
+
+#[test]
+fn test_atom_xhtml_malformed_no_div_no_panic() {
+    let xml = load_fixture("atom/xhtml-content.xml");
+    // Parsing must not panic on malformed xhtml (no div wrapper)
+    let result = parse(&xml);
+    assert!(
+        result.is_ok(),
+        "parsing malformed xhtml feed must not return error"
+    );
+}
+
+#[test]
+fn test_atom_xhtml_content_existing_fixture() {
+    // The with-content.xml fixture has a second entry with type="xhtml"
+    let xml = load_fixture("atom/with-content.xml");
+    let feed = parse(&xml).unwrap();
+
+    let xhtml_entry = feed
+        .entries
+        .iter()
+        .find(|e| !e.content.is_empty() && e.content[0].value.contains("<h2>"))
+        .or_else(|| {
+            feed.entries
+                .iter()
+                .find(|e| e.title.as_deref() == Some("Second Post with XHTML Content"))
+        });
+
+    if let Some(entry) = xhtml_entry {
+        let value = &entry.content[0].value;
+        assert!(
+            value.contains("<h2>"),
+            "h2 markup must be preserved: {value}"
+        );
+        assert!(
+            value.contains("<em>XHTML</em>"),
+            "em markup must be preserved: {value}"
+        );
+        assert!(
+            !value.contains("<div"),
+            "outer div must be stripped: {value}"
+        );
+    }
+}
+
+#[test]
+fn test_atom_content_xhtml_type_normalization() {
+    let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Feed</title>
+  <id>urn:test:xhtml-normalization</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <title>Entry</title>
+    <id>urn:test:entry1</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Hello</p></div></content>
+  </entry>
+  <entry>
+    <title>Entry 2</title>
+    <id>urn:test:entry2</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="html">&lt;p&gt;Hello&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <title>Entry 3</title>
+    <id>urn:test:entry3</id>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <content type="text">plain text</content>
+  </entry>
+</feed>"#;
+
+    let feed = parse(xml).unwrap();
+    assert_eq!(feed.entries.len(), 3);
+
+    let xhtml_type = feed.entries[0].content[0].content_type.as_deref();
+    assert_eq!(
+        xhtml_type,
+        Some("application/xhtml+xml"),
+        "xhtml should normalize to application/xhtml+xml"
+    );
+
+    let html_type = feed.entries[1].content[0].content_type.as_deref();
+    assert_eq!(
+        html_type,
+        Some("text/html"),
+        "html should normalize to text/html"
+    );
+
+    let text_type = feed.entries[2].content[0].content_type.as_deref();
+    assert_eq!(
+        text_type,
+        Some("text/plain"),
+        "text should normalize to text/plain"
+    );
+}

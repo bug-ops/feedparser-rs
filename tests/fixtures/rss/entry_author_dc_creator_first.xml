@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Test Feed</title>
+    <link>https://example.com</link>
+    <description>Test feed for dc:creator precedence when dc:creator appears first</description>
+    <item>
+      <title>Test Entry</title>
+      <link>https://example.com/entry1</link>
+      <dc:creator>DC Creator</dc:creator>
+      <author>email@x.com (Name)</author>
+      <description>Test entry body</description>
+    </item>
+  </channel>
+</rss>

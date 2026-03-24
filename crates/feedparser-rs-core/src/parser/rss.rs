@@ -482,6 +482,8 @@ fn parse_channel_standard(
         b"managingEditor" => {
             let text = read_text_str(reader, buf, limits)?;
             feed.feed.set_author(parse_rss_person(&text));
+            // Preserve raw string in author flat field; author_detail has parsed fields
+            feed.feed.author = Some(text.into());
         }
         b"webMaster" => {
             let text = read_text_str(reader, buf, limits)?;
@@ -942,6 +944,11 @@ fn parse_item(
         buf.clear();
     }
 
+    // dc:creator takes precedence over <author>
+    if let Some(dc) = &entry.dc_creator {
+        entry.author = Some(dc.clone());
+    }
+
     Ok((entry, has_attr_errors, has_entity_bozo))
 }
 
@@ -1007,6 +1014,8 @@ fn parse_item_standard(
             let (text, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
             entry.set_author(parse_rss_person(&text));
+            // Preserve raw string in author flat field; author_detail has parsed fields
+            entry.author = Some(text.into());
         }
         b"category" => {
             let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
@@ -1924,7 +1933,11 @@ mod tests {
         </rss>"#;
 
         let feed = parse_rss20(xml).unwrap();
-        assert_eq!(feed.entries[0].author.as_deref(), Some("John Doe"));
+        // author flat field preserves raw string
+        assert_eq!(
+            feed.entries[0].author.as_deref(),
+            Some("john@example.com (John Doe)")
+        );
         let detail = feed.entries[0].author_detail.as_ref().unwrap();
         assert_eq!(detail.name.as_deref(), Some("John Doe"));
         assert_eq!(detail.email.as_deref(), Some("john@example.com"));
@@ -2822,12 +2835,20 @@ mod tests {
         let author_detail = feed.feed.author_detail.as_ref().unwrap();
         assert_eq!(author_detail.name.as_deref(), Some("John Editor"));
         assert_eq!(author_detail.email.as_deref(), Some("editor@example.com"));
-        assert_eq!(feed.feed.author.as_deref(), Some("John Editor"));
+        // author flat field preserves raw string
+        assert_eq!(
+            feed.feed.author.as_deref(),
+            Some("editor@example.com (John Editor)")
+        );
 
         let entry_detail = feed.entries[0].author_detail.as_ref().unwrap();
         assert_eq!(entry_detail.name.as_deref(), Some("Jane Author"));
         assert_eq!(entry_detail.email.as_deref(), Some("author@example.com"));
-        assert_eq!(feed.entries[0].author.as_deref(), Some("Jane Author"));
+        // author flat field preserves raw string
+        assert_eq!(
+            feed.entries[0].author.as_deref(),
+            Some("author@example.com (Jane Author)")
+        );
     }
 
     #[test]

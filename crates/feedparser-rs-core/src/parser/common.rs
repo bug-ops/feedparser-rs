@@ -584,6 +584,110 @@ pub fn skip_element(
     Ok(())
 }
 
+/// Read xhtml content from the current element, per RFC 4287 §3.1.1.3.
+///
+/// The outer `<div xmlns="http://www.w3.org/1999/xhtml">` wrapper is stripped;
+/// its inner XML content is serialized back to a string preserving all markup.
+/// On any parse error, returns whatever content was collected so far (bozo pattern).
+///
+/// Returns `(content, had_bozo)` where `had_bozo` is `true` if the expected `<div>`
+/// wrapper was missing (malformed xhtml). Bozo propagation to the feed level is not
+/// yet implemented at entry-field level; see issue #70.
+///
+/// # Errors
+///
+/// Returns `Err` only if the collected content exceeds `limits.max_text_length`.
+pub fn read_xhtml_content(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+) -> Result<(String, bool)> {
+    // Skip the outer <div> wrapper (RFC 4287 §3.1.1.3 requires it to be removed).
+    // We must consume the first Start event (the div) before serializing children.
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(_)) => break, // found the div wrapper; start collecting its children
+            Ok(Event::End(_) | Event::Eof) | Err(_) => return Ok((String::new(), true)),
+            _ => {}
+        }
+        buf.clear();
+    }
+    buf.clear();
+
+    serialize_inner_xml(reader, buf, limits).map(|s| (s, false))
+}
+
+/// Read xhtml content, discarding the bozo signal.
+///
+/// Use this at call sites where `ParsedFeed` is not in scope and bozo
+/// propagation to the feed level is not yet implemented, such as entry-level
+/// fields. See issue #70.
+#[inline]
+pub fn read_xhtml_content_str(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+) -> Result<String> {
+    read_xhtml_content(reader, buf, limits).map(|(s, _)| s)
+}
+
+/// Serialize inner XML content of the current element to a string.
+///
+/// Reads events until the matching closing tag (depth 0) and writes each event
+/// as raw XML. On error, returns whatever was collected so far.
+fn serialize_inner_xml(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+) -> Result<String> {
+    let mut output: Vec<u8> = Vec::with_capacity(TEXT_BUFFER_CAPACITY);
+    let max_len = limits.max_text_length;
+    {
+        let mut writer = quick_xml::Writer::new(&mut output);
+        let mut depth: usize = 0;
+
+        loop {
+            match reader.read_event_into(buf) {
+                Ok(Event::Start(e)) => {
+                    depth += 1;
+                    let _ = writer.write_event(Event::Start(e));
+                }
+                Ok(Event::End(e)) => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                    let _ = writer.write_event(Event::End(e));
+                }
+                Ok(Event::Text(e)) => {
+                    let _ = writer.write_event(Event::Text(e));
+                }
+                Ok(Event::CData(e)) => {
+                    let _ = writer.write_event(Event::CData(e));
+                }
+                Ok(Event::Empty(e)) => {
+                    let _ = writer.write_event(Event::Empty(e));
+                }
+                Ok(Event::Comment(e)) => {
+                    let _ = writer.write_event(Event::Comment(e));
+                }
+                Ok(Event::Eof) | Err(_) => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+    } // writer dropped here, releasing borrow on output
+
+    if output.len() > max_len {
+        return Err(FeedError::InvalidFormat(format!(
+            "XHTML content exceeds maximum length of {max_len} bytes"
+        )));
+    }
+
+    let result = String::from_utf8_lossy(&output).trim().to_string();
+    Ok(result)
+}
+
 /// Read text content, discarding the bozo signal.
 ///
 /// Use this at call sites where `ParsedFeed` is not in scope and bozo
@@ -858,6 +962,83 @@ mod tests {
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
         assert_eq!(text, "pre&;suf");
         assert!(had_bozo);
+    }
+
+    fn advance_past_start_xhtml(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>) {
+        loop {
+            match reader.read_event_into(buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+        buf.clear();
+    }
+
+    #[test]
+    fn test_read_xhtml_content_preserves_markup() {
+        let xml = b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Hello <b>world</b></p></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(result, "<p>Hello <b>world</b></p>");
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_read_xhtml_content_no_outer_div() {
+        let xml = b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Hello <b>world</b></p></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert!(!result.contains("<div"), "outer <div> must be stripped");
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_read_xhtml_content_empty() {
+        let xml =
+            b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(result, "");
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_read_xhtml_content_no_div_wrapper_no_panic() {
+        // Malformed: no <div> wrapper at all — must return empty and signal bozo
+        let xml = b"<content type=\"xhtml\"></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert_eq!(result, "");
+        assert!(had_bozo);
+    }
+
+    #[test]
+    fn test_read_xhtml_content_nested_elements() {
+        let xml = b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><ul><li>A</li><li>B</li></ul></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert!(result.contains("<ul>"));
+        assert!(result.contains("<li>A</li>"));
+        assert!(result.contains("<li>B</li>"));
+        assert!(!result.contains("<div"));
+        assert!(!had_bozo);
     }
 
     #[test]
