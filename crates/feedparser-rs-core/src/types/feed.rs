@@ -84,8 +84,8 @@ pub struct FeedMeta {
     pub license: Option<String>,
     /// Syndication module metadata (RSS 1.0)
     pub syndication: Option<Box<SyndicationMeta>>,
-    /// Geographic location from `GeoRSS` namespace (feed level)
-    pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
+    /// Geographic location from `GeoRSS` namespace (feed level, exposed as `where` per Python feedparser API)
+    pub r#where: Option<Box<crate::namespace::georss::GeoLocation>>,
     /// Pagination URL for the next page of results (JSON Feed `next_url`, RFC 5005 `<link rel="next">`)
     pub next_url: Option<String>,
 }

@@ -33,7 +33,7 @@ fn test_georss_point_in_entry() {
     assert_eq!(feed.entries.len(), 1);
 
     let geo = feed.entries[0]
-        .geo
+        .r#where
         .as_ref()
         .expect("entry.geo should be set");
     assert_eq!(geo.geo_type, GeoType::Point);
@@ -60,7 +60,7 @@ fn test_georss_polygon_in_entry() {
     assert!(!feed.bozo);
 
     let geo = feed.entries[0]
-        .geo
+        .r#where
         .as_ref()
         .expect("entry.geo should be set");
     assert_eq!(geo.geo_type, GeoType::Polygon);
@@ -83,7 +83,7 @@ fn test_georss_point_at_feed_level() {
     let feed = parse(xml).unwrap();
     assert!(!feed.bozo);
 
-    let geo = feed.feed.geo.as_ref().expect("feed.geo should be set");
+    let geo = feed.feed.r#where.as_ref().expect("feed.geo should be set");
     assert_eq!(geo.geo_type, GeoType::Point);
     assert_eq!(geo.coordinates.len(), 1);
     assert_eq!(geo.coordinates[0], (51.5074, -0.1278));
@@ -106,7 +106,7 @@ fn test_georss_invalid_coordinates_no_panic() {
 
     let feed = parse(xml).unwrap();
     assert!(
-        feed.entries[0].geo.is_none(),
+        feed.entries[0].r#where.is_none(),
         "invalid coordinates must produce None, not panic"
     );
 }
@@ -128,7 +128,7 @@ fn test_georss_malformed_text_no_panic() {
 
     let feed = parse(xml).unwrap();
     assert!(
-        feed.entries[0].geo.is_none(),
+        feed.entries[0].r#where.is_none(),
         "malformed coordinates must produce None, not panic"
     );
 }
@@ -238,7 +238,7 @@ fn test_georss_and_cc_together() {
     assert!(!feed.bozo);
 
     // Feed-level assertions
-    let feed_geo = feed.feed.geo.as_ref().expect("feed.geo should be set");
+    let feed_geo = feed.feed.r#where.as_ref().expect("feed.geo should be set");
     assert_eq!(feed_geo.geo_type, GeoType::Point);
     assert_eq!(feed_geo.coordinates[0], (48.8566, 2.3522));
     assert_eq!(
@@ -249,7 +249,7 @@ fn test_georss_and_cc_together() {
     // Entry-level assertions
     assert_eq!(feed.entries.len(), 1);
     let entry_geo = feed.entries[0]
-        .geo
+        .r#where
         .as_ref()
         .expect("entry.geo should be set");
     assert_eq!(entry_geo.geo_type, GeoType::Point);

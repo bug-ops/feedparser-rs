@@ -378,8 +378,9 @@ pub struct FeedMeta {
     /// Dublin Core rights (copyright)
     #[napi(js_name = "dcRights")]
     pub dc_rights: Option<String>,
-    /// Geographic location (GeoRSS)
-    pub geo: Option<GeoLocation>,
+    /// Geographic location (GeoRSS), exposed as `where` per Python feedparser API
+    #[napi(js_name = "where")]
+    pub r#where: Option<GeoLocation>,
     /// iTunes podcast metadata
     pub itunes: Option<ItunesFeedMeta>,
     /// Podcast 2.0 metadata
@@ -424,7 +425,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             dc_creator: core.dc_creator.map(|s| s.to_string()),
             dc_publisher: core.dc_publisher.map(|s| s.to_string()),
             dc_rights: core.dc_rights,
-            geo: core.geo.map(|b| GeoLocation::from(*b)),
+            r#where: core.r#where.map(|b| GeoLocation::from(*b)),
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
             next_url: core.next_url,
@@ -531,8 +532,9 @@ pub struct Entry {
     pub podcast_persons: Vec<PodcastPerson>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
-    /// Geographic location (GeoRSS)
-    pub geo: Option<GeoLocation>,
+    /// Geographic location (GeoRSS), exposed as `where` per Python feedparser API
+    #[napi(js_name = "where")]
+    pub r#where: Option<GeoLocation>,
     /// Dublin Core creator (author)
     #[napi(js_name = "dcCreator")]
     pub dc_creator: Option<String>,
@@ -622,7 +624,7 @@ impl From<CoreEntry> for Entry {
                 .map(PodcastPerson::from)
                 .collect(),
             license: core.license,
-            geo: core.geo.map(|b| GeoLocation::from(*b)),
+            r#where: core.r#where.map(|b| GeoLocation::from(*b)),
             dc_creator: core.dc_creator.map(|s| s.to_string()),
             dc_date: core.dc_date.map(|dt| dt.to_rfc3339()),
             dc_date_parsed: core.dc_date.map(|dt| dt.timestamp_millis() as f64),

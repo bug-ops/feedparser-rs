@@ -178,25 +178,25 @@ pub fn handle_entry_element(
     match tag {
         b"point" => {
             if let Some(loc) = parse_point(text) {
-                entry.geo = Some(Box::new(loc));
+                entry.r#where = Some(Box::new(loc));
             }
             true
         }
         b"line" => {
             if let Some(loc) = parse_line(text) {
-                entry.geo = Some(Box::new(loc));
+                entry.r#where = Some(Box::new(loc));
             }
             true
         }
         b"polygon" => {
             if let Some(loc) = parse_polygon(text) {
-                entry.geo = Some(Box::new(loc));
+                entry.r#where = Some(Box::new(loc));
             }
             true
         }
         b"box" => {
             if let Some(loc) = parse_box(text) {
-                entry.geo = Some(Box::new(loc));
+                entry.r#where = Some(Box::new(loc));
             }
             true
         }
@@ -225,25 +225,25 @@ pub fn handle_feed_element(
     match tag {
         b"point" => {
             if let Some(loc) = parse_point(text) {
-                feed.geo = Some(Box::new(loc));
+                feed.r#where = Some(Box::new(loc));
             }
             true
         }
         b"line" => {
             if let Some(loc) = parse_line(text) {
-                feed.geo = Some(Box::new(loc));
+                feed.r#where = Some(Box::new(loc));
             }
             true
         }
         b"polygon" => {
             if let Some(loc) = parse_polygon(text) {
-                feed.geo = Some(Box::new(loc));
+                feed.r#where = Some(Box::new(loc));
             }
             true
         }
         b"box" => {
             if let Some(loc) = parse_box(text) {
-                feed.geo = Some(Box::new(loc));
+                feed.r#where = Some(Box::new(loc));
             }
             true
         }
@@ -426,9 +426,9 @@ mod tests {
 
         let handled = handle_entry_element(b"point", "45.256 -71.92", &mut entry, &limits);
         assert!(handled);
-        assert!(entry.geo.is_some());
+        assert!(entry.r#where.is_some());
 
-        let geo = entry.geo.as_ref().unwrap();
+        let geo = entry.r#where.as_ref().unwrap();
         assert_eq!(geo.geo_type, GeoType::Point);
         assert_eq!(geo.coordinates[0], (45.256, -71.92));
     }
@@ -441,8 +441,8 @@ mod tests {
         let handled =
             handle_entry_element(b"line", "45.256 -71.92 46.0 -72.0", &mut entry, &limits);
         assert!(handled);
-        assert!(entry.geo.is_some());
-        assert_eq!(entry.geo.as_ref().unwrap().geo_type, GeoType::Line);
+        assert!(entry.r#where.is_some());
+        assert_eq!(entry.r#where.as_ref().unwrap().geo_type, GeoType::Line);
     }
 
     #[test]
@@ -452,7 +452,7 @@ mod tests {
 
         let handled = handle_entry_element(b"unknown", "data", &mut entry, &limits);
         assert!(!handled);
-        assert!(entry.geo.is_none());
+        assert!(entry.r#where.is_none());
     }
 
     #[test]
@@ -487,9 +487,9 @@ mod tests {
 
         let handled = handle_feed_element(b"point", "45.256 -71.92", &mut feed, &limits);
         assert!(handled);
-        assert!(feed.geo.is_some());
+        assert!(feed.r#where.is_some());
 
-        let geo = feed.geo.as_ref().unwrap();
+        let geo = feed.r#where.as_ref().unwrap();
         assert_eq!(geo.geo_type, GeoType::Point);
         assert_eq!(geo.coordinates[0], (45.256, -71.92));
     }
@@ -501,8 +501,8 @@ mod tests {
 
         let handled = handle_feed_element(b"line", "45.256 -71.92 46.0 -72.0", &mut feed, &limits);
         assert!(handled);
-        assert!(feed.geo.is_some());
-        assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Line);
+        assert!(feed.r#where.is_some());
+        assert_eq!(feed.r#where.as_ref().unwrap().geo_type, GeoType::Line);
     }
 
     #[test]
@@ -517,8 +517,8 @@ mod tests {
             &limits,
         );
         assert!(handled);
-        assert!(feed.geo.is_some());
-        assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Polygon);
+        assert!(feed.r#where.is_some());
+        assert_eq!(feed.r#where.as_ref().unwrap().geo_type, GeoType::Polygon);
     }
 
     #[test]
@@ -528,8 +528,8 @@ mod tests {
 
         let handled = handle_feed_element(b"box", "45.0 -72.0 46.0 -71.0", &mut feed, &limits);
         assert!(handled);
-        assert!(feed.geo.is_some());
-        assert_eq!(feed.geo.as_ref().unwrap().geo_type, GeoType::Box);
+        assert!(feed.r#where.is_some());
+        assert_eq!(feed.r#where.as_ref().unwrap().geo_type, GeoType::Box);
     }
 
     #[test]
@@ -539,7 +539,7 @@ mod tests {
 
         let handled = handle_feed_element(b"unknown", "data", &mut feed, &limits);
         assert!(!handled);
-        assert!(feed.geo.is_none());
+        assert!(feed.r#where.is_none());
     }
 
     #[test]
@@ -549,6 +549,6 @@ mod tests {
 
         let handled = handle_feed_element(b"point", "invalid data", &mut feed, &limits);
         assert!(handled);
-        assert!(feed.geo.is_none());
+        assert!(feed.r#where.is_none());
     }
 }

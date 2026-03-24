@@ -87,8 +87,8 @@ pub struct Entry {
     pub podcast_persons: Vec<PodcastPerson>,
     /// Podcast 2.0 episode metadata
     pub podcast: Option<Box<PodcastEntryMeta>>,
-    /// `GeoRSS` location data
-    pub geo: Option<Box<crate::namespace::georss::GeoLocation>>,
+    /// `GeoRSS` location data (exposed as `where` per Python feedparser API)
+    pub r#where: Option<Box<crate::namespace::georss::GeoLocation>>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
     /// Atom Threading Extensions: entries this is a reply to (thr:in-reply-to)
