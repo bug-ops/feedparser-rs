@@ -7,7 +7,7 @@ use crate::{
     types::{
         Content, Enclosure, Entry, FeedVersion, Generator, Image, ItunesCategory, ItunesEntryMeta,
         ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
-        Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
+        Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
@@ -769,7 +769,7 @@ fn parse_entry(
                             let itunes = entry
                                 .itunes
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.duration = parse_duration(&text);
+                            itunes.duration = if text.is_empty() { None } else { Some(text) };
                             true
                         } else if is_itunes_tag(tag, b"explicit") && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -2442,11 +2442,11 @@ mod tests {
         let itunes = feed.entries[0].itunes.as_ref().unwrap();
         assert_eq!(itunes.title.as_deref(), Some("iTunes Title"));
         assert_eq!(itunes.author.as_deref(), Some("Episode Author"));
-        assert_eq!(itunes.duration, Some(5025)); // 1:23:45
+        assert_eq!(itunes.duration.as_deref(), Some("1:23:45"));
         assert_eq!(itunes.explicit, Some(true));
         assert_eq!(itunes.image.as_deref(), Some("https://example.com/ep.jpg"));
-        assert_eq!(itunes.episode, Some(5));
-        assert_eq!(itunes.season, Some(2));
+        assert_eq!(itunes.episode.as_deref(), Some("5"));
+        assert_eq!(itunes.season.as_deref(), Some("2"));
         assert_eq!(itunes.episode_type.as_deref(), Some("full"));
         assert_eq!(itunes.subtitle.as_deref(), Some("Ep subtitle"));
         assert_eq!(itunes.summary.as_deref(), Some("Ep summary"));
