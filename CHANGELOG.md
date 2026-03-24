@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-24
+
 ### Fixed
 - Core: RSS `<enclosure>` elements are now added to both `entry.enclosures` and `entry.links` (with `rel='enclosure'`), matching Python feedparser behavior (#192)
 - Core: syndication namespace elements (`updatePeriod`, `updateFrequency`, `updateBase`) are now recognized with both `sy:` and `syn:` prefixes; previously only `syn:` was recognized, causing `feed.syndication` to return `None` for feeds using the more common `sy:` prefix (#191)
@@ -337,7 +339,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.8...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.8...v0.5.0
 [0.4.8]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.6...v0.4.7
 [0.4.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.5...v0.4.6

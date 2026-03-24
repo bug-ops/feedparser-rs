@@ -57,7 +57,7 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.4.8"
+feedparser-rs = "0.5.0"
 ```
 
 > [!IMPORTANT]
@@ -187,7 +187,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.4.8", default-features = false }
+feedparser-rs = { version = "0.5.0", default-features = false }
 ```
 
 ## Workspace Structure
