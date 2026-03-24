@@ -247,11 +247,14 @@ fn parse_feed_element(
                             &entry_ctx,
                             &mut entry_bozo,
                         ) {
-                            Ok(entry) => {
+                            Ok(mut entry) => {
                                 if entry_bozo && !feed.bozo {
                                     feed.bozo = true;
                                     feed.bozo_exception =
                                         Some("Unresolvable entity in entry field".to_string());
+                                }
+                                if entry.summary.is_none() {
+                                    entry.summary = entry.content.first().map(|c| c.value.clone());
                                 }
                                 feed.entries.push(entry);
                             }
@@ -1354,5 +1357,20 @@ mod tests {
         );
         assert!(feed.entries[0].rights_detail.is_some());
         assert!(feed.entries[1].rights.is_none());
+    }
+
+    #[test]
+    fn test_atom_content_fallback_to_summary() {
+        let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>T</title><id>u</id><updated>2026-01-01T00:00:00Z</updated>
+<entry><title>E</title><id>u2</id><updated>2026-01-01T00:00:00Z</updated>
+  <content type="html">&lt;p&gt;Content only&lt;/p&gt;</content></entry>
+</feed>"#;
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].summary.as_deref(),
+            Some("<p>Content only</p>")
+        );
     }
 }
