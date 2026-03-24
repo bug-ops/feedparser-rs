@@ -157,6 +157,86 @@ impl GeoLocation {
     }
 }
 
+/// Parse W3C Basic Geo element and update entry
+///
+/// Handles `geo:lat` and `geo:long` elements. When both are present,
+/// auto-constructs `entry.r#where` as a point location.
+///
+/// # Arguments
+///
+/// * `tag` - Element local name (e.g., "lat", "long", "lon")
+/// * `text` - Element text content
+/// * `entry` - Entry to update
+///
+/// # Returns
+///
+/// `true` if element was recognized and handled, `false` otherwise
+pub fn handle_entry_geo_element(tag: &[u8], text: &str, entry: &mut Entry) -> bool {
+    match tag {
+        b"lat" => {
+            entry.geo_lat = Some(text.to_string());
+            try_build_entry_where(entry);
+            true
+        }
+        b"long" | b"lon" => {
+            entry.geo_long = Some(text.to_string());
+            try_build_entry_where(entry);
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Parse W3C Basic Geo element and update feed metadata
+///
+/// Handles `geo:lat` and `geo:long` elements. When both are present,
+/// auto-constructs `feed.r#where` as a point location.
+///
+/// # Arguments
+///
+/// * `tag` - Element local name (e.g., "lat", "long", "lon")
+/// * `text` - Element text content
+/// * `feed` - Feed metadata to update
+///
+/// # Returns
+///
+/// `true` if element was recognized and handled, `false` otherwise
+pub fn handle_feed_geo_element(tag: &[u8], text: &str, feed: &mut FeedMeta) -> bool {
+    match tag {
+        b"lat" => {
+            feed.geo_lat = Some(text.to_string());
+            try_build_feed_where(feed);
+            true
+        }
+        b"long" | b"lon" => {
+            feed.geo_long = Some(text.to_string());
+            try_build_feed_where(feed);
+            true
+        }
+        _ => false,
+    }
+}
+
+fn try_build_entry_where(entry: &mut Entry) {
+    if let (Some(lat_str), Some(lon_str)) = (entry.geo_lat.as_deref(), entry.geo_long.as_deref())
+        && let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>())
+        && (-90.0..=90.0).contains(&lat)
+        && (-180.0..=180.0).contains(&lon)
+    {
+        entry.r#where = Some(Box::new(GeoLocation::point(lat, lon)));
+    }
+}
+
+fn try_build_feed_where(feed: &mut FeedMeta) {
+    if let (Some(lat_str), Some(lon_str)) = (feed.geo_lat.as_deref(), feed.geo_long.as_deref())
+        && let (Ok(lat), Ok(lon)) = (lat_str.parse::<f64>(), lon_str.parse::<f64>())
+        && (-90.0..=90.0).contains(&lat)
+        && (-180.0..=180.0).contains(&lon)
+    {
+        feed.r#where = Some(Box::new(GeoLocation::point(lat, lon)));
+    }
+}
+
 /// Parse `GeoRSS` element and update entry
 ///
 /// # Arguments

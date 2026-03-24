@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#">
+  <title>W3C Geo Atom Feed</title>
+  <link href="https://example.com/feed"/>
+  <id>urn:uuid:atom-geo-test</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <id>urn:uuid:entry-1</id>
+    <title>Entry with geo:lat and geo:long</title>
+    <link href="https://example.com/entry-1"/>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <geo:lat>48.8566</geo:lat>
+    <geo:long>2.3522</geo:long>
+  </entry>
+</feed>

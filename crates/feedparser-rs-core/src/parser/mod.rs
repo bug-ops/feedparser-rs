@@ -80,9 +80,15 @@ pub fn parse_with_limits(data: &[u8], limits: crate::ParserLimits) -> Result<Par
 
     // Parse based on detected format, then update the encoding field
     let mut feed = match version {
-        // RSS variants (all use RSS 2.0 parser for now)
-        FeedVersion::Rss20 | FeedVersion::Rss092 | FeedVersion::Rss091 | FeedVersion::Rss090 => {
-            rss::parse_rss20_with_limits(utf8_bytes, limits)
+        // RSS variants (all use RSS 2.0 parser; overwrite version after parsing)
+        FeedVersion::Rss20
+        | FeedVersion::Rss092
+        | FeedVersion::Rss091Netscape
+        | FeedVersion::Rss091Userland
+        | FeedVersion::Rss090 => {
+            let mut parsed = rss::parse_rss20_with_limits(utf8_bytes, limits)?;
+            parsed.version = version;
+            Ok(parsed)
         }
 
         // Atom variants

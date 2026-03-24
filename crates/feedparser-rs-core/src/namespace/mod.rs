@@ -76,6 +76,9 @@ pub mod namespaces {
     /// `GeoRSS`
     pub const GEORSS: &str = "http://www.georss.org/georss";
 
+    /// W3C Basic Geo (WGS84) namespace
+    pub const GEO: &str = "http://www.w3.org/2003/01/geo/wgs84_pos#";
+
     /// Creative Commons (modern)
     pub const CC: &str = "http://creativecommons.org/ns#";
 
@@ -112,6 +115,7 @@ pub fn get_namespace_uri(prefix: &str) -> Option<&'static str> {
         "itunes" => Some(namespaces::ITUNES),
         "podcast" => Some(namespaces::PODCAST),
         "georss" => Some(namespaces::GEORSS),
+        "geo" => Some(namespaces::GEO),
         "cc" => Some(namespaces::CC),
         "creativeCommons" => Some(namespaces::CREATIVE_COMMONS),
         "thr" => Some(namespaces::THREADING),
@@ -141,6 +145,7 @@ pub fn get_namespace_prefix(uri: &str) -> Option<&'static str> {
         namespaces::ITUNES => Some("itunes"),
         namespaces::PODCAST => Some("podcast"),
         namespaces::GEORSS => Some("georss"),
+        namespaces::GEO => Some("geo"),
         namespaces::CC => Some("cc"),
         namespaces::CREATIVE_COMMONS => Some("creativeCommons"),
         namespaces::THREADING => Some("thr"),

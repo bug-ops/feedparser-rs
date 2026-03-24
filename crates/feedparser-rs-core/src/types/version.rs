@@ -5,8 +5,10 @@ use std::fmt;
 pub enum FeedVersion {
     /// RSS 0.90
     Rss090,
-    /// RSS 0.91
-    Rss091,
+    /// RSS 0.91 Netscape
+    Rss091Netscape,
+    /// RSS 0.91 Userland
+    Rss091Userland,
     /// RSS 0.92
     Rss092,
     /// RSS 1.0 (RDF)
@@ -41,7 +43,8 @@ impl FeedVersion {
     pub const fn as_str(&self) -> &'static str {
         match self {
             Self::Rss090 => "rss090",
-            Self::Rss091 => "rss091",
+            Self::Rss091Netscape => "rss091n",
+            Self::Rss091Userland => "rss091u",
             Self::Rss092 => "rss092",
             Self::Rss10 => "rss10",
             Self::Rss20 => "rss20",

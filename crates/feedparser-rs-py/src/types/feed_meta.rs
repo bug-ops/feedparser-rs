@@ -286,6 +286,16 @@ impl PyFeedMeta {
     }
 
     #[getter]
+    fn geo_lat(&self) -> Option<&str> {
+        self.inner.geo_lat.as_deref()
+    }
+
+    #[getter]
+    fn geo_long(&self) -> Option<&str> {
+        self.inner.geo_long.as_deref()
+    }
+
+    #[getter]
     fn next_url(&self) -> Option<&str> {
         self.inner.next_url.as_deref()
     }
@@ -753,6 +763,20 @@ impl PyFeedMeta {
                     Ok(py.None())
                 }
             }
+            "geo_lat" => Ok(self
+                .inner
+                .geo_lat
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "geo_long" => Ok(self
+                .inner
+                .geo_long
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
             "next_url" => Ok(self
                 .inner
                 .next_url

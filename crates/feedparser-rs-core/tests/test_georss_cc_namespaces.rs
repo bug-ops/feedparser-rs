@@ -259,3 +259,152 @@ fn test_georss_and_cc_together() {
         Some("https://creativecommons.org/licenses/by-sa/4.0/")
     );
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Issue #291: georss:point/polygon not parsed in Atom entries
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_issue_291_atom_georss_point_in_entry() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:georss="http://www.georss.org/georss">
+      <title>GeoRSS Atom Test</title>
+      <id>urn:uuid:test</id>
+      <updated>2024-01-01T00:00:00Z</updated>
+      <entry>
+        <id>urn:uuid:entry-1</id>
+        <title>Entry with georss:point</title>
+        <link href="https://example.com/entry-1"/>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <georss:point>45.256 -71.92</georss:point>
+      </entry>
+    </feed>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    assert_eq!(feed.entries.len(), 1);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+}
+
+#[test]
+fn test_issue_291_atom_georss_polygon_in_entry() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:georss="http://www.georss.org/georss">
+      <title>GeoRSS Polygon Atom Test</title>
+      <id>urn:uuid:test</id>
+      <updated>2024-01-01T00:00:00Z</updated>
+      <entry>
+        <id>urn:uuid:entry-1</id>
+        <title>Entry with georss:polygon</title>
+        <link href="https://example.com/entry-1"/>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <georss:polygon>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</georss:polygon>
+      </entry>
+    </feed>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Polygon);
+    assert_eq!(geo.coordinates.len(), 4);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Issue #248: geo:lat/geo:long (W3C Basic Geo) not implemented
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_issue_248_rss_geo_latlong_in_entry() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0" xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#">
+      <channel>
+        <title>W3C Geo Feed</title>
+        <link>https://example.com</link>
+        <description>Feed with geo:lat/geo:long</description>
+        <item>
+          <title>Item at location</title>
+          <link>https://example.com/item-1</link>
+          <geo:lat>51.5074</geo:lat>
+          <geo:long>-0.1278</geo:long>
+        </item>
+      </channel>
+    </rss>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    assert_eq!(feed.entries.len(), 1);
+    assert_eq!(feed.entries[0].geo_lat.as_deref(), Some("51.5074"));
+    assert_eq!(feed.entries[0].geo_long.as_deref(), Some("-0.1278"));
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be auto-constructed");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert!((geo.coordinates[0].0 - 51.5074).abs() < 1e-6);
+    assert!((geo.coordinates[0].1 - (-0.1278)).abs() < 1e-6);
+}
+
+#[test]
+fn test_issue_248_atom_geo_latlong_in_entry() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#">
+      <title>W3C Geo Atom Feed</title>
+      <id>urn:uuid:atom-geo-test</id>
+      <updated>2024-01-01T00:00:00Z</updated>
+      <entry>
+        <id>urn:uuid:entry-1</id>
+        <title>Entry with geo:lat and geo:long</title>
+        <link href="https://example.com/entry-1"/>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <geo:lat>48.8566</geo:lat>
+        <geo:long>2.3522</geo:long>
+      </entry>
+    </feed>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    assert_eq!(feed.entries.len(), 1);
+    assert_eq!(feed.entries[0].geo_lat.as_deref(), Some("48.8566"));
+    assert_eq!(feed.entries[0].geo_long.as_deref(), Some("2.3522"));
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be auto-constructed");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert!((geo.coordinates[0].0 - 48.8566).abs() < 1e-6);
+    assert!((geo.coordinates[0].1 - 2.3522).abs() < 1e-6);
+}
+
+#[test]
+fn test_issue_248_geo_lat_only_no_where_constructed() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0" xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#">
+      <channel>
+        <title>Feed</title>
+        <link>https://example.com</link>
+        <item>
+          <title>Item with lat only</title>
+          <geo:lat>51.5074</geo:lat>
+        </item>
+      </channel>
+    </rss>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert_eq!(feed.entries[0].geo_lat.as_deref(), Some("51.5074"));
+    assert!(feed.entries[0].geo_long.is_none());
+    assert!(
+        feed.entries[0].r#where.is_none(),
+        "where should not be constructed without both lat and long"
+    );
+}

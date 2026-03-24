@@ -381,6 +381,12 @@ pub struct FeedMeta {
     /// Geographic location (GeoRSS), exposed as `where` per Python feedparser API
     #[napi(js_name = "where")]
     pub r#where: Option<GeoLocation>,
+    /// W3C Basic Geo latitude (`geo:lat`)
+    #[napi(js_name = "geoLat")]
+    pub geo_lat: Option<String>,
+    /// W3C Basic Geo longitude (`geo:long`)
+    #[napi(js_name = "geoLong")]
+    pub geo_long: Option<String>,
     /// iTunes podcast metadata
     pub itunes: Option<ItunesFeedMeta>,
     /// Podcast 2.0 metadata
@@ -426,6 +432,8 @@ impl From<CoreFeedMeta> for FeedMeta {
             dc_publisher: core.dc_publisher.map(|s| s.to_string()),
             dc_rights: core.dc_rights,
             r#where: core.r#where.map(|b| GeoLocation::from(*b)),
+            geo_lat: core.geo_lat,
+            geo_long: core.geo_long,
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
             next_url: core.next_url,
@@ -535,6 +543,12 @@ pub struct Entry {
     /// Geographic location (GeoRSS), exposed as `where` per Python feedparser API
     #[napi(js_name = "where")]
     pub r#where: Option<GeoLocation>,
+    /// W3C Basic Geo latitude (`geo:lat`)
+    #[napi(js_name = "geoLat")]
+    pub geo_lat: Option<String>,
+    /// W3C Basic Geo longitude (`geo:long`)
+    #[napi(js_name = "geoLong")]
+    pub geo_long: Option<String>,
     /// Dublin Core creator (author)
     #[napi(js_name = "dcCreator")]
     pub dc_creator: Option<String>,
@@ -625,6 +639,8 @@ impl From<CoreEntry> for Entry {
                 .collect(),
             license: core.license,
             r#where: core.r#where.map(|b| GeoLocation::from(*b)),
+            geo_lat: core.geo_lat,
+            geo_long: core.geo_long,
             dc_creator: core.dc_creator.map(|s| s.to_string()),
             dc_date: core.dc_date.map(|dt| dt.to_rfc3339()),
             dc_date_parsed: core.dc_date.map(|dt| dt.timestamp_millis() as f64),

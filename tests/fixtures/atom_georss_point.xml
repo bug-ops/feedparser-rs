@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:georss="http://www.georss.org/georss">
+  <title>GeoRSS Atom Test Feed</title>
+  <link href="https://example.com/feed"/>
+  <id>urn:uuid:atom-georss-test</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <entry>
+    <id>urn:uuid:entry-1</id>
+    <title>Entry with georss:point</title>
+    <link href="https://example.com/entry-1"/>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <georss:point>45.256 -71.92</georss:point>
+  </entry>
+  <entry>
+    <id>urn:uuid:entry-2</id>
+    <title>Entry with georss:polygon</title>
+    <link href="https://example.com/entry-2"/>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <georss:polygon>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</georss:polygon>
+  </entry>
+</feed>

@@ -283,6 +283,20 @@ pub fn is_georss_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"georss:")
 }
 
+/// Check if element is a W3C Basic Geo namespaced tag
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_geo_tag(b"geo:lat"), Some("lat"));
+/// assert_eq!(is_geo_tag(b"geo:long"), Some("long"));
+/// assert_eq!(is_geo_tag(b"dc:creator"), None);
+/// ```
+#[inline]
+pub fn is_geo_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"geo:")
+}
+
 /// Check if element is a Threading (thr:) namespaced tag
 ///
 /// # Examples

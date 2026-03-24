@@ -3,7 +3,7 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::{content, dublin_core, media_rss, slash, threading},
+    namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
         Content, Enclosure, Entry, FeedVersion, Generator, Image, ItunesCategory, ItunesEntryMeta,
         ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
@@ -16,8 +16,8 @@ use quick_xml::{Reader, events::Event};
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
-    is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str,
-    read_xhtml_content_str, skip_element, skip_to_end,
+    is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
+    read_text, read_text_str, read_xhtml_content_str, skip_element, skip_to_end,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -296,6 +296,12 @@ fn parse_feed_element(
                                 if entry.summary.is_none() {
                                     entry.summary = entry.content.first().map(|c| c.value.clone());
                                 }
+                                // #278: dc:creator fallback for author
+                                if entry.author.is_none()
+                                    && let Some(dc) = &entry.dc_creator
+                                {
+                                    entry.author = Some(dc.clone());
+                                }
                                 // #273: promote entry.id → entry.link when no explicit link
                                 promote_entry_id_to_link(&mut entry);
                                 // #275: fallback entry.updated from entry.published
@@ -462,6 +468,25 @@ fn parse_feed_element(
                                 .itunes
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.block = Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
+                            true
+                        } else if let Some(georss_element) = is_georss_tag(tag) {
+                            let georss_elem = georss_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let text = read_text_str(reader, &mut buf, limits)?;
+                                georss::handle_feed_element(
+                                    &georss_elem,
+                                    &text,
+                                    &mut feed.feed,
+                                    limits,
+                                );
+                            }
+                            true
+                        } else if let Some(geo_element) = is_geo_tag(tag) {
+                            let geo_elem = geo_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let text = read_text_str(reader, &mut buf, limits)?;
+                                georss::handle_feed_geo_element(&geo_elem, &text, &mut feed.feed);
+                            }
                             true
                         } else {
                             false
@@ -824,6 +849,27 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.episode_type = Some(text);
                             true
+                        } else if let Some(georss_element) = is_georss_tag(tag) {
+                            let georss_elem = georss_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
+                                georss::handle_entry_element(
+                                    &georss_elem,
+                                    &text,
+                                    &mut entry,
+                                    limits,
+                                );
+                            }
+                            true
+                        } else if let Some(geo_element) = is_geo_tag(tag) {
+                            let geo_elem = geo_element.as_bytes().to_vec();
+                            if !is_empty {
+                                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                *bozo |= had_bozo;
+                                georss::handle_entry_geo_element(&geo_elem, &text, &mut entry);
+                            }
+                            true
                         } else {
                             false
                         };
@@ -843,21 +889,21 @@ fn parse_entry(
         buf.clear();
     }
 
-    // Atom uses <id> not <guid>; guidislink is always false when <id> is present.
-    // Python feedparser never sets guidislink=true for Atom entries.
-    entry.guidislink = entry.id.as_ref().map(|_| false);
-
     Ok(entry)
 }
 
 /// Promote entry.id → entry.link when no explicit `<link>` is present (#273).
 ///
-/// `guidislink` is always `Some(false)` for Atom entries (set before this call).
+/// Sets `guidislink = Some(true)` when link is promoted from id, `Some(false)` when
+/// an explicit `<link>` was present. `guidislink` remains `None` when no `<id>` exists.
 fn promote_entry_id_to_link(entry: &mut Entry) {
-    if entry.link.is_none()
-        && let Some(id) = entry.id.as_deref()
-    {
-        entry.link = Some(id.to_string());
+    if let Some(id) = entry.id.as_deref() {
+        if entry.link.is_none() {
+            entry.link = Some(id.to_string());
+            entry.guidislink = Some(true);
+        } else {
+            entry.guidislink = Some(false);
+        }
     }
 }
 
@@ -2672,8 +2718,8 @@ mod tests {
     }
 
     #[test]
-    fn test_atom_entry_guidislink_is_false_when_id_present() {
-        // Atom entries with <id> must have guidislink=Some(false)
+    fn test_atom_entry_guidislink_true_when_id_promoted_to_link() {
+        // #285: when id is promoted to link, guidislink must be Some(true)
         let xml = br#"<?xml version="1.0"?>
         <feed xmlns="http://www.w3.org/2005/Atom">
             <title>Test</title>
@@ -2685,7 +2731,69 @@ mod tests {
         </feed>"#;
 
         let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(true));
+        assert_eq!(feed.entries[0].link.as_deref(), Some("urn:uuid:1234"));
+    }
+
+    #[test]
+    fn test_atom_entry_guidislink_false_when_explicit_link_present() {
+        // #285: when explicit <link> is present, guidislink must be Some(false)
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <link href="https://example.com/entry"/>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
         assert_eq!(feed.entries[0].guidislink, Some(false));
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("https://example.com/entry")
+        );
+    }
+
+    #[test]
+    fn test_atom_entry_dc_creator_fallback_author() {
+        // #278: dc:creator must be used as fallback for entry.author
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <dc:creator>Jane Doe</dc:creator>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].author.as_deref(), Some("Jane Doe"));
+    }
+
+    #[test]
+    fn test_atom_entry_author_takes_precedence_over_dc_creator() {
+        // #278: explicit <author> must take precedence over dc:creator
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <title>Test</title>
+            <entry>
+                <title>Entry</title>
+                <id>urn:uuid:1234</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <author><name>John Smith</name></author>
+                <dc:creator>Jane Doe</dc:creator>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.entries[0].author.as_deref(), Some("John Smith"));
     }
 
     #[test]
