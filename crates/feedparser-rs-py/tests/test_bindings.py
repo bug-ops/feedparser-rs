@@ -166,8 +166,8 @@ def test_georss_polygon():
     assert entry.where_ is not None
     assert entry.where_["type"] == "Polygon"
     assert len(entry.where_["coordinates"]) == 5
-    assert entry.where_["coordinates"][0] == (-71.0, 45.0)   # GeoJSON (lon, lat)
-    assert entry.where_["coordinates"][4] == (-71.0, 45.0)   # Closed polygon
+    assert entry.where_["coordinates"][0] == (-71.0, 45.0)  # GeoJSON (lon, lat)
+    assert entry.where_["coordinates"][4] == (-71.0, 45.0)  # Closed polygon
 
 
 def test_georss_box():
