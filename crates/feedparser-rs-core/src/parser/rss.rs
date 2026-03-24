@@ -588,14 +588,21 @@ fn parse_channel_itunes(
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"owner") {
-        if !is_empty {
+        if !is_empty && let Ok(owner) = parse_itunes_owner(reader, buf, limits, depth) {
+            // Promote to publisher_detail if not already set
+            if feed.feed.publisher_detail.is_none() {
+                let person = Person {
+                    name: owner.name.as_deref().map(Into::into),
+                    email: owner.email.as_deref().map(crate::types::Email::new),
+                    uri: None,
+                };
+                feed.feed.set_publisher(person);
+            }
             let itunes = feed
                 .feed
                 .itunes
                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-            if let Ok(owner) = parse_itunes_owner(reader, buf, limits, depth) {
-                itunes.owner = Some(owner);
-            }
+            itunes.owner = Some(owner);
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"category") {
@@ -2882,6 +2889,45 @@ mod tests {
 
         assert_eq!(owner.name.as_deref(), Some("John Smith"));
         assert_eq!(owner.email.as_deref(), Some("john@example.com"));
+    }
+
+    #[test]
+    fn test_rss_itunes_owner_promotes_to_publisher_detail() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Test Podcast</title>
+                <itunes:owner>
+                    <itunes:name>Jane Smith</itunes:name>
+                    <itunes:email>jane@example.com</itunes:email>
+                </itunes:owner>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let pub_detail = feed.feed.publisher_detail.as_ref().unwrap();
+        assert_eq!(pub_detail.name.as_deref(), Some("Jane Smith"));
+        assert_eq!(pub_detail.email.as_deref(), Some("jane@example.com"));
+    }
+
+    #[test]
+    fn test_rss_itunes_owner_does_not_override_existing_publisher() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Test Podcast</title>
+                <webMaster>webmaster@example.com (Web Master)</webMaster>
+                <itunes:owner>
+                    <itunes:name>iTunes Owner</itunes:name>
+                    <itunes:email>owner@example.com</itunes:email>
+                </itunes:owner>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        // webMaster sets publisher_detail first — itunes:owner must not override it
+        let pub_detail = feed.feed.publisher_detail.as_ref().unwrap();
+        assert_eq!(pub_detail.name.as_deref(), Some("Web Master"));
     }
 
     // PRIORITY 2: Podcast 2.0 Tests
