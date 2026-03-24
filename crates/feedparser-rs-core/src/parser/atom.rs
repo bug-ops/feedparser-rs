@@ -854,10 +854,8 @@ fn parse_entry(
 ///
 /// `guidislink` is always `Some(false)` for Atom entries (set before this call).
 fn promote_entry_id_to_link(entry: &mut Entry) {
-    if entry.link.is_none() {
-        if let Some(id) = entry.id.as_deref() {
-            entry.link = Some(id.to_string());
-        }
+    if entry.link.is_none() && let Some(id) = entry.id.as_deref() {
+        entry.link = Some(id.to_string());
     }
 }
 
