@@ -662,7 +662,7 @@ impl From<CoreEntry> for Entry {
             published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
             updated: core.updated_str,
             updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
-            created: core.created.as_ref().map(|dt| dt.to_rfc3339()),
+            created: core.created_str.clone(),
             created_parsed: core.created.map(|dt| dt.timestamp_millis() as f64),
             expired: core.expired.as_ref().map(|dt| dt.to_rfc3339()),
             expired_parsed: core.expired.map(|dt| dt.timestamp_millis() as f64),

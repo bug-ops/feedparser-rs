@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: `media:credit`, `media:copyright`, `media:rating`, `media:keywords`, and `media:description` are now parsed from RSS and Atom feeds and exposed on `Entry` as `media_credit`, `media_copyright`, `media_rating`, `media_keywords`, and `media_description` (#246, #288)
 - Core, Python, Node.js bindings: `media:rating` and `media:keywords` are now parsed at feed level and exposed as `feed.media_rating` / `feed.media_keywords` (#302, #208)
 
+- Core: XHTML serializer now correctly re-emits entity references (`&amp;`, `&lt;`, `&gt;`) that quick-xml emits as `GeneralRef` events; previously they were silently dropped producing bare `&` / `<` in output (#215)
+- Core, Python, Node.js bindings: Atom 0.3 `<created>` element now maps to `entry.created` / `entry.created_str` (raw date string) consistent with `published_str` / `updated_str`; previously the field was always `None` (#301)
+- Core: date parser now handles ASCTIME format `Www Mmm [D]D HH:MM:SS YYYY` with optional space-padded single-digit day (e.g. `Mon Jan  6 12:30:00 2025`) (#258)
+- Core: `Entry.created_str` field added to preserve raw Atom 0.3 `<created>` date string (#301)
 - Core: `media:content` attributes `bitrate`, `channels`, `samplingrate`, and `framerate` are now parsed and exposed as strings on `MediaContent`, matching Python feedparser behavior (#294, #253)
 - Core, Python, Node.js bindings: `media:thumbnail` elements nested inside `<media:content>` are now collected into `entry.media_thumbnail` alongside top-level thumbnails, matching Python feedparser behavior (#270)
 - Python bindings: `bitrate`, `channels`, `samplingrate`, `framerate`, `lang`, `codec`, `expression`, and `isdefault` attributes are now accessible via `MediaContent.__getitem__` / `__contains__` / `keys` / `values` dict protocol (#294)
