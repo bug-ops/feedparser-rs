@@ -950,6 +950,8 @@ pub struct MediaContent {
     pub height: Option<u32>,
     /// Duration in seconds (converted from u64 with i64::MAX cap)
     pub duration: Option<i64>,
+    /// Medium type: "image", "video", "audio", "document", "executable"
+    pub medium: Option<String>,
 }
 
 impl From<CoreMediaContent> for MediaContent {
@@ -961,6 +963,7 @@ impl From<CoreMediaContent> for MediaContent {
             width: core.width,
             height: core.height,
             duration: core.duration.map(|d| i64::try_from(d).unwrap_or(i64::MAX)),
+            medium: core.medium,
         }
     }
 }

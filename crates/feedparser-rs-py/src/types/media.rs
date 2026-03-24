@@ -97,6 +97,11 @@ impl PyMediaContent {
         self.inner.duration
     }
 
+    #[getter]
+    fn medium(&self) -> Option<&str> {
+        self.inner.medium.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "MediaContent(url='{}', type='{}')",
@@ -112,5 +117,6 @@ impl PyMediaContent {
             && self.inner.width == other.inner.width
             && self.inner.height == other.inner.height
             && self.inner.duration == other.inner.duration
+            && self.inner.medium == other.inner.medium
     }
 }

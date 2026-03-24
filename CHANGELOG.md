@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Core/Python/Node.js bindings: add `medium` field to public `MediaContent`, exposing the `media:content medium` attribute; valid values: `"image"`, `"video"`, `"audio"`, `"document"`, `"executable"` (#158)
+
 ### Fixed
 - Core: when an RSS item has only `content:encoded` (no `<description>`), or an Atom entry has only `<content>` (no `<summary>`), set `entry.summary` from `content[0].value` as a fallback, matching Python feedparser behavior (#150)
 - Map RSS 2.0 `<lastBuildDate>` channel element to `feed.updated` / `feed.updated_parsed`, matching Python feedparser behavior (#147)

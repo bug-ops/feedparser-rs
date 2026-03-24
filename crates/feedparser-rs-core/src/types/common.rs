@@ -760,6 +760,8 @@ pub struct MediaContent {
     pub height: Option<u32>,
     /// Duration in seconds (for audio/video)
     pub duration: Option<u64>,
+    /// Medium type: "image", "video", "audio", "document", "executable"
+    pub medium: Option<String>,
 }
 
 impl FromAttributes for Link {
@@ -921,6 +923,7 @@ impl FromAttributes for MediaContent {
         let mut width = None;
         let mut height = None;
         let mut duration = None;
+        let mut medium = None;
 
         for attr in attrs {
             if attr.value.len() > max_attr_length {
@@ -934,6 +937,7 @@ impl FromAttributes for MediaContent {
                 b"width" => width = bytes_to_string(&attr.value).parse().ok(),
                 b"height" => height = bytes_to_string(&attr.value).parse().ok(),
                 b"duration" => duration = bytes_to_string(&attr.value).parse().ok(),
+                b"medium" => medium = Some(bytes_to_string(&attr.value)),
                 _ => {}
             }
         }
@@ -945,6 +949,7 @@ impl FromAttributes for MediaContent {
             width,
             height,
             duration,
+            medium,
         })
     }
 }

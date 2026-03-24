@@ -1421,6 +1421,8 @@ fn parse_item_media(
             let duration = find_attribute(attrs, b"duration").and_then(|v| v.parse().ok());
             let width = find_attribute(attrs, b"width").and_then(|v| v.parse().ok());
             let height = find_attribute(attrs, b"height").and_then(|v| v.parse().ok());
+            let medium = find_attribute(attrs, b"medium")
+                .map(|v| truncate_to_length(v, limits.max_attribute_length));
 
             if !url.is_empty() {
                 entry.media_content.try_push_limited(
@@ -1431,6 +1433,7 @@ fn parse_item_media(
                         width,
                         height,
                         duration,
+                        medium,
                     },
                     limits.max_enclosures,
                 );
@@ -2862,5 +2865,22 @@ mod tests {
 </channel></rss>"#;
         let feed = parse_rss20(xml).unwrap();
         assert_eq!(feed.entries[0].summary.as_deref(), Some("<p>Full HTML</p>"));
+    }
+
+    #[test]
+    fn test_rss_media_content_medium_attribute() {
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+<channel><title>T</title><link>http://x.com</link><description>D</description>
+  <item><title>I</title>
+    <media:content url="http://x.com/video.mp4" type="video/mp4" medium="video"/>
+  </item>
+</channel></rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].media_content.len(), 1);
+        assert_eq!(
+            feed.entries[0].media_content[0].medium.as_deref(),
+            Some("video")
+        );
     }
 }

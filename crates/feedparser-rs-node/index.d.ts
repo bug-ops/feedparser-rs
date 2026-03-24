@@ -375,6 +375,8 @@ export interface MediaContent {
   height?: number
   /** Duration in seconds (converted from u64 with i64::MAX cap) */
   duration?: number
+  /** Medium type: "image", "video", "audio", "document", "executable" */
+  medium?: string
 }
 
 /** Media RSS thumbnail */
