@@ -32,10 +32,8 @@ pub const DC_NAMESPACE: &str = "http://purl.org/dc/elements/1.1/";
 pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
     match element {
         "creator" => {
-            // dc:creator → author (if not already set)
-            if feed.author.is_none() {
-                feed.author = Some(text.into());
-            }
+            // dc:creator → author (always overrides)
+            feed.author = Some(text.into());
             // Store in dc_creator field
             feed.dc_creator = Some(text.into());
             // Also add to authors list
@@ -112,9 +110,7 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
 pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
     match element {
         "creator" => {
-            if entry.author.is_none() {
-                entry.author = Some(text.into());
-            }
+            // dc:creator takes precedence over <author>; reconciled at </item>
             entry.dc_creator = Some(text.into());
             entry.authors.push(Person::from_name(text));
         }
@@ -182,8 +178,8 @@ mod tests {
         handle_feed_element("creator", "Alice", &mut feed);
         handle_feed_element("creator", "Bob", &mut feed);
 
-        // First creator becomes primary author
-        assert_eq!(feed.author.as_deref(), Some("Alice"));
+        // Last dc:creator wins (always overrides)
+        assert_eq!(feed.author.as_deref(), Some("Bob"));
         // Both are in authors list
         assert_eq!(feed.authors.len(), 2);
     }
@@ -237,7 +233,8 @@ mod tests {
         handle_entry_element("subject", "Tech", &mut entry);
         handle_entry_element("description", "Entry summary", &mut entry);
 
-        assert_eq!(entry.author.as_deref(), Some("Jane Doe"));
+        // dc:creator is stored in dc_creator; entry.author is reconciled at </item> in rss.rs
+        assert_eq!(entry.dc_creator.as_deref(), Some("Jane Doe"));
         assert_eq!(entry.tags.len(), 1);
         assert_eq!(entry.summary.as_deref(), Some("Entry summary"));
     }
