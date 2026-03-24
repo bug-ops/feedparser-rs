@@ -119,9 +119,9 @@ def test_georss_point():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.where_ is not None
-    assert entry.where_["type"] == "Point"
-    assert entry.where_["coordinates"] == (-71.92, 45.256)  # GeoJSON (lon, lat)
+    assert entry.where is not None
+    assert entry.where["type"] == "Point"
+    assert entry.where["coordinates"] == (-71.92, 45.256)  # GeoJSON (lon, lat)
 
 
 def test_georss_line():
@@ -141,9 +141,9 @@ def test_georss_line():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.where_ is not None
-    assert entry.where_["type"] == "LineString"
-    assert entry.where_["coordinates"] == [(-71.92, 45.256), (-72.12, 46.456)]  # GeoJSON (lon, lat)
+    assert entry.where is not None
+    assert entry.where["type"] == "LineString"
+    assert entry.where["coordinates"] == [(-71.92, 45.256), (-72.12, 46.456)]  # GeoJSON (lon, lat)
 
 
 def test_georss_polygon():
@@ -163,11 +163,11 @@ def test_georss_polygon():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.where_ is not None
-    assert entry.where_["type"] == "Polygon"
-    assert len(entry.where_["coordinates"]) == 5
-    assert entry.where_["coordinates"][0] == (-71.0, 45.0)  # GeoJSON (lon, lat)
-    assert entry.where_["coordinates"][4] == (-71.0, 45.0)  # Closed polygon
+    assert entry.where is not None
+    assert entry.where["type"] == "Polygon"
+    assert len(entry.where["coordinates"]) == 5
+    assert entry.where["coordinates"][0] == (-71.0, 45.0)  # GeoJSON (lon, lat)
+    assert entry.where["coordinates"][4] == (-71.0, 45.0)  # Closed polygon
 
 
 def test_georss_box():
@@ -187,11 +187,11 @@ def test_georss_box():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.where_ is not None
-    assert entry.where_["type"] == "Box"
-    assert len(entry.where_["coordinates"]) == 2
-    assert entry.where_["coordinates"][0] == (-71.032, 42.943)  # GeoJSON (lon, lat)
-    assert entry.where_["coordinates"][1] == (-69.856, 43.039)
+    assert entry.where is not None
+    assert entry.where["type"] == "Box"
+    assert len(entry.where["coordinates"]) == 2
+    assert entry.where["coordinates"][0] == (-71.032, 42.943)  # GeoJSON (lon, lat)
+    assert entry.where["coordinates"][1] == (-69.856, 43.039)
 
 
 def test_georss_srs_name():
@@ -211,11 +211,11 @@ def test_georss_srs_name():
     result = feedparser_rs.parse(xml)
     entry = result.entries[0]
 
-    assert entry.where_ is not None
+    assert entry.where is not None
     # Note: srsName parsing may not be implemented yet
     # Just verify the basic where structure works
-    assert entry.where_["type"] == "Point"
-    assert entry.where_["coordinates"] == (-71.92, 45.256)  # GeoJSON (lon, lat)
+    assert entry.where["type"] == "Point"
+    assert entry.where["coordinates"] == (-71.92, 45.256)  # GeoJSON (lon, lat)
 
 
 def test_dublin_core_creator():
@@ -515,7 +515,7 @@ def test_none_values_for_missing_objects():
     entry = result.entries[0]
 
     # Single objects should be None when missing
-    assert entry.where_ is None
+    assert entry.where is None
     assert entry.dc_creator is None
     assert entry.dc_date is None
     assert entry.dc_date_parsed is None
@@ -582,7 +582,7 @@ def test_geo_location_repr():
     """
 
     result = feedparser_rs.parse(xml)
-    where = result.entries[0].where_
+    where = result.entries[0].where
 
     assert isinstance(where, dict)
     assert where["type"] == "Point"
