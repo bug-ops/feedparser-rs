@@ -1,4 +1,8 @@
-use feedparser_rs::{MediaContent as CoreMediaContent, MediaThumbnail as CoreMediaThumbnail};
+use feedparser_rs::{
+    MediaContent as CoreMediaContent, MediaCopyright as CoreMediaCopyright,
+    MediaCredit as CoreMediaCredit, MediaRating as CoreMediaRating,
+    MediaThumbnail as CoreMediaThumbnail,
+};
 use pyo3::prelude::*;
 
 /// Represents a Media RSS thumbnail image.
@@ -124,8 +128,8 @@ impl PyMediaContent {
     }
 
     #[getter]
-    fn filesize(&self) -> Option<u64> {
-        self.inner.filesize
+    fn filesize(&self) -> Option<&str> {
+        self.inner.filesize.as_deref()
     }
 
     #[getter]
@@ -199,7 +203,7 @@ impl PyMediaContent {
             "width" => Ok(self.inner.width.as_deref().map(str::to_owned)),
             "height" => Ok(self.inner.height.as_deref().map(str::to_owned)),
             "duration" => Ok(self.inner.duration.as_deref().map(str::to_owned)),
-            "filesize" => Ok(self.inner.filesize.map(|v| v.to_string())),
+            "filesize" => Ok(self.inner.filesize.as_deref().map(str::to_owned)),
             "bitrate" => Ok(self.inner.bitrate.as_deref().map(str::to_owned)),
             "channels" => Ok(self.inner.channels.as_deref().map(str::to_owned)),
             "samplingrate" => Ok(self.inner.samplingrate.as_deref().map(str::to_owned)),
@@ -269,7 +273,7 @@ impl PyMediaContent {
             self.inner.width.as_deref().map(str::to_owned),
             self.inner.height.as_deref().map(str::to_owned),
             self.inner.duration.as_deref().map(str::to_owned),
-            self.inner.filesize.map(|v| v.to_string()),
+            self.inner.filesize.as_deref().map(str::to_owned),
             self.inner.bitrate.as_deref().map(str::to_owned),
             self.inner.channels.as_deref().map(str::to_owned),
             self.inner.samplingrate.as_deref().map(str::to_owned),
@@ -305,5 +309,210 @@ impl PyMediaContent {
             && self.inner.isdefault == other.inner.isdefault
             && self.inner.samplingrate == other.inner.samplingrate
             && self.inner.framerate == other.inner.framerate
+    }
+}
+
+/// Represents a Media RSS credit (media:credit element).
+#[pyclass(name = "MediaCredit", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyMediaCredit {
+    inner: CoreMediaCredit,
+}
+
+impl PyMediaCredit {
+    pub fn from_core(core: CoreMediaCredit) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyMediaCredit {
+    #[getter]
+    fn role(&self) -> Option<&str> {
+        self.inner.role.as_deref()
+    }
+
+    #[getter]
+    fn scheme(&self) -> Option<&str> {
+        self.inner.scheme.as_deref()
+    }
+
+    #[getter]
+    fn content(&self) -> &str {
+        &self.inner.content
+    }
+
+    fn __repr__(&self) -> String {
+        format!("MediaCredit(content='{}')", self.inner.content)
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "role" => Ok(self.inner.role.as_deref().map(str::to_owned)),
+            "scheme" => Ok(self.inner.scheme.as_deref().map(str::to_owned)),
+            "content" => Ok(Some(self.inner.content.clone())),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "role" | "scheme" | "content")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["role", "scheme", "content"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            self.inner.role.as_deref().map(str::to_owned),
+            self.inner.scheme.as_deref().map(str::to_owned),
+            Some(self.inner.content.clone()),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
+}
+
+/// Represents a Media RSS copyright (media:copyright element).
+#[pyclass(name = "MediaCopyright", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyMediaCopyright {
+    inner: CoreMediaCopyright,
+}
+
+impl PyMediaCopyright {
+    pub fn from_core(core: CoreMediaCopyright) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyMediaCopyright {
+    #[getter]
+    fn url(&self) -> Option<&str> {
+        self.inner.url.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("MediaCopyright(url={:?})", self.inner.url)
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "url" => Ok(self.inner.url.as_deref().map(str::to_owned)),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        key == "url"
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["url"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![self.inner.url.as_deref().map(str::to_owned)]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
+}
+
+/// Represents a Media RSS rating (media:rating element).
+#[pyclass(name = "MediaRating", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyMediaRating {
+    inner: CoreMediaRating,
+}
+
+impl PyMediaRating {
+    pub fn from_core(core: CoreMediaRating) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyMediaRating {
+    #[getter]
+    fn scheme(&self) -> Option<&str> {
+        self.inner.scheme.as_deref()
+    }
+
+    #[getter]
+    fn content(&self) -> &str {
+        &self.inner.content
+    }
+
+    fn __repr__(&self) -> String {
+        format!("MediaRating(content='{}')", self.inner.content)
+    }
+
+    fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
+        match key {
+            "scheme" => Ok(self.inner.scheme.as_deref().map(str::to_owned)),
+            "content" => Ok(Some(self.inner.content.clone())),
+            _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
+        }
+    }
+
+    fn __contains__(&self, key: &str) -> bool {
+        matches!(key, "scheme" | "content")
+    }
+
+    #[pyo3(signature = (key, default = None))]
+    fn get(&self, key: &str, default: Option<String>) -> Option<String> {
+        match self.__getitem__(key) {
+            Ok(v) => v.or(default),
+            Err(_) => default,
+        }
+    }
+
+    fn keys(&self) -> Vec<&'static str> {
+        vec!["scheme", "content"]
+    }
+
+    fn values(&self) -> Vec<Option<String>> {
+        vec![
+            self.inner.scheme.as_deref().map(str::to_owned),
+            Some(self.inner.content.clone()),
+        ]
+    }
+
+    fn items(&self) -> Vec<(String, Option<String>)> {
+        self.keys()
+            .into_iter()
+            .zip(self.values())
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
     }
 }

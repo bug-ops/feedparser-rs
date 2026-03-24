@@ -88,7 +88,11 @@ fn test_media_invalid_numeric_attributes() {
     assert_eq!(entry.media_thumbnail[0].height.as_deref(), Some("-50"));
 
     assert_eq!(entry.media_content.len(), 1);
-    assert!(entry.media_content[0].filesize.is_none());
+    // filesize is now a raw string — non-numeric values are preserved as-is
+    assert_eq!(
+        entry.media_content[0].filesize.as_deref(),
+        Some("not_a_number")
+    );
 }
 
 /// Tests that Media RSS elements without required URL attribute are ignored

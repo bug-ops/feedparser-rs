@@ -6,9 +6,10 @@ use crate::{
     namespace::{content, dublin_core, georss, media_rss, slash, syndication, threading},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
-        ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person, PodcastChapters,
-        PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
-        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_explicit,
+        ItunesOwner, Link, MediaContent, MediaCopyright, MediaCredit, MediaRating, MediaThumbnail,
+        ParsedFeed, Person, PodcastChapters, PodcastEntryMeta, PodcastFunding, PodcastMeta,
+        PodcastPerson, PodcastSoundbite, PodcastTranscript, Source, Tag, TextConstruct, TextType,
+        parse_explicit,
     },
     util::{
         base_url::BaseUrlContext,
@@ -1627,7 +1628,7 @@ fn parse_item_media(
                 .map(|v| truncate_to_length(v, limits.max_attribute_length));
             let medium = find_attribute(attrs, b"medium")
                 .map(|v| truncate_to_length(v, limits.max_attribute_length));
-            let filesize = find_attribute(attrs, b"fileSize").and_then(|v| v.parse().ok());
+            let filesize = find_attribute(attrs, b"fileSize").map(str::to_owned);
             let duration = find_attribute(attrs, b"duration").map(str::to_owned);
             let width = find_attribute(attrs, b"width").map(str::to_owned);
             let height = find_attribute(attrs, b"height").map(str::to_owned);
@@ -1671,6 +1672,61 @@ fn parse_item_media(
             // were direct siblings of the enclosing item.
             if !is_empty {
                 parse_media_group(reader, buf, entry, limits, depth)?;
+            }
+        }
+        "credit" => {
+            let role = find_attribute(attrs, b"role").map(str::to_owned);
+            let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
+            let text = if is_empty {
+                String::new()
+            } else {
+                read_text_str(reader, buf, limits)?
+            };
+            if !text.is_empty() {
+                entry.media_credit.try_push_limited(
+                    MediaCredit {
+                        role,
+                        scheme,
+                        content: text,
+                    },
+                    limits.max_links_per_entry,
+                );
+            }
+        }
+        "copyright" => {
+            let url = find_attribute(attrs, b"url").map(str::to_owned);
+            if !is_empty {
+                read_text_str(reader, buf, limits)?;
+            }
+            entry.media_copyright = Some(MediaCopyright { url });
+        }
+        "rating" => {
+            let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
+            let text = if is_empty {
+                String::new()
+            } else {
+                read_text_str(reader, buf, limits)?
+            };
+            if !text.is_empty() {
+                entry.media_rating = Some(MediaRating {
+                    scheme,
+                    content: text,
+                });
+            }
+        }
+        "description" => {
+            let type_attr = find_attribute(attrs, b"type").map(str::to_owned);
+            let text = if is_empty {
+                String::new()
+            } else {
+                read_text_str(reader, buf, limits)?
+            };
+            let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
+            if is_plain && !text.is_empty() {
+                entry.media_description = Some(text.clone());
+            }
+            if entry.summary.is_none() && !text.is_empty() {
+                entry.summary = Some(text);
             }
         }
         _ => {

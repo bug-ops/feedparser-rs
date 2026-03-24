@@ -1,6 +1,7 @@
 use super::{
     common::{
-        Content, Enclosure, Link, MediaContent, MediaThumbnail, Person, Source, Tag, TextConstruct,
+        Content, Enclosure, Link, MediaContent, MediaCopyright, MediaCredit, MediaRating,
+        MediaThumbnail, Person, Source, Tag, TextConstruct,
     },
     generics::LimitedCollectionExt,
     podcast::{ItunesEntryMeta, PodcastEntryMeta, PodcastPerson, PodcastTranscript},
@@ -81,6 +82,16 @@ pub struct Entry {
     pub media_thumbnail: Vec<MediaThumbnail>,
     /// Media RSS content items
     pub media_content: Vec<MediaContent>,
+    /// Media RSS credits (media:credit elements)
+    pub media_credit: Vec<MediaCredit>,
+    /// Media RSS copyright (media:copyright element)
+    pub media_copyright: Option<MediaCopyright>,
+    /// Media RSS rating (media:rating element)
+    pub media_rating: Option<MediaRating>,
+    /// Media RSS keywords (raw comma-separated string from media:keywords)
+    pub media_keywords: Option<String>,
+    /// Media RSS description (plain text only; None if type != "plain")
+    pub media_description: Option<String>,
     /// Podcast 2.0 transcripts for this episode
     pub podcast_transcripts: Vec<PodcastTranscript>,
     /// Podcast 2.0 persons for this episode (hosts, guests, etc.)
@@ -144,6 +155,7 @@ impl Entry {
             dc_subject: Vec::with_capacity(2),
             media_thumbnail: Vec::with_capacity(1),
             media_content: Vec::with_capacity(1),
+            media_credit: Vec::with_capacity(1),
             podcast_transcripts: Vec::with_capacity(2),
             podcast_persons: Vec::with_capacity(4),
             // Most entries reply to at most one parent

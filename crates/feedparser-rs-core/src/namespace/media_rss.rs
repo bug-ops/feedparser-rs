@@ -157,7 +157,11 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
             }
         }
         "keywords" => {
-            // Comma-separated keywords
+            // Store raw comma-separated string
+            if entry.media_keywords.is_none() && !text.is_empty() {
+                entry.media_keywords = Some(text.to_string());
+            }
+            // Split into tags
             for keyword in text.split(',') {
                 let keyword = keyword.trim();
                 if !keyword.is_empty() {

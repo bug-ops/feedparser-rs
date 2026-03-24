@@ -6,8 +6,8 @@ use crate::{
     namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
         Content, Enclosure, Entry, FeedVersion, Generator, Image, ItunesCategory, ItunesEntryMeta,
-        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person,
-        Source, Tag, TextConstruct, TextType, parse_explicit,
+        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright, MediaCredit, MediaRating,
+        MediaThumbnail, ParsedFeed, Person, Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
@@ -703,6 +703,91 @@ fn parse_entry(
                                 parse_atom_media_group(
                                     reader, buf, &mut entry, limits, depth, bozo,
                                 )?;
+                            } else if media_element == "credit" {
+                                let role = element
+                                    .attributes()
+                                    .flatten()
+                                    .find(|a| a.key.as_ref() == b"role")
+                                    .and_then(|a| {
+                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
+                                    });
+                                let scheme = element
+                                    .attributes()
+                                    .flatten()
+                                    .find(|a| a.key.as_ref() == b"scheme")
+                                    .and_then(|a| {
+                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
+                                    });
+                                if !is_empty {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    if !text.is_empty() {
+                                        entry.media_credit.try_push_limited(
+                                            MediaCredit {
+                                                role,
+                                                scheme,
+                                                content: text,
+                                            },
+                                            limits.max_links_per_entry,
+                                        );
+                                    }
+                                }
+                            } else if media_element == "copyright" {
+                                let url = element
+                                    .attributes()
+                                    .flatten()
+                                    .find(|a| a.key.as_ref() == b"url")
+                                    .and_then(|a| {
+                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
+                                    });
+                                if !is_empty {
+                                    skip_element(reader, buf, limits, *depth)?;
+                                }
+                                entry.media_copyright = Some(MediaCopyright { url });
+                            } else if media_element == "rating" {
+                                let scheme = element
+                                    .attributes()
+                                    .flatten()
+                                    .find(|a| a.key.as_ref() == b"scheme")
+                                    .and_then(|a| {
+                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
+                                    });
+                                if !is_empty {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    if !text.is_empty() {
+                                        entry.media_rating = Some(MediaRating {
+                                            scheme,
+                                            content: text,
+                                        });
+                                    }
+                                }
+                            } else if media_element == "description" {
+                                let type_attr = element
+                                    .attributes()
+                                    .flatten()
+                                    .find(|a| a.key.as_ref() == b"type")
+                                    .and_then(|a| {
+                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
+                                    });
+                                if !is_empty {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    let is_plain =
+                                        type_attr.as_deref().is_none_or(|t| t == "plain");
+                                    if is_plain && !text.is_empty() {
+                                        entry.media_description = Some(text.clone());
+                                    }
+                                    if entry.summary.is_none() && !text.is_empty() {
+                                        entry.summary = Some(text);
+                                    }
+                                }
+                            } else if media_element == "keywords" {
+                                if !is_empty {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    media_rss::handle_entry_element("keywords", &text, &mut entry);
+                                }
                             } else {
                                 let media_elem = media_element.to_string();
                                 if !is_empty {
