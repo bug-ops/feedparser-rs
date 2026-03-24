@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: Atom `entry.guidislink` is now `Some(false)` when `<id>` is present (was always `None`), matching Python feedparser behavior (#256)
 - Python: all nested struct types (Image, Enclosure, Link, Person, TextConstruct, Generator, Tag, Source, Content, MediaThumbnail, MediaContent, ItunesFeedMeta, ItunesEntryMeta, GeoLocation) now implement the full dict protocol: `get()`, `keys()`, `values()`, `items()`, `dict()`, `in` operator, and `__getitem__` (#264, #222)
 - Python: geo location field renamed from `where_` to `where` to match Python feedparser API (`entry.where`, `feed.where`) (#249)
+- Core: Atom `entry.guidislink` is now `Some(true)` when `entry.link` is promoted from `entry.id` (no explicit `<link>`), and `Some(false)` when an explicit `<link>` is present; previously always hardcoded to `Some(false)` (#285)
+- Core: `dc:creator` in Atom entries is now used as fallback for `entry.author` when no `<author>` element is present, matching RSS behavior and Python feedparser (#278)
+- Core: RSS 0.92 and 0.90 feeds now report `"rss092"` and `"rss090"` instead of `"rss20"`; RSS 0.91 with Netscape DOCTYPE reports `"rss091n"`, without DOCTYPE reports `"rss091u"`, matching Python feedparser behavior (#283)
 
 ## [0.5.0] - 2026-03-24
 

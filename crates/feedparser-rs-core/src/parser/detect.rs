@@ -87,8 +87,22 @@ fn detect_json_version_from_partial(data: &[u8]) -> FeedVersion {
     }
 }
 
+/// Returns true if the data contains the Netscape RSS 0.91 DOCTYPE declaration.
+///
+/// Python feedparser uses this to distinguish `rss091n` (Netscape) from `rss091u` (Userland).
+fn has_netscape_rss091_doctype(data: &[u8]) -> bool {
+    // Only scan the first 512 bytes — DOCTYPE always appears before the root element
+    let probe = &data[..data.len().min(512)];
+    // The canonical Netscape DOCTYPE system identifier
+    probe
+        .windows(b"Netscape Communications".len())
+        .any(|w| w == b"Netscape Communications")
+}
+
 /// Detect XML-based feed format (RSS or Atom)
 fn detect_xml_format(data: &[u8]) -> FeedVersion {
+    let has_netscape_doctype = has_netscape_rss091_doctype(data);
+
     let mut reader = Reader::from_reader(data);
     reader.config_mut().trim_text(true);
 
@@ -107,7 +121,13 @@ fn detect_xml_format(data: &[u8]) -> FeedVersion {
                             if attr.key.as_ref() == b"version" {
                                 return match attr.value.as_ref() {
                                     b"0.90" => FeedVersion::Rss090,
-                                    b"0.91" => FeedVersion::Rss091,
+                                    b"0.91" => {
+                                        if has_netscape_doctype {
+                                            FeedVersion::Rss091Netscape
+                                        } else {
+                                            FeedVersion::Rss091Userland
+                                        }
+                                    }
                                     b"0.92" => FeedVersion::Rss092,
                                     b"2.0" => FeedVersion::Rss20,
                                     _ => FeedVersion::Unknown,
@@ -172,9 +192,18 @@ mod tests {
     }
 
     #[test]
-    fn test_detect_rss091() {
+    fn test_detect_rss091_userland() {
         let xml = br#"<rss version="0.91"></rss>"#;
-        assert_eq!(detect_format(xml), FeedVersion::Rss091);
+        assert_eq!(detect_format(xml), FeedVersion::Rss091Userland);
+    }
+
+    #[test]
+    fn test_detect_rss091_netscape() {
+        let xml = br#"<?xml version="1.0"?>
+<!DOCTYPE rss PUBLIC "-//Netscape Communications//DTD RSS 0.91//EN"
+    "http://my.netscape.com/publish/formats/rss-0.91.dtd">
+<rss version="0.91"></rss>"#;
+        assert_eq!(detect_format(xml), FeedVersion::Rss091Netscape);
     }
 
     #[test]

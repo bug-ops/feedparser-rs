@@ -80,9 +80,15 @@ pub fn parse_with_limits(data: &[u8], limits: crate::ParserLimits) -> Result<Par
 
     // Parse based on detected format, then update the encoding field
     let mut feed = match version {
-        // RSS variants (all use RSS 2.0 parser for now)
-        FeedVersion::Rss20 | FeedVersion::Rss092 | FeedVersion::Rss091 | FeedVersion::Rss090 => {
-            rss::parse_rss20_with_limits(utf8_bytes, limits)
+        // RSS variants (all use RSS 2.0 parser; overwrite version after parsing)
+        FeedVersion::Rss20
+        | FeedVersion::Rss092
+        | FeedVersion::Rss091Netscape
+        | FeedVersion::Rss091Userland
+        | FeedVersion::Rss090 => {
+            let mut parsed = rss::parse_rss20_with_limits(utf8_bytes, limits)?;
+            parsed.version = version;
+            Ok(parsed)
         }
 
         // Atom variants
@@ -124,5 +130,51 @@ mod tests {
         assert!(feed.bozo, "unrecognized input must set bozo");
         assert_eq!(feed.version, crate::types::FeedVersion::Unknown);
         assert!(feed.entries.is_empty());
+    }
+
+    #[test]
+    fn test_rss091n_version_string() {
+        // #283: RSS 0.91 with Netscape DOCTYPE must report "rss091n"
+        let xml = br#"<?xml version="1.0"?>
+<!DOCTYPE rss PUBLIC "-//Netscape Communications//DTD RSS 0.91//EN"
+    "http://my.netscape.com/publish/formats/rss-0.91.dtd">
+<rss version="0.91">
+<channel><title>T</title><link>http://example.com</link><description>D</description>
+<language>en</language></channel></rss>"#;
+        let feed = parse(xml).unwrap();
+        assert_eq!(feed.version.as_str(), "rss091n");
+    }
+
+    #[test]
+    fn test_rss091u_version_string() {
+        // #283: RSS 0.91 without Netscape DOCTYPE must report "rss091u"
+        let xml = br#"<?xml version="1.0"?>
+<rss version="0.91">
+<channel><title>T</title><link>http://example.com</link><description>D</description>
+<language>en</language></channel></rss>"#;
+        let feed = parse(xml).unwrap();
+        assert_eq!(feed.version.as_str(), "rss091u");
+    }
+
+    #[test]
+    fn test_rss092_version_string() {
+        // #283: RSS 0.92 feeds must report version "rss092", not "rss20"
+        let xml = br#"<?xml version="1.0"?>
+<rss version="0.92">
+<channel><title>T</title><link>http://example.com</link><description>D</description>
+</channel></rss>"#;
+        let feed = parse(xml).unwrap();
+        assert_eq!(feed.version.as_str(), "rss092");
+    }
+
+    #[test]
+    fn test_rss20_version_string_unchanged() {
+        // #283: RSS 2.0 feeds must still report version "rss20"
+        let xml = br#"<?xml version="1.0"?>
+<rss version="2.0">
+<channel><title>T</title><link>http://example.com</link><description>D</description>
+</channel></rss>"#;
+        let feed = parse(xml).unwrap();
+        assert_eq!(feed.version.as_str(), "rss20");
     }
 }
