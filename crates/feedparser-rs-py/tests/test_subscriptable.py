@@ -183,9 +183,8 @@ def test_source_getitem():
     result = feedparser_rs.parse(RSS_FEED_WITH_SOURCE)
     source = result.entries[0].source
     assert source is not None
-    # Known keys return None when unpopulated (consistent with feedparser optional fields)
-    assert source["title"] is None
-    assert source["link"] is None
+    assert source["title"] == "Source Feed"
+    assert source["link"] == "http://source.example.com/rss"
     assert source["id"] is None
 
 

@@ -9,8 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Map RSS 2.0 `<lastBuildDate>` channel element to `feed.updated` / `feed.updated_parsed`, matching Python feedparser behavior (#147)
+- Atom `<link>` elements without an explicit `type` attribute now get a default MIME type based on `rel`: `text/html` for `alternate`, `hub`, `enclosure`, and unknown relations; `application/atom+xml` for `self` — matching Python feedparser behavior (#146)
+- RFC2822 date parsing now tolerates incorrect day-of-week names, matching Python feedparser behavior (#143)
+- Node.js bindings: `entry.updated`, `entry.published`, `entry.created`, `entry.expired`, `entry.dcDate`, `feed.updated`, `feed.published` now return the original timezone-preserving date string from the feed; added corresponding `*Parsed` fields (`updatedParsed`, `publishedParsed`, `createdParsed`, `expiredParsed`, `dcDateParsed`) returning `number` (ms since epoch) for use with `new Date(ms)` (#141)
 - Core/bindings: `updated` and `published` string fields now preserve the original timezone string from the feed instead of normalizing to UTC; `*_parsed` fields remain correctly normalized (#140)
 - Map RSS 2.0 `<copyright>` channel element to `feed.rights` (#144)
+- Parse RSS 2.0 `<source url="...">Title</source>` into `entry.source.link` and `entry.source.title` (#145)
 - Parse Atom `<rights>` at entry level into `entry.rights` and `entry.rights_detail`; map `dc:rights` on entries to `entry.rights` (when not already set by Atom) and `entry.dc_rights`; expose `rights`, `rights_detail`, `copyright`, `copyright_detail` in Python bindings and `rights`, `rightsDetail` in Node.js bindings (#139)
 - `TextConstruct.value` (`title_detail.value`, `summary_detail.value`, `subtitle_detail.value`, `rights_detail.value`) was always empty due to `mem::take` moving the string into the shorthand field; fixed by cloning instead (#136)
 - `TextConstruct.type` now returns MIME types matching Python feedparser: `text/plain`, `text/html`, `application/xhtml+xml` instead of short forms `text`, `html`, `xhtml` (#136)

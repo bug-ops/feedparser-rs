@@ -869,7 +869,7 @@ fn parse_item(
                         }
                     }
                     b"source" => {
-                        if let Ok(source) = parse_source(reader, buf, limits, depth) {
+                        if let Ok(source) = parse_source(reader, buf, &attrs, limits) {
                             entry.source = Some(source);
                         }
                     }
@@ -1510,33 +1510,21 @@ fn parse_image(
 fn parse_source(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
     limits: &ParserLimits,
-    depth: &mut usize,
 ) -> Result<Source> {
-    let mut title = None;
-    let mut link = None;
+    // RSS 2.0: <source url="...">Title text</source>
+    // The url attribute becomes link; the text content becomes title.
+    let link = find_attribute(attrs, b"url").map(ToOwned::to_owned);
     let id = None;
 
-    loop {
-        match reader.read_event_into(buf) {
-            Ok(Event::Start(e)) => {
-                *depth += 1;
-                check_depth(*depth, limits.max_nesting_depth)?;
-
-                match e.local_name().as_ref() {
-                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
-                    b"url" => link = Some(read_text_str(reader, buf, limits)?),
-                    _ => skip_element(reader, buf, limits, *depth)?,
-                }
-                *depth = depth.saturating_sub(1);
-            }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"source" => break,
-            Ok(Event::Eof) => break,
-            Err(e) => return Err(e.into()),
-            _ => {}
-        }
-        buf.clear();
-    }
+    let raw_title = read_text_str(reader, buf, limits)?;
+    let title_str = raw_title.trim();
+    let title = if title_str.is_empty() {
+        None
+    } else {
+        Some(title_str.to_owned())
+    };
 
     Ok(Source { title, link, id })
 }
@@ -2041,14 +2029,12 @@ mod tests {
 
     #[test]
     fn test_parse_rss_with_source() {
+        // RSS 2.0 spec: <source url="...">Title text</source>
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
                 <item>
-                    <source>
-                        <title>Source Feed</title>
-                        <url>http://source.example.com</url>
-                    </source>
+                    <source url="http://source.example.com">Source Feed</source>
                 </item>
             </channel>
         </rss>"#;

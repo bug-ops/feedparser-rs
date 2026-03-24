@@ -797,12 +797,20 @@ impl FromAttributes for Link {
             }
         }
 
+        let rel_str: Option<SmallString> = rel
+            .map(std::convert::Into::into)
+            .or_else(|| Some("alternate".into()));
+        let resolved_type = link_type
+            .map(MimeType::new)
+            .or_else(|| match rel_str.as_deref() {
+                Some("self") => Some(MimeType::new("application/atom+xml")),
+                _ => Some(MimeType::new("text/html")),
+            });
+
         href.map(|href| Self {
             href: Url::new(href),
-            rel: rel
-                .map(std::convert::Into::into)
-                .or_else(|| Some("alternate".into())),
-            link_type: link_type.map(MimeType::new),
+            rel: rel_str,
+            link_type: resolved_type,
             title,
             length,
             hreflang: hreflang.map(std::convert::Into::into),
