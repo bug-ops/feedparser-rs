@@ -96,6 +96,10 @@ pub struct FeedMeta {
     pub geo_long: Option<String>,
     /// Pagination URL for the next page of results (JSON Feed `next_url`, RFC 5005 `<link rel="next">`)
     pub next_url: Option<String>,
+    /// Media RSS thumbnails at feed/channel level
+    pub media_thumbnail: Vec<super::common::MediaThumbnail>,
+    /// Media RSS content items at feed/channel level
+    pub media_content: Vec<super::common::MediaContent>,
     /// Media RSS rating (`media:rating`) at feed level
     pub media_rating: Option<MediaRating>,
     /// Media RSS keywords (`media:keywords`) at feed level, comma-separated string

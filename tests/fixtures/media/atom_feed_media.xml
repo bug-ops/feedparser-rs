@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <title>Atom Feed Media Test</title>
+  <link href="http://example.com/"/>
+  <id>http://example.com/</id>
+  <media:keywords>tech, programming</media:keywords>
+  <media:rating>nonadult</media:rating>
+  <media:thumbnail url="http://example.com/feed-thumb.jpg" width="800" height="600" time="00:00:30.000"/>
+  <media:content url="http://example.com/feed-video.mp4" type="video/mp4" medium="video"/>
+  <entry>
+    <title>Test Entry</title>
+    <link href="http://example.com/entry/1"/>
+    <id>http://example.com/entry/1</id>
+    <media:rating>adult</media:rating>
+    <media:thumbnail url="http://example.com/entry-thumb.jpg" width="320" height="180" time="12:05:01.123"/>
+  </entry>
+</feed>

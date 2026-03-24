@@ -47,10 +47,15 @@ impl PyMediaThumbnail {
         self.inner.height.as_deref()
     }
 
+    #[getter]
+    fn time(&self) -> Option<&str> {
+        self.inner.time.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
-            "MediaThumbnail(url='{}', width={:?}, height={:?})",
-            self.inner.url, self.inner.width, self.inner.height
+            "MediaThumbnail(url='{}', width={:?}, height={:?}, time={:?})",
+            self.inner.url, self.inner.width, self.inner.height, self.inner.time
         )
     }
 
@@ -58,6 +63,7 @@ impl PyMediaThumbnail {
         self.inner.url == other.inner.url
             && self.inner.width == other.inner.width
             && self.inner.height == other.inner.height
+            && self.inner.time == other.inner.time
     }
 
     fn __getitem__(&self, key: &str) -> PyResult<Option<String>> {
@@ -65,12 +71,13 @@ impl PyMediaThumbnail {
             "url" => Ok(Some(self.inner.url.to_string())),
             "width" => Ok(self.inner.width.as_deref().map(str::to_owned)),
             "height" => Ok(self.inner.height.as_deref().map(str::to_owned)),
+            "time" => Ok(self.inner.time.as_deref().map(str::to_owned)),
             _ => Err(pyo3::exceptions::PyKeyError::new_err(key.to_string())),
         }
     }
 
     fn __contains__(&self, key: &str) -> bool {
-        matches!(key, "url" | "width" | "height")
+        matches!(key, "url" | "width" | "height" | "time")
     }
 
     #[pyo3(signature = (key, default = None))]
@@ -82,7 +89,7 @@ impl PyMediaThumbnail {
     }
 
     fn keys(&self) -> Vec<&'static str> {
-        vec!["url", "width", "height"]
+        vec!["url", "width", "height", "time"]
     }
 
     fn values(&self) -> Vec<Option<String>> {
@@ -90,6 +97,7 @@ impl PyMediaThumbnail {
             Some(self.inner.url.to_string()),
             self.inner.width.as_deref().map(str::to_owned),
             self.inner.height.as_deref().map(str::to_owned),
+            self.inner.time.as_deref().map(str::to_owned),
         ]
     }
 

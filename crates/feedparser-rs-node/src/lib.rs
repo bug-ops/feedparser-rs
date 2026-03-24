@@ -399,6 +399,12 @@ pub struct FeedMeta {
     pub podcast: Option<PodcastMeta>,
     /// JSON Feed next_url for pagination (JSON Feed 1.1)
     pub next_url: Option<String>,
+    /// Media RSS thumbnails at feed/channel level
+    #[napi(js_name = "mediaThumbnails")]
+    pub media_thumbnail: Vec<MediaThumbnail>,
+    /// Media RSS content items at feed/channel level
+    #[napi(js_name = "mediaContent")]
+    pub media_content: Vec<MediaContent>,
     /// Media RSS rating (`media:rating`) at feed level
     #[napi(js_name = "mediaRating")]
     pub media_rating: Option<MediaRating>,
@@ -451,6 +457,16 @@ impl From<CoreFeedMeta> for FeedMeta {
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
             next_url: core.next_url,
+            media_thumbnail: core
+                .media_thumbnail
+                .into_iter()
+                .map(MediaThumbnail::from)
+                .collect(),
+            media_content: core
+                .media_content
+                .into_iter()
+                .map(MediaContent::from)
+                .collect(),
             media_rating: core.media_rating.map(MediaRating::from),
             media_keywords: core.media_keywords,
         }
@@ -1053,6 +1069,10 @@ pub struct MediaThumbnail {
     pub width: Option<String>,
     /// Height in pixels (raw string value, as in Python feedparser)
     pub height: Option<String>,
+    /// Time offset in NTP format (time attribute)
+    ///
+    /// Indicates which frame of the media this thumbnail represents.
+    pub time: Option<String>,
 }
 
 impl From<CoreMediaThumbnail> for MediaThumbnail {
@@ -1061,6 +1081,7 @@ impl From<CoreMediaThumbnail> for MediaThumbnail {
             url: core.url.into_inner(),
             width: core.width,
             height: core.height,
+            time: core.time,
         }
     }
 }

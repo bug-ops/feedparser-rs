@@ -381,6 +381,32 @@ fn parse_feed_element(
                             true
                         } else if let Some(media_element) = is_media_tag(tag) {
                             match media_element {
+                                "thumbnail" => {
+                                    if let Some(thumb) = MediaThumbnail::from_attributes(
+                                        element.attributes().flatten(),
+                                        limits.max_attribute_length,
+                                    ) {
+                                        feed.feed
+                                            .media_thumbnail
+                                            .try_push_limited(thumb, limits.max_enclosures);
+                                    }
+                                    if !is_empty {
+                                        skip_element(reader, &mut buf, limits, *depth)?;
+                                    }
+                                }
+                                "content" => {
+                                    if let Some(content) = MediaContent::from_attributes(
+                                        element.attributes().flatten(),
+                                        limits.max_attribute_length,
+                                    ) {
+                                        feed.feed
+                                            .media_content
+                                            .try_push_limited(content, limits.max_enclosures);
+                                    }
+                                    if !is_empty {
+                                        skip_element(reader, &mut buf, limits, *depth)?;
+                                    }
+                                }
                                 "rating" | "keywords" => {
                                     if !is_empty {
                                         let scheme = element
