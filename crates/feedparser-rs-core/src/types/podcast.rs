@@ -67,12 +67,12 @@ pub struct ItunesFeedMeta {
 /// use feedparser_rs::ItunesEntryMeta;
 ///
 /// let mut episode = ItunesEntryMeta::default();
-/// episode.duration = Some(3600); // 1 hour
-/// episode.episode = Some(42);
-/// episode.season = Some(3);
+/// episode.duration = Some("1:00:00".to_string());
+/// episode.episode = Some("42".to_string());
+/// episode.season = Some("3".to_string());
 /// episode.episode_type = Some("full".to_string());
 ///
-/// assert_eq!(episode.duration, Some(3600));
+/// assert_eq!(episode.duration.as_deref(), Some("1:00:00"));
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct ItunesEntryMeta {
@@ -80,18 +80,18 @@ pub struct ItunesEntryMeta {
     pub title: Option<String>,
     /// Episode author (itunes:author)
     pub author: Option<String>,
-    /// Episode duration in seconds
+    /// Episode duration as raw string (itunes:duration)
     ///
-    /// Parsed from various formats: "3600", "60:00", "1:00:00"
-    pub duration: Option<u32>,
+    /// Preserved verbatim from the feed: "3600", "60:00", "1:00:00", "1:23:45", etc.
+    pub duration: Option<String>,
     /// Explicit content flag for this episode
     pub explicit: Option<bool>,
     /// Episode-specific artwork URL (itunes:image href)
     pub image: Option<Url>,
-    /// Episode number (itunes:episode)
-    pub episode: Option<u32>,
-    /// Season number (itunes:season)
-    pub season: Option<u32>,
+    /// Episode number as raw string (itunes:episode)
+    pub episode: Option<String>,
+    /// Season number as raw string (itunes:season)
+    pub season: Option<String>,
     /// Episode type: "full", "trailer", or "bonus"
     pub episode_type: Option<String>,
     /// Episode subtitle (itunes:subtitle)
@@ -469,57 +469,6 @@ pub struct PodcastEntryMeta {
     pub person: Vec<PodcastPerson>,
 }
 
-/// Parse duration from various iTunes duration formats
-///
-/// Supports multiple duration formats:
-/// - Seconds only: "3600" → 3600 seconds
-/// - MM:SS format: "60:30" → 3630 seconds
-/// - HH:MM:SS format: "1:00:30" → 3630 seconds
-///
-/// # Arguments
-///
-/// * `s` - Duration string in any supported format
-///
-/// # Examples
-///
-/// ```
-/// use feedparser_rs::parse_duration;
-///
-/// assert_eq!(parse_duration("3600"), Some(3600));
-/// assert_eq!(parse_duration("60:30"), Some(3630));
-/// assert_eq!(parse_duration("1:00:30"), Some(3630));
-/// assert_eq!(parse_duration("1:30"), Some(90));
-/// assert_eq!(parse_duration("invalid"), None);
-/// ```
-pub fn parse_duration(s: &str) -> Option<u32> {
-    let s = s.trim();
-
-    // Try parsing as plain seconds first
-    if let Ok(secs) = s.parse::<u32>() {
-        return Some(secs);
-    }
-
-    // Parse HH:MM:SS or MM:SS format using iterator pattern matching
-    let mut parts = s.split(':');
-    match (parts.next(), parts.next(), parts.next(), parts.next()) {
-        (Some(first), None, None, None) => first.parse().ok(),
-        (Some(min), Some(sec), None, None) => {
-            // MM:SS
-            let min = min.parse::<u32>().ok()?;
-            let sec = sec.parse::<u32>().ok()?;
-            Some(min * 60 + sec)
-        }
-        (Some(hr), Some(min), Some(sec), None) => {
-            // HH:MM:SS
-            let hr = hr.parse::<u32>().ok()?;
-            let min = min.parse::<u32>().ok()?;
-            let sec = sec.parse::<u32>().ok()?;
-            Some(hr * 3600 + min * 60 + sec)
-        }
-        _ => None,
-    }
-}
-
 /// Parse iTunes explicit flag from various string representations
 ///
 /// Maps "yes"/"true"/"explicit" to `Some(true)`.
@@ -562,43 +511,6 @@ pub fn parse_explicit(s: &str) -> Option<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_duration_seconds() {
-        assert_eq!(parse_duration("3600"), Some(3600));
-        assert_eq!(parse_duration("0"), Some(0));
-        assert_eq!(parse_duration("7200"), Some(7200));
-    }
-
-    #[test]
-    fn test_parse_duration_mmss() {
-        assert_eq!(parse_duration("60:30"), Some(3630));
-        assert_eq!(parse_duration("1:30"), Some(90));
-        assert_eq!(parse_duration("0:45"), Some(45));
-        assert_eq!(parse_duration("120:00"), Some(7200));
-    }
-
-    #[test]
-    fn test_parse_duration_hhmmss() {
-        assert_eq!(parse_duration("1:00:30"), Some(3630));
-        assert_eq!(parse_duration("2:30:45"), Some(9045));
-        assert_eq!(parse_duration("0:01:30"), Some(90));
-        assert_eq!(parse_duration("10:00:00"), Some(36000));
-    }
-
-    #[test]
-    fn test_parse_duration_whitespace() {
-        assert_eq!(parse_duration("  3600  "), Some(3600));
-        assert_eq!(parse_duration("  1:30:00  "), Some(5400));
-    }
-
-    #[test]
-    fn test_parse_duration_invalid() {
-        assert_eq!(parse_duration("invalid"), None);
-        assert_eq!(parse_duration("1:2:3:4"), None);
-        assert_eq!(parse_duration(""), None);
-        assert_eq!(parse_duration("abc:def"), None);
-    }
 
     #[test]
     fn test_parse_explicit_true_variants() {
@@ -662,6 +574,19 @@ mod tests {
         assert!(meta.episode.is_none());
         assert!(meta.season.is_none());
         assert!(meta.episode_type.is_none());
+    }
+
+    #[test]
+    fn test_itunes_entry_meta_string_fields() {
+        let meta = ItunesEntryMeta {
+            duration: Some("1:23:45".to_string()),
+            episode: Some("42".to_string()),
+            season: Some("3".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(meta.duration.as_deref(), Some("1:23:45"));
+        assert_eq!(meta.episode.as_deref(), Some("42"));
+        assert_eq!(meta.season.as_deref(), Some("3"));
     }
 
     #[test]

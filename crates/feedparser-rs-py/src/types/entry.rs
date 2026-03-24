@@ -784,7 +784,7 @@ impl PyEntry {
                 .inner
                 .itunes
                 .as_ref()
-                .and_then(|i| i.duration)
+                .and_then(|i| i.duration.as_deref())
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -792,7 +792,7 @@ impl PyEntry {
                 .inner
                 .itunes
                 .as_ref()
-                .and_then(|i| i.episode)
+                .and_then(|i| i.episode.as_deref())
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -800,7 +800,7 @@ impl PyEntry {
                 .inner
                 .itunes
                 .as_ref()
-                .and_then(|i| i.season)
+                .and_then(|i| i.season.as_deref())
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),

@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: `entry.source` now exposes `links` (all link elements), `updated`/`updated_parsed`, `rights`, and `guidislink` fields for Atom `<source>` elements, matching Python feedparser (#242, #214)
 - Core: `entry.source.guidislink` is `Some(true)` when the Atom `<source>` `<id>` looks like a URL and no explicit `<link>` is present; `Some(false)` when an explicit `<link>` is present or the id is not a URL; `None` for RSS sources
 
+### Fixed
+
+- Core, Python, Node.js bindings: `itunes_duration` now returns the raw XML string (e.g. `"1:23:45"`, `"83:45"`, `"5025"`) instead of converting to seconds as an integer; `itunes_episode` and `itunes_season` now return strings (e.g. `"42"`, `"3"`) instead of integers, matching Python feedparser behavior (#224, #225)
+- RSS `<pubDate>` now mirrored to `entry.updated`/`entry.updated_parsed` and `feed.updated`/`feed.updated_parsed` when no other update date is present (#201, #250)
+- `dc:date` now takes precedence over `pubDate`-promoted `updated` field when both are present
+- Core: RSS `entry.guidislink` is now `false` when an explicit `<link>` element is present in the item, regardless of `isPermaLink` attribute value; element order (`<guid>` before or after `<link>`) no longer affects the result (#231)
+- Core: Atom `entry.guidislink` is now `Some(false)` when `<id>` is present (was always `None`), matching Python feedparser behavior (#256)
+
 ## [0.5.0] - 2026-03-24
 
 ### Fixed

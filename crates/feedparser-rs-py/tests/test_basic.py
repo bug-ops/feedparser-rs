@@ -218,9 +218,9 @@ def test_podcast_itunes_metadata():
 
     # Entry-level iTunes metadata
     assert d.entries[0].itunes is not None
-    assert d.entries[0].itunes.duration == 3600
-    assert d.entries[0].itunes.episode == 1
-    assert d.entries[0].itunes.season == 1
+    assert d.entries[0].itunes.duration == "3600"
+    assert d.entries[0].itunes.episode == "1"
+    assert d.entries[0].itunes.season == "1"
 
 
 def test_repr_methods():

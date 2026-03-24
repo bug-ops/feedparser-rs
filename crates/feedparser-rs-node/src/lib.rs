@@ -1117,20 +1117,20 @@ pub struct ItunesEntryMeta {
     pub title: Option<String>,
     /// Episode author
     pub author: Option<String>,
-    /// Episode duration in seconds
+    /// Episode duration as raw string (itunes:duration)
     ///
-    /// Parsed from various formats: "3600", "60:00", "1:00:00"
-    pub duration: Option<u32>,
+    /// Preserved verbatim from the feed: "3600", "60:00", "1:00:00", "1:23:45", etc.
+    pub duration: Option<String>,
     /// Explicit content flag for this episode
     pub explicit: Option<bool>,
     /// Episode-specific artwork URL
     ///
     /// Note: URL from untrusted feed input. Validate before fetching.
     pub image: Option<String>,
-    /// Episode number
-    pub episode: Option<u32>,
-    /// Season number
-    pub season: Option<u32>,
+    /// Episode number as raw string (itunes:episode)
+    pub episode: Option<String>,
+    /// Season number as raw string (itunes:season)
+    pub season: Option<String>,
     /// Episode type: "full", "trailer", or "bonus"
     #[napi(js_name = "episodeType")]
     pub episode_type: Option<String>,

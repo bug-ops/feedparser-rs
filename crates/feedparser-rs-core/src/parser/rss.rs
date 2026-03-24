@@ -8,7 +8,7 @@ use crate::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
         ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person, PodcastChapters,
         PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
-        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
+        PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{
         base_url::BaseUrlContext,
@@ -456,7 +456,11 @@ fn parse_channel_standard(
             match parse_date(&text) {
                 Some(dt) => {
                     feed.feed.published = Some(dt);
-                    feed.feed.published_str = Some(text);
+                    feed.feed.published_str = Some(text.clone());
+                    if feed.feed.updated.is_none() {
+                        feed.feed.updated = Some(dt);
+                        feed.feed.updated_str = Some(text);
+                    }
                 }
                 None if !text.is_empty() => {
                     feed.bozo = true;
@@ -891,6 +895,8 @@ fn parse_item(
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
     let mut has_entity_bozo = false;
+    let mut has_explicit_link = false;
+    let mut guid_is_permalink: Option<bool> = None;
 
     loop {
         match reader.read_event_into(buf) {
@@ -926,6 +932,8 @@ fn parse_item(
                             base_ctx,
                             item_lang,
                             &mut has_entity_bozo,
+                            &mut has_explicit_link,
+                            &mut guid_is_permalink,
                         )?;
                     }
                     b"enclosure" => {
@@ -1002,6 +1010,16 @@ fn parse_item(
         buf.clear();
     }
 
+    // guidislink = isPermaLink AND no explicit <link> element was present in the item.
+    // Per Python feedparser semantics: when <link> exists, guid is just an identifier.
+    if let Some(is_permalink) = guid_is_permalink {
+        entry.guidislink = Some(is_permalink && !has_explicit_link);
+        // If an explicit <link> was present, remove the guid-as-link fallback from entry.link
+        // only if it was set as fallback (i.e., entry.link equals entry.id). We detect this
+        // by checking: if has_explicit_link, entry.link was already overwritten by <link> arm.
+        // No additional cleanup needed — <link> arm overwrites entry.link directly.
+    }
+
     // dc:creator takes precedence over <author>
     if let Some(dc) = &entry.dc_creator {
         entry.author = Some(dc.clone());
@@ -1023,6 +1041,8 @@ fn parse_item_standard(
     base_ctx: &BaseUrlContext,
     item_lang: Option<&str>,
     bozo: &mut bool,
+    has_explicit_link: &mut bool,
+    guid_is_permalink: &mut Option<bool>,
 ) -> Result<()> {
     match tag {
         b"title" => {
@@ -1047,6 +1067,7 @@ fn parse_item_standard(
                 },
                 limits.max_links_per_entry,
             );
+            *has_explicit_link = true;
         }
         b"description" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -1065,8 +1086,12 @@ fn parse_item_standard(
             let (text, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
             entry.id = Some(text.clone().into());
-            entry.guidislink = Some(is_permalink);
-            // Use guid as entry.link fallback when it is a permalink and no <link> present
+            // Defer guidislink computation: need to know if explicit <link> was present.
+            // guidislink = isPermaLink AND no explicit <link> element in the item.
+            // Order is not guaranteed, so we track in guid_is_permalink and compute after loop.
+            *guid_is_permalink = Some(is_permalink);
+            // Use guid as entry.link fallback when it is a permalink and no <link> present yet.
+            // If <link> appears after <guid>, the fallback will be overwritten — that is correct.
             if is_permalink && entry.link.is_none() {
                 let resolved = base_ctx.resolve_safe(&text);
                 entry.link = Some(resolved.clone());
@@ -1082,8 +1107,13 @@ fn parse_item_standard(
         }
         b"pubDate" => {
             let text = read_text_str(reader, buf, limits)?;
-            entry.published = parse_date(&text);
-            entry.published_str = Some(text);
+            let dt = parse_date(&text);
+            entry.published = dt;
+            entry.published_str = Some(text.clone());
+            if entry.updated.is_none() {
+                entry.updated = dt;
+                entry.updated_str = Some(text);
+            }
         }
         b"author" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -1184,7 +1214,9 @@ fn parse_item_itunes(
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-        itunes.duration = parse_duration(&text);
+        if !text.is_empty() {
+            itunes.duration = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit") {
         let text = read_text_str(reader, buf, limits)?;
@@ -1209,14 +1241,18 @@ fn parse_item_itunes(
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-        itunes.episode = text.parse().ok();
+        if !text.is_empty() {
+            itunes.episode = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"season") {
         let text = read_text_str(reader, buf, limits)?;
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-        itunes.season = text.parse().ok();
+        if !text.is_empty() {
+            itunes.season = Some(text);
+        }
         Ok(true)
     } else if is_itunes_tag(tag, b"episodeType") {
         let text = read_text_str(reader, buf, limits)?;
@@ -2266,7 +2302,7 @@ mod tests {
     #[test]
     fn test_parse_rss_guid_permalink_does_not_override_explicit_link() {
         // When both <link> and <guid isPermaLink="true"> are present,
-        // <link> takes priority for entry.link
+        // guidislink must be false — guid is just an identifier when <link> exists.
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0">
             <channel>
@@ -2282,7 +2318,98 @@ mod tests {
             feed.entries[0].link.as_deref(),
             Some("http://example.com/explicit-link")
         );
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_guid_before_link() {
+        // <guid> appears before <link> — order must not affect guidislink result
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="true">http://example.com/guid</guid>
+                    <link>http://example.com/explicit-link</link>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/explicit-link")
+        );
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_no_link_permalink_true() {
+        // No <link>, isPermaLink=true — guidislink must be true
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="true">http://example.com/guid</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
         assert_eq!(feed.entries[0].guidislink, Some(true));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_no_link_permalink_false() {
+        // No <link>, isPermaLink=false — guidislink must be false
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <guid isPermaLink="false">tag:example.com,2024:item1</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_explicit_link_permalink_false() {
+        // Has <link>, isPermaLink=false — guidislink must be false
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <link>http://example.com/link</link>
+                    <guid isPermaLink="false">tag:example.com,2024:item2</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+    }
+
+    #[test]
+    fn test_parse_rss_guidislink_default_guid_with_explicit_link() {
+        // Has <link> + default guid (isPermaLink defaults to true) — guidislink must be false
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <link>http://example.com/link</link>
+                    <guid>http://example.com/guid</guid>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries[0].guidislink, Some(false));
+        assert_eq!(
+            feed.entries[0].link.as_deref(),
+            Some("http://example.com/link")
+        );
     }
 
     #[test]
@@ -2520,14 +2647,14 @@ mod tests {
         let itunes = entry.itunes.as_ref().unwrap();
 
         assert_eq!(itunes.title.as_deref(), Some("iTunes Override Title"));
-        assert_eq!(itunes.duration, Some(5025)); // 1:23:45 in seconds
+        assert_eq!(itunes.duration.as_deref(), Some("1:23:45"));
         assert_eq!(
             itunes.image.as_deref(),
             Some("https://example.com/episode-cover.jpg")
         );
         assert_eq!(itunes.explicit, Some(true));
-        assert_eq!(itunes.episode, Some(42));
-        assert_eq!(itunes.season, Some(3));
+        assert_eq!(itunes.episode.as_deref(), Some("42"));
+        assert_eq!(itunes.season.as_deref(), Some("3"));
         assert_eq!(itunes.episode_type.as_deref(), Some("full"));
     }
 
@@ -2542,8 +2669,13 @@ mod tests {
         </rss>"#;
         let feed1 = parse_rss20(xml1).unwrap();
         assert_eq!(
-            feed1.entries[0].itunes.as_ref().unwrap().duration,
-            Some(5025)
+            feed1.entries[0]
+                .itunes
+                .as_ref()
+                .unwrap()
+                .duration
+                .as_deref(),
+            Some("1:23:45")
         );
 
         // Test MM:SS format
@@ -2555,8 +2687,13 @@ mod tests {
         </rss>"#;
         let feed2 = parse_rss20(xml2).unwrap();
         assert_eq!(
-            feed2.entries[0].itunes.as_ref().unwrap().duration,
-            Some(1425)
+            feed2.entries[0]
+                .itunes
+                .as_ref()
+                .unwrap()
+                .duration
+                .as_deref(),
+            Some("23:45")
         );
 
         // Test seconds-only format
@@ -2568,21 +2705,26 @@ mod tests {
         </rss>"#;
         let feed3 = parse_rss20(xml3).unwrap();
         assert_eq!(
-            feed3.entries[0].itunes.as_ref().unwrap().duration,
-            Some(3661)
+            feed3.entries[0]
+                .itunes
+                .as_ref()
+                .unwrap()
+                .duration
+                .as_deref(),
+            Some("3661")
         );
 
-        // Test invalid format
+        // Test empty duration produces None
         let xml4 = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
             <channel>
-                <item><itunes:duration>invalid</itunes:duration></item>
+                <item><itunes:duration></itunes:duration></item>
             </channel>
         </rss>"#;
         let feed4 = parse_rss20(xml4).unwrap();
         assert!(
             feed4.entries[0].itunes.as_ref().unwrap().duration.is_none(),
-            "Invalid duration should result in None"
+            "Empty duration should result in None"
         );
     }
 
@@ -3648,6 +3790,99 @@ mod tests {
         assert_eq!(
             entry.itunes.as_ref().unwrap().summary.as_deref(),
             Some("iTunes Summary")
+        );
+    }
+
+    // Regression tests for issue #201: pubDate must populate entry.updated when
+    // no other updated source (dc:date, atom:updated) is present.
+
+    #[test]
+    fn test_entry_pubdate_populates_updated_when_no_dc_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>Only pubDate</title>
+                    <pubDate>Mon, 10 Mar 2025 08:00:00 +0000</pubDate>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+
+        assert!(
+            entry.published.is_some(),
+            "entry.published must be set from pubDate"
+        );
+        assert!(
+            entry.updated.is_some(),
+            "entry.updated must be populated from pubDate when no dc:date present"
+        );
+        assert!(
+            entry.updated_str.is_some(),
+            "entry.updated_str must be non-None"
+        );
+        assert_eq!(
+            entry.updated, entry.published,
+            "entry.updated must equal entry.published when promoted from pubDate"
+        );
+    }
+
+    #[test]
+    fn test_feed_pubdate_populates_updated_when_no_last_build_date() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Feed with only pubDate</title>
+                <pubDate>Tue, 11 Mar 2025 12:00:00 +0000</pubDate>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+
+        assert!(
+            feed.feed.published.is_some(),
+            "feed.published must be set from channel pubDate"
+        );
+        assert!(
+            feed.feed.updated.is_some(),
+            "feed.updated must be populated from pubDate when no lastBuildDate present"
+        );
+        assert_eq!(
+            feed.feed.updated, feed.feed.published,
+            "feed.updated must equal feed.published when promoted from pubDate"
+        );
+    }
+
+    #[test]
+    fn test_entry_dc_date_takes_precedence_over_pubdate_for_updated() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel>
+                <item>
+                    <title>Both dates</title>
+                    <pubDate>Mon, 10 Mar 2025 08:00:00 +0000</pubDate>
+                    <dc:date>2025-03-15T20:00:00Z</dc:date>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let entry = &feed.entries[0];
+
+        assert!(entry.updated.is_some());
+        // dc:date is 2025-03-15, pubDate is 2025-03-10 — updated must use dc:date
+        let updated = entry.updated.unwrap();
+        assert_eq!(updated.year(), 2025);
+        assert_eq!(updated.month(), 3);
+        assert_eq!(
+            updated.day(),
+            15,
+            "entry.updated must use dc:date, not pubDate"
         );
     }
 }

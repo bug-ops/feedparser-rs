@@ -40,10 +40,8 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
             feed.authors.push(Person::from_name(text));
         }
         "date" => {
-            // dc:date → updated (if not already set)
-            if let Some(dt) = parse_date(text)
-                && feed.updated.is_none()
-            {
+            // dc:date → updated (always overrides pubDate promotion)
+            if let Some(dt) = parse_date(text) {
                 feed.updated = Some(dt);
                 feed.updated_str = Some(text.to_string());
             }
@@ -117,10 +115,9 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
         "date" => {
             if let Some(dt) = parse_date(text) {
                 entry.dc_date = Some(dt);
-                if entry.updated.is_none() {
-                    entry.updated = Some(dt);
-                    entry.updated_str = Some(text.to_string());
-                }
+                // dc:date is more authoritative than pubDate for updated; always override
+                entry.updated = Some(dt);
+                entry.updated_str = Some(text.to_string());
             }
         }
         "subject" => {
