@@ -25,7 +25,7 @@
 ///    framerate, expression, `is_default`) not present in the public API types.
 /// 2. The `media_content_to_enclosure` function handles conversion to public types.
 /// 3. The public API types in `types::common::MediaContent` use proper newtypes.
-use crate::types::{Enclosure, Entry, Tag};
+use crate::types::{Enclosure, Entry, FeedMeta, MediaRating, Tag};
 
 /// Media RSS namespace URI
 pub const MEDIA_NAMESPACE: &str = "http://search.yahoo.com/mrss/";
@@ -134,6 +134,42 @@ pub struct MediaThumbnail {
     pub time: Option<String>,
 }
 
+/// Parse `media:rating` text and optional `scheme` attribute into a `MediaRating`.
+fn parse_rating(scheme: Option<&str>, text: &str) -> Option<MediaRating> {
+    let content = text.trim().to_string();
+    if content.is_empty() {
+        return None;
+    }
+    Some(MediaRating {
+        scheme: scheme.map(str::to_owned),
+        content,
+    })
+}
+
+/// Handle Media RSS element at feed level (`media:rating`, `media:keywords`).
+///
+/// # Arguments
+///
+/// * `element` - Local name of the element (without namespace prefix)
+/// * `scheme` - Optional `scheme` attribute value (for `media:rating`)
+/// * `text` - Text content of the element
+/// * `feed` - Feed metadata to update
+pub fn handle_feed_element(element: &str, scheme: Option<&str>, text: &str, feed: &mut FeedMeta) {
+    match element {
+        "rating" => {
+            if feed.media_rating.is_none() {
+                feed.media_rating = parse_rating(scheme, text);
+            }
+        }
+        "keywords" => {
+            if feed.media_keywords.is_none() && !text.trim().is_empty() {
+                feed.media_keywords = Some(text.trim().to_string());
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Handle Media RSS element at entry level
 ///
 /// Note: This is a simplified implementation. Full Media RSS support
@@ -179,6 +215,15 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
             // would require attribute parsing which needs integration with
             // the XML parser. For now, we skip these.
         }
+    }
+}
+
+/// Handle `media:rating` at entry level with `scheme` attribute.
+///
+/// Called from the full XML parser where attribute access is available.
+pub fn handle_entry_rating(scheme: Option<&str>, text: &str, entry: &mut Entry) {
+    if entry.media_rating.is_none() {
+        entry.media_rating = parse_rating(scheme, text);
     }
 }
 

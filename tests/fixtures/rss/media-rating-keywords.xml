@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Media Rating Test Feed</title>
+    <link>http://example.com/</link>
+    <description>Tests media:rating and media:keywords at feed and entry level</description>
+    <media:rating scheme="urn:simple">nonadult</media:rating>
+    <media:keywords>tech, programming, rust</media:keywords>
+    <item>
+      <title>Rated Entry</title>
+      <link>http://example.com/entry1</link>
+      <media:rating scheme="urn:mpaa">pg-13</media:rating>
+    </item>
+    <item>
+      <title>Unrated Entry</title>
+      <link>http://example.com/entry2</link>
+    </item>
+  </channel>
+</rss>

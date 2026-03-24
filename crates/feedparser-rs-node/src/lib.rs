@@ -399,6 +399,12 @@ pub struct FeedMeta {
     pub podcast: Option<PodcastMeta>,
     /// JSON Feed next_url for pagination (JSON Feed 1.1)
     pub next_url: Option<String>,
+    /// Media RSS rating (`media:rating`) at feed level
+    #[napi(js_name = "mediaRating")]
+    pub media_rating: Option<MediaRating>,
+    /// Media RSS keywords (`media:keywords`) at feed level
+    #[napi(js_name = "mediaKeywords")]
+    pub media_keywords: Option<String>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -445,6 +451,8 @@ impl From<CoreFeedMeta> for FeedMeta {
             itunes: core.itunes.map(|b| ItunesFeedMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastMeta::from(*b)),
             next_url: core.next_url,
+            media_rating: core.media_rating.map(MediaRating::from),
+            media_keywords: core.media_keywords,
         }
     }
 }
@@ -471,6 +479,24 @@ impl From<CoreInReplyTo> for InReplyTo {
             href: core.href.map(|s| s.to_string()),
             type_field: core.type_.map(|s| s.to_string()),
             source: core.source.map(|s| s.to_string()),
+        }
+    }
+}
+
+/// Media RSS rating (`media:rating`)
+#[napi(object)]
+pub struct MediaRating {
+    /// Rating scheme URI (e.g. "urn:simple", "urn:mpaa")
+    pub scheme: Option<String>,
+    /// Rating value (e.g. "adult", "nonadult", "pg-13")
+    pub content: String,
+}
+
+impl From<CoreMediaRating> for MediaRating {
+    fn from(core: CoreMediaRating) -> Self {
+        Self {
+            scheme: core.scheme,
+            content: core.content,
         }
     }
 }
@@ -1130,24 +1156,6 @@ pub struct MediaCopyright {
 impl From<CoreMediaCopyright> for MediaCopyright {
     fn from(core: CoreMediaCopyright) -> Self {
         Self { url: core.url }
-    }
-}
-
-/// Media RSS rating (media:rating element)
-#[napi(object)]
-pub struct MediaRating {
-    /// Rating scheme (default: "urn:simple")
-    pub scheme: Option<String>,
-    /// Rating value (e.g., "nonadult", "adult")
-    pub content: String,
-}
-
-impl From<CoreMediaRating> for MediaRating {
-    fn from(core: CoreMediaRating) -> Self {
-        Self {
-            scheme: core.scheme,
-            content: core.content,
-        }
     }
 }
 

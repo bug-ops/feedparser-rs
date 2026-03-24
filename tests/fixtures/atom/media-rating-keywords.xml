@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+  <title>Media Rating Atom Test</title>
+  <id>http://example.com/atom-media-rating</id>
+  <updated>2024-01-01T00:00:00Z</updated>
+  <media:rating scheme="urn:simple">adult</media:rating>
+  <media:keywords>video, streaming</media:keywords>
+  <entry>
+    <id>http://example.com/entry1</id>
+    <title>Adult Entry</title>
+    <updated>2024-01-01T00:00:00Z</updated>
+    <media:rating>adult</media:rating>
+  </entry>
+</feed>

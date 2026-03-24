@@ -1,5 +1,5 @@
 use super::{
-    common::{Generator, Image, Link, Person, Tag, TextConstruct},
+    common::{Generator, Image, Link, MediaRating, Person, Tag, TextConstruct},
     entry::Entry,
     generics::LimitedCollectionExt,
     podcast::{ItunesFeedMeta, PodcastMeta},
@@ -96,6 +96,10 @@ pub struct FeedMeta {
     pub geo_long: Option<String>,
     /// Pagination URL for the next page of results (JSON Feed `next_url`, RFC 5005 `<link rel="next">`)
     pub next_url: Option<String>,
+    /// Media RSS rating (`media:rating`) at feed level
+    pub media_rating: Option<MediaRating>,
+    /// Media RSS keywords (`media:keywords`) at feed level, comma-separated string
+    pub media_keywords: Option<String>,
 }
 
 /// Parsed feed result

@@ -6,7 +6,7 @@ use crate::{
     namespace::{content, dublin_core, georss, media_rss, slash, syndication, threading},
     types::{
         Enclosure, Entry, FeedMeta, FeedVersion, Image, ItunesCategory, ItunesEntryMeta,
-        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright, MediaCredit, MediaRating,
+        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright, MediaCredit,
         MediaThumbnail, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta, PodcastFunding,
         PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, Source, Tag,
         TextConstruct, TextType, parse_explicit,
@@ -417,7 +417,7 @@ fn parse_channel_extension(
         handled = parse_channel_podcast(reader, buf, tag, attrs, feed, limits, is_empty)?;
     }
     if !handled {
-        handled = parse_channel_namespace(reader, buf, tag, feed, limits, *depth, is_empty)?;
+        handled = parse_channel_namespace(reader, buf, tag, attrs, feed, limits, *depth, is_empty)?;
     }
 
     // Only skip element content if this is NOT an empty element
@@ -887,10 +887,12 @@ fn parse_channel_podcast(
 
 /// Parse Dublin Core, Content, `GeoRSS`, and Media RSS namespace tags at channel level
 #[inline]
+#[allow(clippy::too_many_arguments)]
 fn parse_channel_namespace(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     tag: &[u8],
+    attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
     depth: usize,
@@ -908,9 +910,25 @@ fn parse_channel_namespace(
             skip_element(reader, buf, limits, depth)?;
         }
         Ok(true)
-    } else if let Some(_media_element) = is_media_tag(tag) {
-        if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+    } else if let Some(media_element) = is_media_tag(tag) {
+        match media_element {
+            "rating" | "keywords" => {
+                if !is_empty {
+                    let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
+                    let text = read_text_str(reader, buf, limits)?;
+                    media_rss::handle_feed_element(
+                        media_element,
+                        scheme.as_deref(),
+                        &text,
+                        &mut feed.feed,
+                    );
+                }
+            }
+            _ => {
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
         }
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
@@ -1708,6 +1726,13 @@ fn parse_item_media(
                 parse_media_content_children(reader, buf, entry, limits, depth)?;
             }
         }
+        "rating" => {
+            if !is_empty {
+                let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
+                let text = read_text_str(reader, buf, limits)?;
+                media_rss::handle_entry_rating(scheme.as_deref(), &text, entry);
+            }
+        }
         "group" => {
             // media:group is a transparent container; parse its children as if they
             // were direct siblings of the enclosing item.
@@ -1740,20 +1765,6 @@ fn parse_item_media(
                 read_text_str(reader, buf, limits)?;
             }
             entry.media_copyright = Some(MediaCopyright { url });
-        }
-        "rating" => {
-            let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
-            let text = if is_empty {
-                String::new()
-            } else {
-                read_text_str(reader, buf, limits)?
-            };
-            if !text.is_empty() {
-                entry.media_rating = Some(MediaRating {
-                    scheme,
-                    content: text,
-                });
-            }
         }
         "description" => {
             let type_attr = find_attribute(attrs, b"type").map(str::to_owned);

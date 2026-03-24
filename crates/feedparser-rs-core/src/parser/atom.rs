@@ -7,8 +7,8 @@ use crate::{
     types::{
         Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
         ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright,
-        MediaCredit, MediaRating, MediaThumbnail, ParsedFeed, Person, Source, Tag, TextConstruct,
-        TextType, parse_explicit,
+        MediaCredit, MediaThumbnail, ParsedFeed, Person, Source, Tag, TextConstruct, TextType,
+        parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
@@ -379,10 +379,36 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
-                        } else if let Some(_media_element) = is_media_tag(tag) {
-                            // Media RSS - typically entry-level
-                            if !is_empty {
-                                skip_element(reader, &mut buf, limits, *depth)?;
+                        } else if let Some(media_element) = is_media_tag(tag) {
+                            match media_element {
+                                "rating" | "keywords" => {
+                                    if !is_empty {
+                                        let scheme = element
+                                            .attributes()
+                                            .flatten()
+                                            .find(|a| a.key.as_ref() == b"scheme")
+                                            .and_then(|a| {
+                                                a.unescape_value().ok().map(|v| {
+                                                    truncate_to_length(
+                                                        &v,
+                                                        limits.max_attribute_length,
+                                                    )
+                                                })
+                                            });
+                                        let text = read_text_str(reader, &mut buf, limits)?;
+                                        media_rss::handle_feed_element(
+                                            media_element,
+                                            scheme.as_deref(),
+                                            &text,
+                                            &mut feed.feed,
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    if !is_empty {
+                                        skip_element(reader, &mut buf, limits, *depth)?;
+                                    }
+                                }
                             }
                             true
                         } else if is_thr_tag(tag).is_some() {
@@ -789,22 +815,22 @@ fn parse_entry(
                                 }
                                 entry.media_copyright = Some(MediaCopyright { url });
                             } else if media_element == "rating" {
-                                let scheme = element
-                                    .attributes()
-                                    .flatten()
-                                    .find(|a| a.key.as_ref() == b"scheme")
-                                    .and_then(|a| {
-                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
-                                    });
                                 if !is_empty {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    if !text.is_empty() {
-                                        entry.media_rating = Some(MediaRating {
-                                            scheme,
-                                            content: text,
+                                    let scheme = element
+                                        .attributes()
+                                        .flatten()
+                                        .find(|a| a.key.as_ref() == b"scheme")
+                                        .and_then(|a| {
+                                            a.unescape_value().ok().map(|v| {
+                                                truncate_to_length(&v, limits.max_attribute_length)
+                                            })
                                         });
-                                    }
+                                    let text = read_text_str(reader, buf, limits)?;
+                                    media_rss::handle_entry_rating(
+                                        scheme.as_deref(),
+                                        &text,
+                                        &mut entry,
+                                    );
                                 }
                             } else if media_element == "description" {
                                 let type_attr = element

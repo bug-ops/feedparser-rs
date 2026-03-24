@@ -815,6 +815,18 @@ pub struct MediaContent {
     pub framerate: Option<String>,
 }
 
+/// Media RSS rating element (`media:rating`)
+///
+/// Describes the permissible audience for the media content.
+/// Commonly uses the MPAA or urn:simple rating schemes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MediaRating {
+    /// Rating scheme URI (scheme attribute), e.g. "urn:simple", "urn:mpaa"
+    pub scheme: Option<String>,
+    /// Rating value, e.g. "adult", "nonadult", "pg-13"
+    pub content: String,
+}
+
 impl FromAttributes for Link {
     fn from_attributes<'a, I>(attrs: I, max_attr_length: usize) -> Option<Self>
     where
@@ -1084,15 +1096,6 @@ pub struct MediaCredit {
 pub struct MediaCopyright {
     /// Copyright URL
     pub url: Option<String>,
-}
-
-/// Media RSS rating element (media:rating)
-#[derive(Debug, Clone, Default)]
-pub struct MediaRating {
-    /// Rating scheme (default: "urn:simple")
-    pub scheme: Option<String>,
-    /// Rating value (e.g., "nonadult", "adult")
-    pub content: String,
 }
 
 #[cfg(test)]
