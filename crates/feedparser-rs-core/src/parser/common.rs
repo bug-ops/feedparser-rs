@@ -396,6 +396,78 @@ pub fn extract_xml_lang(
         .map(|s| s.to_string())
 }
 
+/// Extract XML namespace declarations from element attributes.
+///
+/// Collects all `xmlns` and `xmlns:prefix` attributes from the element and inserts
+/// them into `feed.namespaces`. Follows Python feedparser key format:
+/// - `xmlns="URI"` → key `""` (empty string for default namespace)
+/// - `xmlns:dc="URI"` → key `"dc"` (prefix without colon)
+///
+/// Sets `feed.bozo = true` when:
+/// - The number of namespaces exceeds `limits.max_namespaces`
+/// - A namespace URI exceeds `limits.max_attribute_length`
+/// - A namespace attribute value cannot be unescaped or decoded
+///
+/// # Arguments
+///
+/// * `element` - The XML element containing xmlns attributes
+/// * `feed` - The feed to populate namespaces into
+/// * `limits` - Parser limits for `DoS` protection
+pub fn extract_namespaces(
+    element: &quick_xml::events::BytesStart,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+) {
+    for result in element.attributes() {
+        let Ok(attr) = result else { continue };
+
+        let key = attr.key.as_ref();
+
+        // Determine namespace prefix: "" for xmlns, "prefix" for xmlns:prefix
+        let prefix = if key == b"xmlns" {
+            String::new()
+        } else if let Some(suffix) = key.strip_prefix(b"xmlns:") {
+            if let Ok(s) = std::str::from_utf8(suffix) {
+                s.to_string()
+            } else {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Namespace prefix contains invalid UTF-8".to_string());
+                continue;
+            }
+        } else {
+            continue;
+        };
+
+        if attr.value.len() > limits.max_attribute_length {
+            feed.bozo = true;
+            feed.bozo_exception = Some(format!(
+                "Namespace URI exceeds maximum attribute length of {} bytes",
+                limits.max_attribute_length
+            ));
+            continue;
+        }
+
+        let uri = if let Ok(v) = attr.unescape_value() {
+            v.to_string()
+        } else {
+            feed.bozo = true;
+            feed.bozo_exception = Some("Malformed namespace URI value".to_string());
+            continue;
+        };
+
+        if feed.namespaces.len() >= limits.max_namespaces {
+            feed.bozo = true;
+            feed.bozo_exception = Some(format!(
+                "Namespace limit exceeded: {}",
+                limits.max_namespaces
+            ));
+            break;
+        }
+
+        feed.namespaces.insert(prefix, uri);
+    }
+}
+
 /// Read text content from current XML element (handles text and CDATA).
 ///
 /// Returns `(text, had_bozo)` where `had_bozo` is `true` if any unresolved
@@ -875,5 +947,83 @@ mod tests {
         let (text, had_bozo) = read_text(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
         assert_eq!(text, "&&unknown;");
         assert!(had_bozo);
+    }
+
+    fn parse_namespaces_from_element(xml: &[u8], limits: &ParserLimits) -> ParsedFeed {
+        let mut reader = Reader::from_reader(xml);
+        let mut buf = Vec::new();
+        let mut feed = init_feed(crate::types::FeedVersion::Rss20, limits.max_entries);
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(e) | Event::Empty(e)) => {
+                    extract_namespaces(&e, &mut feed, limits);
+                    break;
+                }
+                Ok(Event::Eof) => break,
+                _ => {}
+            }
+            buf.clear();
+        }
+        feed
+    }
+
+    #[test]
+    fn test_extract_namespaces_default_and_prefixed() {
+        let xml = b"<rss xmlns=\"http://default.example.com/\" xmlns:dc=\"http://purl.org/dc/elements/1.1/\"/>";
+        let limits = ParserLimits::default();
+        let feed = parse_namespaces_from_element(xml, &limits);
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.namespaces.get("").map(String::as_str),
+            Some("http://default.example.com/")
+        );
+        assert_eq!(
+            feed.namespaces.get("dc").map(String::as_str),
+            Some("http://purl.org/dc/elements/1.1/")
+        );
+    }
+
+    #[test]
+    fn test_extract_namespaces_empty_default() {
+        let xml = b"<rss xmlns=\"\"/>";
+        let limits = ParserLimits::default();
+        let feed = parse_namespaces_from_element(xml, &limits);
+        assert!(!feed.bozo);
+        assert_eq!(feed.namespaces.get("").map(String::as_str), Some(""));
+    }
+
+    #[test]
+    fn test_extract_namespaces_no_xmlns() {
+        let xml = b"<rss version=\"2.0\"/>";
+        let limits = ParserLimits::default();
+        let feed = parse_namespaces_from_element(xml, &limits);
+        assert!(!feed.bozo);
+        assert!(feed.namespaces.is_empty());
+    }
+
+    #[test]
+    fn test_extract_namespaces_limit_exceeded_sets_bozo() {
+        let xml =
+            b"<rss xmlns:a=\"http://a.com/\" xmlns:b=\"http://b.com/\" xmlns:c=\"http://c.com/\"/>";
+        let limits = ParserLimits {
+            max_namespaces: 2,
+            ..ParserLimits::default()
+        };
+        let feed = parse_namespaces_from_element(xml, &limits);
+        assert!(feed.bozo);
+        assert_eq!(feed.namespaces.len(), 2);
+    }
+
+    #[test]
+    fn test_extract_namespaces_uri_too_long_sets_bozo() {
+        let long_uri = "http://".to_string() + &"a".repeat(200);
+        let xml = format!("<rss xmlns:dc=\"{long_uri}\"/>");
+        let limits = ParserLimits {
+            max_attribute_length: 100,
+            ..ParserLimits::default()
+        };
+        let feed = parse_namespaces_from_element(xml.as_bytes(), &limits);
+        assert!(feed.bozo);
+        assert!(feed.namespaces.is_empty());
     }
 }
