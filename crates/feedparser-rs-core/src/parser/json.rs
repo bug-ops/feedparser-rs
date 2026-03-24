@@ -6,8 +6,8 @@ use crate::{
     ParserLimits,
     error::{FeedError, Result},
     types::{
-        Content, Enclosure, Entry, FeedMeta, FeedVersion, Image, LimitedCollectionExt, Link,
-        ParseFrom, ParsedFeed, Person, Tag, TextConstruct,
+        Content, Enclosure, Entry, FeedMeta, FeedVersion, LimitedCollectionExt, Link, ParseFrom,
+        ParsedFeed, Person, Tag, TextConstruct,
     },
     util::{date::parse_date, text::truncate_to_length},
 };
@@ -108,20 +108,13 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     if let Some(icon) = json.get("icon").and_then(|v| v.as_str())
         && icon.len() <= limits.max_text_length
     {
-        feed.image = Some(Image {
-            url: icon.to_string().into(),
-            title: None,
-            link: None,
-            width: None,
-            height: None,
-            description: None,
-        });
+        feed.icon = Some(icon.to_string());
     }
 
     if let Some(favicon) = json.get("favicon").and_then(|v| v.as_str())
         && favicon.len() <= limits.max_text_length
     {
-        feed.icon = Some(favicon.to_string());
+        feed.logo = Some(favicon.to_string());
     }
 
     parse_authors(
@@ -397,14 +390,14 @@ mod tests {
         assert_eq!(feed.feed.title.as_deref(), Some("Example Feed"));
         assert_eq!(feed.feed.link.as_deref(), Some("https://example.com"));
         assert_eq!(feed.feed.subtitle.as_deref(), Some("Feed description"));
-        // icon → feed.image (large timeline image per JSON Feed spec)
-        assert_eq!(
-            feed.feed.image.as_ref().map(|i| i.url.as_str()),
-            Some("https://example.com/icon.png")
-        );
-        // favicon → feed.icon (small browser favicon per JSON Feed spec)
+        // icon (512x512 app icon) → feed.icon
         assert_eq!(
             feed.feed.icon.as_deref(),
+            Some("https://example.com/icon.png")
+        );
+        // favicon (small browser icon) → feed.logo
+        assert_eq!(
+            feed.feed.logo.as_deref(),
             Some("https://example.com/favicon.ico")
         );
         assert_eq!(feed.feed.language.as_deref(), Some("en-US"));

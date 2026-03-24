@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: RSS 2.0 optional channel elements `<cloud>`, `<textInput>`, `<skipHours>`, `<skipDays>` are now parsed and exposed as `feed.cloud`, `feed.textinput`, `feed.skiphours`, `feed.skipdays` (#200)
 - Core: `podcast:person` default role changed from `"unknown"` to `"host"` per Podcast 2.0 spec; Python binding now returns `"host"` instead of `None` when no `role` attribute is present (#236)
 - Core: `itunes:summary`-only no longer incorrectly sets `feed.subtitle`; only `itunes:subtitle` promotes to `feed.subtitle` (#308)
+- Core: JSON Feed `icon` field now correctly maps to `feed.icon`; `favicon` field now correctly maps to `feed.logo` (previously `icon` was mapped to `feed.image` and `favicon` to `feed.icon`) (#329)
 - Core: `feed.author` now uses `itunes:owner.name` (with email in `author_detail`) when both `itunes:owner` and `itunes:author` are present, matching Python feedparser priority (#297)
 - Core: `feed.author` from `itunes:owner` now contains name only (no `"Name (email)"` format); `feed.author_detail` still carries both name and email (#317)
 - Core: `&apos;` and `&quot;` entity references inside xhtml content now decode to literal `'` and `"` characters instead of passing through as escaped entity refs (#316)
