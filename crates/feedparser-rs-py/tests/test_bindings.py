@@ -418,7 +418,7 @@ def test_podcast_person():
 
     person2 = entry.podcast_persons[1]
     assert person2.name == "Bob Jones"
-    assert person2.role is None
+    assert person2.role == "host"
     assert person2.group is None
     assert person2.img is None
     assert person2.href is None

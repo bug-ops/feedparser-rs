@@ -938,6 +938,49 @@ fn parse_channel_podcast(
             parse_podcast_value(reader, buf, attrs, feed, limits)?;
         }
         Ok(true)
+    } else if tag.starts_with(b"podcast:person") {
+        if !is_empty {
+            let role = Some(find_attribute(attrs, b"role").map_or_else(
+                || "host".to_string(),
+                |v| truncate_to_length(v, limits.max_attribute_length),
+            ));
+            let group = find_attribute(attrs, b"group")
+                .map(|v| truncate_to_length(v, limits.max_attribute_length));
+            let img = find_attribute(attrs, b"img")
+                .map(|v| truncate_to_length(v, limits.max_attribute_length));
+            let href = find_attribute(attrs, b"href")
+                .map(|v| truncate_to_length(v, limits.max_attribute_length));
+            let name = read_text_str(reader, buf, limits)?;
+            if !name.is_empty() {
+                let person = PodcastPerson {
+                    name,
+                    role,
+                    group,
+                    img: img.map(Into::into),
+                    href: href.map(Into::into),
+                };
+                let podcast = feed
+                    .feed
+                    .podcast
+                    .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+                podcast
+                    .persons
+                    .try_push_limited(person, limits.max_podcast_persons);
+            }
+        }
+        Ok(true)
+    } else if tag.starts_with(b"podcast:medium") {
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            if !text.is_empty() {
+                let podcast = feed
+                    .feed
+                    .podcast
+                    .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+                podcast.medium = Some(text);
+            }
+        }
+        Ok(true)
     } else {
         Ok(false)
     }
@@ -1563,8 +1606,10 @@ fn parse_podcast_person(
     entry: &mut Entry,
     limits: &ParserLimits,
 ) -> Result<()> {
-    let role =
-        find_attribute(attrs, b"role").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let role = Some(find_attribute(attrs, b"role").map_or_else(
+        || "host".to_string(),
+        |v| truncate_to_length(v, limits.max_attribute_length),
+    ));
     let group =
         find_attribute(attrs, b"group").map(|v| truncate_to_length(v, limits.max_attribute_length));
     let img =
@@ -4838,6 +4883,99 @@ mod tests {
         assert_eq!(
             entry.itunes.as_ref().unwrap().duration.as_deref(),
             Some("1:23:45")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_podcast_person_feed_level() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Test Podcast</title>
+                <podcast:person role="host" img="https://example.com/host.jpg">Jane Doe</podcast:person>
+                <podcast:person role="guest">John Smith</podcast:person>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let persons = &feed.feed.podcast.as_ref().unwrap().persons;
+        assert_eq!(persons.len(), 2);
+        assert_eq!(persons[0].name, "Jane Doe");
+        assert_eq!(persons[0].role.as_deref(), Some("host"));
+        assert_eq!(
+            persons[0].img.as_deref(),
+            Some("https://example.com/host.jpg")
+        );
+        assert_eq!(persons[1].name, "John Smith");
+        assert_eq!(persons[1].role.as_deref(), Some("guest"));
+    }
+
+    #[test]
+    fn test_parse_rss_podcast_person_default_role_host() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Test Podcast</title>
+                <item>
+                    <title>Episode</title>
+                    <podcast:person>Jane Doe</podcast:person>
+                </item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let person = &feed.entries[0].podcast_persons[0];
+        assert_eq!(person.name, "Jane Doe");
+        assert_eq!(person.role.as_deref(), Some("host"));
+    }
+
+    #[test]
+    fn test_parse_rss_podcast_person_default_role_host_feed_level() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Test Podcast</title>
+                <podcast:person>Jane Doe</podcast:person>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        let person = &feed.feed.podcast.as_ref().unwrap().persons[0];
+        assert_eq!(person.name, "Jane Doe");
+        assert_eq!(person.role.as_deref(), Some("host"));
+    }
+
+    #[test]
+    fn test_parse_rss_podcast_medium() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Test Podcast</title>
+                <podcast:medium>podcast</podcast:medium>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.podcast.as_ref().unwrap().medium.as_deref(),
+            Some("podcast")
+        );
+    }
+
+    #[test]
+    fn test_parse_rss_podcast_medium_music() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Test Podcast</title>
+                <podcast:medium>music</podcast:medium>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.podcast.as_ref().unwrap().medium.as_deref(),
+            Some("music")
         );
     }
 }

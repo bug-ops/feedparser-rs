@@ -1381,6 +1381,8 @@ pub struct PodcastMeta {
     pub guid: Option<String>,
     /// Value-for-value payment information
     pub value: Option<PodcastValue>,
+    /// Content medium type (podcast:medium)
+    pub medium: Option<String>,
 }
 
 impl From<CorePodcastMeta> for PodcastMeta {
@@ -1395,6 +1397,7 @@ impl From<CorePodcastMeta> for PodcastMeta {
             persons: core.persons.into_iter().map(PodcastPerson::from).collect(),
             guid: core.guid,
             value: core.value.map(PodcastValue::from),
+            medium: core.medium,
         }
     }
 }
