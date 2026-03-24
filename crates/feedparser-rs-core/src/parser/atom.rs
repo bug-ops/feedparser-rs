@@ -378,10 +378,36 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
-                        } else if let Some(_media_element) = is_media_tag(tag) {
-                            // Media RSS - typically entry-level
-                            if !is_empty {
-                                skip_element(reader, &mut buf, limits, *depth)?;
+                        } else if let Some(media_element) = is_media_tag(tag) {
+                            match media_element {
+                                "rating" | "keywords" => {
+                                    if !is_empty {
+                                        let scheme = element
+                                            .attributes()
+                                            .flatten()
+                                            .find(|a| a.key.as_ref() == b"scheme")
+                                            .and_then(|a| {
+                                                a.unescape_value().ok().map(|v| {
+                                                    truncate_to_length(
+                                                        &v,
+                                                        limits.max_attribute_length,
+                                                    )
+                                                })
+                                            });
+                                        let text = read_text_str(reader, &mut buf, limits)?;
+                                        media_rss::handle_feed_element(
+                                            media_element,
+                                            scheme.as_deref(),
+                                            &text,
+                                            &mut feed.feed,
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    if !is_empty {
+                                        skip_element(reader, &mut buf, limits, *depth)?;
+                                    }
+                                }
                             }
                             true
                         } else if is_thr_tag(tag).is_some() {
@@ -746,6 +772,24 @@ fn parse_entry(
                                 parse_atom_media_group(
                                     reader, buf, &mut entry, limits, depth, bozo,
                                 )?;
+                            } else if media_element == "rating" {
+                                if !is_empty {
+                                    let scheme = element
+                                        .attributes()
+                                        .flatten()
+                                        .find(|a| a.key.as_ref() == b"scheme")
+                                        .and_then(|a| {
+                                            a.unescape_value().ok().map(|v| {
+                                                truncate_to_length(&v, limits.max_attribute_length)
+                                            })
+                                        });
+                                    let text = read_text_str(reader, buf, limits)?;
+                                    media_rss::handle_entry_rating(
+                                        scheme.as_deref(),
+                                        &text,
+                                        &mut entry,
+                                    );
+                                }
                             } else {
                                 let media_elem = media_element.to_string();
                                 if !is_empty {

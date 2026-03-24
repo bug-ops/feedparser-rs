@@ -1,6 +1,7 @@
 use super::{
     common::{
-        Content, Enclosure, Link, MediaContent, MediaThumbnail, Person, Source, Tag, TextConstruct,
+        Content, Enclosure, Link, MediaContent, MediaRating, MediaThumbnail, Person, Source, Tag,
+        TextConstruct,
     },
     generics::LimitedCollectionExt,
     podcast::{ItunesEntryMeta, PodcastEntryMeta, PodcastPerson, PodcastTranscript},
@@ -81,6 +82,8 @@ pub struct Entry {
     pub media_thumbnail: Vec<MediaThumbnail>,
     /// Media RSS content items
     pub media_content: Vec<MediaContent>,
+    /// Media RSS rating (`media:rating`) at entry level
+    pub media_rating: Option<MediaRating>,
     /// Podcast 2.0 transcripts for this episode
     pub podcast_transcripts: Vec<PodcastTranscript>,
     /// Podcast 2.0 persons for this episode (hosts, guests, etc.)

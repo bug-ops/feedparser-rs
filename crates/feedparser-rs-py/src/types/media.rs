@@ -1,5 +1,17 @@
-use feedparser_rs::{MediaContent as CoreMediaContent, MediaThumbnail as CoreMediaThumbnail};
+use feedparser_rs::{
+    MediaContent as CoreMediaContent, MediaRating as CoreMediaRating,
+    MediaThumbnail as CoreMediaThumbnail,
+};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
+
+/// Convert a `MediaRating` into a Python dict `{"scheme": ..., "content": ...}`.
+pub fn media_rating_to_py_dict(py: Python<'_>, rating: &CoreMediaRating) -> PyResult<Py<PyAny>> {
+    let dict = PyDict::new(py);
+    dict.set_item("scheme", rating.scheme.as_deref().into_pyobject(py)?)?;
+    dict.set_item("content", &rating.content)?;
+    Ok(dict.into_any().unbind())
+}
 
 /// Represents a Media RSS thumbnail image.
 ///
