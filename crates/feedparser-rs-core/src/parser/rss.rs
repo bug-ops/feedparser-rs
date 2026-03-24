@@ -6,7 +6,7 @@ use crate::{
     namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
         Enclosure, Entry, FeedVersion, Image, ItunesCategory, ItunesEntryMeta, ItunesFeedMeta,
-        ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, PodcastChapters,
+        ItunesOwner, Link, MediaContent, MediaThumbnail, ParsedFeed, Person, PodcastChapters,
         PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson, PodcastSoundbite,
         PodcastTranscript, Source, Tag, TextConstruct, TextType, parse_duration, parse_explicit,
     },
@@ -540,11 +540,47 @@ fn parse_channel_itunes(
     if is_itunes_tag(tag, b"author") {
         if !is_empty {
             let text = read_text_str(reader, buf, limits)?;
+            // Promote to feed.author if not already set
+            if feed.feed.author.is_none() {
+                feed.feed.set_author(Person::from_name(&text));
+                feed.feed
+                    .authors
+                    .try_push_limited(Person::from_name(&text), limits.max_authors);
+            }
             let itunes = feed
                 .feed
                 .itunes
                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
             itunes.author = Some(text);
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"subtitle") {
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            // Promote to feed.subtitle if not already set
+            if feed.feed.subtitle.is_none() {
+                feed.feed.set_subtitle(TextConstruct::text(&text));
+            }
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.subtitle = Some(text);
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"summary") {
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            // feed.subtitle doubles as summary in RSS (no separate summary field on FeedMeta)
+            // promote to subtitle only when subtitle is absent
+            if feed.feed.subtitle.is_none() {
+                feed.feed.set_subtitle(TextConstruct::text(&text));
+            }
+            let itunes = feed
+                .feed
+                .itunes
+                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
+            itunes.summary = Some(text);
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"owner") {
@@ -1087,10 +1123,41 @@ fn parse_item_itunes(
     } else if is_itunes_tag(tag, b"author") {
         let (text, had_bozo) = read_text(reader, buf, limits)?;
         *bozo |= had_bozo;
+        // Promote to entry.author if not already set
+        if entry.author.is_none() {
+            entry.set_author(Person::from_name(&text));
+            entry
+                .authors
+                .try_push_limited(Person::from_name(&text), limits.max_authors);
+        }
         let itunes = entry
             .itunes
             .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
         itunes.author = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"subtitle") {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        // Promote to entry.subtitle if not already set
+        if entry.subtitle.is_none() {
+            entry.set_subtitle(TextConstruct::text(&text));
+        }
+        let itunes = entry
+            .itunes
+            .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+        itunes.subtitle = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"summary") {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        // Promote to entry.summary if not already set
+        if entry.summary.is_none() {
+            entry.set_summary(TextConstruct::text(&text));
+        }
+        let itunes = entry
+            .itunes
+            .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
+        itunes.summary = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"duration") {
         let text = read_text_str(reader, buf, limits)?;
@@ -3299,5 +3366,209 @@ mod tests {
         let feed = parse_rss20_with_limits(xml, limits).unwrap();
         assert!(feed.bozo);
         assert_eq!(feed.namespaces.len(), 2);
+    }
+
+    #[test]
+    fn test_itunes_author_promotes_to_feed_author_when_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:author>Podcast Author</itunes:author>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.author.as_deref(), Some("Podcast Author"));
+        assert_eq!(
+            feed.feed.author_detail.as_ref().unwrap().name.as_deref(),
+            Some("Podcast Author")
+        );
+        assert_eq!(feed.feed.authors.len(), 1);
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().author.as_deref(),
+            Some("Podcast Author")
+        );
+    }
+
+    #[test]
+    fn test_itunes_author_does_not_overwrite_existing_feed_author() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <managingEditor>editor@example.com (Existing Author)</managingEditor>
+                <itunes:author>iTunes Author</itunes:author>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        // managingEditor sets author; itunes:author must not overwrite it
+        assert_ne!(feed.feed.author.as_deref(), Some("iTunes Author"));
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().author.as_deref(),
+            Some("iTunes Author")
+        );
+    }
+
+    #[test]
+    fn test_itunes_subtitle_promotes_to_feed_subtitle_when_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:subtitle>iTunes Subtitle</itunes:subtitle>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("iTunes Subtitle"));
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().subtitle.as_deref(),
+            Some("iTunes Subtitle")
+        );
+    }
+
+    #[test]
+    fn test_itunes_subtitle_does_not_overwrite_existing_feed_subtitle() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <description>Existing Subtitle</description>
+                <itunes:subtitle>iTunes Subtitle</itunes:subtitle>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("Existing Subtitle"));
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().subtitle.as_deref(),
+            Some("iTunes Subtitle")
+        );
+    }
+
+    #[test]
+    fn test_itunes_summary_promotes_to_feed_subtitle_when_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:summary>iTunes Summary</itunes:summary>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("iTunes Summary"));
+        assert_eq!(
+            feed.feed.itunes.as_ref().unwrap().summary.as_deref(),
+            Some("iTunes Summary")
+        );
+    }
+
+    #[test]
+    fn test_entry_itunes_author_promotes_when_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <item>
+                    <title>Episode 1</title>
+                    <itunes:author>Episode Author</itunes:author>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(entry.author.as_deref(), Some("Episode Author"));
+        assert_eq!(
+            entry.author_detail.as_ref().unwrap().name.as_deref(),
+            Some("Episode Author")
+        );
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().author.as_deref(),
+            Some("Episode Author")
+        );
+    }
+
+    #[test]
+    fn test_entry_itunes_author_does_not_overwrite_existing() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <item>
+                    <title>Episode 1</title>
+                    <author>existing@example.com</author>
+                    <itunes:author>iTunes Author</itunes:author>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_ne!(entry.author.as_deref(), Some("iTunes Author"));
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().author.as_deref(),
+            Some("iTunes Author")
+        );
+    }
+
+    #[test]
+    fn test_entry_itunes_subtitle_promotes_when_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <item>
+                    <title>Episode 1</title>
+                    <itunes:subtitle>Episode Subtitle</itunes:subtitle>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(entry.subtitle.as_deref(), Some("Episode Subtitle"));
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().subtitle.as_deref(),
+            Some("Episode Subtitle")
+        );
+    }
+
+    #[test]
+    fn test_entry_itunes_summary_promotes_when_absent() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <item>
+                    <title>Episode 1</title>
+                    <itunes:summary>Episode Summary</itunes:summary>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(entry.summary.as_deref(), Some("Episode Summary"));
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().summary.as_deref(),
+            Some("Episode Summary")
+        );
+    }
+
+    #[test]
+    fn test_entry_itunes_summary_does_not_overwrite_existing() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <item>
+                    <title>Episode 1</title>
+                    <description>Existing Summary</description>
+                    <itunes:summary>iTunes Summary</itunes:summary>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        assert_eq!(entry.summary.as_deref(), Some("Existing Summary"));
+        assert_eq!(
+            entry.itunes.as_ref().unwrap().summary.as_deref(),
+            Some("iTunes Summary")
+        );
     }
 }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>iTunes Promotion Test</title>
+    <link>https://example.com/podcast</link>
+    <itunes:author>Test Author</itunes:author>
+    <itunes:subtitle>iTunes Subtitle</itunes:subtitle>
+    <itunes:summary>iTunes Summary Text</itunes:summary>
+    <item>
+      <title>Episode 1</title>
+      <itunes:author>Episode Author</itunes:author>
+      <itunes:subtitle>Episode Subtitle</itunes:subtitle>
+      <itunes:summary>Episode Summary Text</itunes:summary>
+    </item>
+  </channel>
+</rss>
