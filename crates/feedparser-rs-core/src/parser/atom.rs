@@ -59,7 +59,6 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
         .map_err(|e| FeedError::InvalidFormat(e.to_string()))?;
 
     let mut reader = Reader::from_reader(data);
-    reader.config_mut().trim_text(true);
 
     let mut feed = init_feed(FeedVersion::Atom10, limits.max_entries);
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
