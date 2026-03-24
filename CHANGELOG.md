@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Core: HTML entities (`&amp;`, `&lt;`, `&gt;`) in `type="xhtml"` Atom content text nodes are now preserved correctly in the serialized output (#215)
+
 - Core, Python, Node.js bindings: `media:rating` is now parsed at both feed level and entry level with `scheme` attribute; exposed as `feed.media_rating` / `entry.media_rating` dict `{"scheme": ..., "content": ...}` (#302, #208)
 - Core, Python, Node.js bindings: `media:keywords` is now parsed at feed level and exposed as `feed.media_keywords` string (#302)
 

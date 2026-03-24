@@ -680,6 +680,11 @@ fn serialize_inner_xml(
                 Ok(Event::Text(e)) => {
                     let _ = writer.write_event(Event::Text(e));
                 }
+                Ok(Event::GeneralRef(e)) => {
+                    // quick-xml emits entity references (e.g. &amp;) as GeneralRef events;
+                    // pass them through so the writer re-emits them as &name;
+                    let _ = writer.write_event(Event::GeneralRef(e));
+                }
                 Ok(Event::CData(e)) => {
                     let _ = writer.write_event(Event::CData(e));
                 }
@@ -1056,6 +1061,29 @@ mod tests {
         assert!(result.contains("<li>A</li>"));
         assert!(result.contains("<li>B</li>"));
         assert!(!result.contains("<div"));
+        assert!(!had_bozo);
+    }
+
+    #[test]
+    fn test_read_xhtml_content_preserves_entities() {
+        let xml = b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Tom &amp; Jerry</p><p>x &lt; y &gt; z</p></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert!(
+            result.contains("&amp;"),
+            "& must be preserved as &amp;, got: {result}"
+        );
+        assert!(
+            result.contains("&lt;"),
+            "< must be preserved as &lt;, got: {result}"
+        );
+        assert!(
+            result.contains("&gt;"),
+            "> must be preserved as &gt;, got: {result}"
+        );
         assert!(!had_bozo);
     }
 
