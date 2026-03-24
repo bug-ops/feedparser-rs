@@ -219,7 +219,10 @@ fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
                 email: owner_email.as_deref().map(crate::types::Email::new),
                 uri: None,
             };
-            feed.set_author(person.clone());
+            // #317: feed.author must be name-only (no email in parentheses).
+            // author_detail still carries the full person (name + email).
+            feed.author.clone_from(&person.name);
+            feed.author_detail = Some(person.clone());
             feed.authors.try_push_limited(person, usize::MAX);
         } else if let Some(ref name) = itunes_author
             && !name.trim().is_empty()
@@ -4263,10 +4266,10 @@ mod tests {
             </channel>
         </rss>"#;
         let feed = parse_rss20(xml).unwrap();
-        // flat author string follows "Name (email)" convention
+        // #317: feed.author must be name-only, no email in parentheses
         assert_eq!(
             feed.feed.author.as_deref(),
-            Some("Owner Name (owner@example.com)"),
+            Some("Owner Name"),
             "itunes:owner.name must win over itunes:author"
         );
         let detail = feed.feed.author_detail.as_ref().unwrap();
@@ -4289,11 +4292,36 @@ mod tests {
             </channel>
         </rss>"#;
         let feed = parse_rss20(xml).unwrap();
+        // #317: feed.author must be name-only
         assert_eq!(
             feed.feed.author.as_deref(),
-            Some("Owner Name (owner@example.com)"),
+            Some("Owner Name"),
             "itunes:owner.name must win regardless of element order"
         );
+    }
+
+    // #317: itunes:owner with name+email — feed.author is name only, author_detail has both
+    #[test]
+    fn test_itunes_owner_author_name_only_no_email() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+            <channel>
+                <title>Podcast</title>
+                <itunes:owner>
+                    <itunes:name>Jane Doe</itunes:name>
+                    <itunes:email>jane@example.com</itunes:email>
+                </itunes:owner>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(
+            feed.feed.author.as_deref(),
+            Some("Jane Doe"),
+            "feed.author must be name only — no email in parentheses"
+        );
+        let detail = feed.feed.author_detail.as_ref().unwrap();
+        assert_eq!(detail.name.as_deref(), Some("Jane Doe"));
+        assert_eq!(detail.email.as_deref(), Some("jane@example.com"));
     }
 
     // #287: itunes:image must override RSS <image>

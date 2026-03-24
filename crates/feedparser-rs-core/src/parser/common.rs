@@ -686,13 +686,23 @@ fn serialize_inner_xml(
                     let _ = writer.write_event(Event::Text(e));
                 }
                 Ok(Event::GeneralRef(e)) => {
-                    // Entity references (e.g. &amp;, &lt;) are emitted as separate
-                    // GeneralRef events by quick-xml. Re-emit them verbatim so that
-                    // &amp; → &amp; (not lost) in the serialized XHTML output.
+                    // #316: &apos; and &quot; must decode to literal characters.
+                    // &amp;, &lt;, &gt; must remain escaped in HTML output.
+                    // All other entity refs are re-emitted verbatim.
                     let inner = writer.get_mut();
-                    let _ = inner.write_all(b"&");
-                    let _ = inner.write_all(e.as_ref());
-                    let _ = inner.write_all(b";");
+                    match e.as_ref() {
+                        b"apos" => {
+                            let _ = inner.write_all(b"'");
+                        }
+                        b"quot" => {
+                            let _ = inner.write_all(b"\"");
+                        }
+                        _ => {
+                            let _ = inner.write_all(b"&");
+                            let _ = inner.write_all(e.as_ref());
+                            let _ = inner.write_all(b";");
+                        }
+                    }
                 }
                 Ok(Event::CData(e)) => {
                     let _ = writer.write_event(Event::CData(e));
@@ -1094,6 +1104,34 @@ mod tests {
         assert!(
             !result.contains("Tom & Jerry"),
             "bare & must not appear in output, got: {result}"
+        );
+    }
+
+    #[test]
+    fn test_read_xhtml_content_apos_and_quot_decoded() {
+        // #316: &apos; must become ' and &quot; must become " in xhtml output
+        let xml = b"<content type=\"xhtml\"><div xmlns=\"http://www.w3.org/1999/xhtml\"><p>it&apos;s a &quot;test&quot;</p></div></content>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        advance_past_start_xhtml(&mut reader, &mut buf);
+        let (result, had_bozo) =
+            read_xhtml_content(&mut reader, &mut buf, &ParserLimits::default()).unwrap();
+        assert!(!had_bozo);
+        assert!(
+            result.contains("it's a"),
+            "&apos; must decode to literal apostrophe, got: {result}"
+        );
+        assert!(
+            result.contains("\"test\""),
+            "&quot; must decode to literal quote, got: {result}"
+        );
+        assert!(
+            !result.contains("&apos;"),
+            "&apos; must not remain escaped in output, got: {result}"
+        );
+        assert!(
+            !result.contains("&quot;"),
+            "&quot; must not remain escaped in output, got: {result}"
         );
     }
 

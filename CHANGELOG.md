@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core: `podcast:person` default role changed from `"unknown"` to `"host"` per Podcast 2.0 spec; Python binding now returns `"host"` instead of `None` when no `role` attribute is present (#236)
 - Core: `itunes:summary`-only no longer incorrectly sets `feed.subtitle`; only `itunes:subtitle` promotes to `feed.subtitle` (#308)
 - Core: `feed.author` now uses `itunes:owner.name` (with email in `author_detail`) when both `itunes:owner` and `itunes:author` are present, matching Python feedparser priority (#297)
+- Core: `feed.author` from `itunes:owner` now contains name only (no `"Name (email)"` format); `feed.author_detail` still carries both name and email (#317)
+- Core: `&apos;` and `&quot;` entity references inside xhtml content now decode to literal `'` and `"` characters instead of passing through as escaped entity refs (#316)
 - Core: `itunes:image` now overrides RSS `<image>` for `feed.image` regardless of element order, matching Python feedparser behavior (#287)
 - Core, Python, Node.js bindings: `MediaContent.filesize` is now a `String` (was `u64`/`i64`), matching Python feedparser which preserves raw attribute values; non-numeric values like `"not_a_number"` are now retained as-is (#221)
 - Core, Python, Node.js bindings: `media:credit`, `media:copyright`, `media:rating`, `media:keywords`, and `media:description` are now parsed from RSS and Atom feeds and exposed on `Entry` as `media_credit`, `media_copyright`, `media_rating`, `media_keywords`, and `media_description` (#246, #288)
