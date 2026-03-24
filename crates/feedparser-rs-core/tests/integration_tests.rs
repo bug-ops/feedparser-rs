@@ -925,6 +925,36 @@ fn test_atom_entry_updated_fallback_from_published() {
 
 /// #275: entry.updated NOT overwritten when <updated> is explicitly set
 #[test]
+fn test_atom_xhtml_content_html_entities_preserved() {
+    // Regression test for issue #215: &amp;, &lt;, &gt; in xhtml text nodes must be re-escaped
+    let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>T</title><link href="http://x.com"/><updated>2024-01-01T00:00:00Z</updated><id>urn:t</id>
+  <entry>
+    <id>urn:e:1</id><updated>2024-01-01T00:00:00Z</updated><title>E</title>
+    <content type="xhtml">
+      <div xmlns="http://www.w3.org/1999/xhtml"><p>Tom &amp; Jerry</p><p>x &lt; y</p></div>
+    </content>
+  </entry>
+</feed>"#;
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo, "valid feed must not be bozo");
+    let value = &feed.entries[0].content[0].value;
+    assert!(
+        value.contains("&amp;"),
+        "expected &amp; preserved, got: {value:?}"
+    );
+    assert!(
+        value.contains("&lt;"),
+        "expected &lt; preserved, got: {value:?}"
+    );
+    assert!(
+        !value.contains("Tom  Jerry"),
+        "entity must not be silently dropped"
+    );
+}
+
+#[test]
 fn test_atom_entry_updated_not_overwritten_when_set() {
     let xml = load_fixture("atom/basic.xml");
     let result = parse(&xml).unwrap();
