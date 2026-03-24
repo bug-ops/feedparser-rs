@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-24
+
 ### Changed
 
 - **BREAKING**: `PodcastEntryMeta.person` renamed to `PodcastEntryMeta.persons` for consistency with feed-level `PodcastMeta.persons` (#320)
@@ -442,7 +444,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.8...v0.5.0
 [0.4.8]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.7...v0.4.8
 [0.4.7]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.6...v0.4.7
