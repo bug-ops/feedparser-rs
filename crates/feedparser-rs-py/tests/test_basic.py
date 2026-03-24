@@ -310,12 +310,15 @@ def test_thr_in_reply_to_dict_access():
 
 
 def test_thr_in_reply_to_hyphen_key():
-    """Test dict-style access with hyphenated key (thr_in-reply-to)"""
+    """Test hyphenated key returns first InReplyTo as dict (Python feedparser compat)"""
     d = feedparser_rs.parse(ATOM_THREADING_XML)
     entry = d.entries[0]
-    irts = entry["thr_in-reply-to"]
-    assert len(irts) == 1
-    assert irts[0]["ref"] == "tag:example.com,2024:post/1"
+    irt = entry["thr_in-reply-to"]
+    assert isinstance(irt, dict)
+    assert irt["ref"] == "tag:example.com,2024:post/1"
+    assert irt["href"] == "https://example.com/post/1"
+    assert irt["type"] == "text/html"
+    assert irt["source"] == "https://example.com/feed.xml"
 
 
 def test_thr_multiple_in_reply_to():

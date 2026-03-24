@@ -968,9 +968,8 @@ impl PyEntry {
                     Ok(py.None())
                 }
             }
-            // Atom Threading Extensions: support both underscore and hyphen variants
-            // for Python feedparser dict-key compatibility
-            "thr_in_reply_to" | "thr_in-reply-to" => {
+            // `thr_in_reply_to` (underscore, rs-native): returns list of all InReplyTo objects
+            "thr_in_reply_to" => {
                 let replies: Vec<_> = self
                     .inner
                     .in_reply_to
@@ -978,6 +977,26 @@ impl PyEntry {
                     .map(|r| PyInReplyTo::from_core(r.clone()))
                     .collect();
                 Ok(replies.into_pyobject(py)?.into_any().unbind())
+            }
+            // `thr_in-reply-to` (hyphen): Python feedparser compat — returns first element as dict
+            "thr_in-reply-to" => {
+                let Some(first) = self.inner.in_reply_to.first() else {
+                    return Ok(py.None());
+                };
+                let dict = pyo3::types::PyDict::new(py);
+                if let Some(v) = first.ref_.as_deref() {
+                    dict.set_item("ref", v)?;
+                }
+                if let Some(v) = first.href.as_deref() {
+                    dict.set_item("href", v)?;
+                }
+                if let Some(v) = first.type_.as_deref() {
+                    dict.set_item("type", v)?;
+                }
+                if let Some(v) = first.source.as_deref() {
+                    dict.set_item("source", v)?;
+                }
+                Ok(dict.into_any().unbind())
             }
             "thr_total" => {
                 // Return as string for Python feedparser compatibility
