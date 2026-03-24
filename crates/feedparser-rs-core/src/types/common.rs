@@ -752,6 +752,8 @@ pub struct MediaContent {
     pub url: Url,
     /// MIME type
     pub content_type: Option<MimeType>,
+    /// Medium type: "image", "video", "audio", "document", "executable"
+    pub medium: Option<String>,
     /// File size in bytes
     pub filesize: Option<u64>,
     /// Media width in pixels
@@ -917,6 +919,7 @@ impl FromAttributes for MediaContent {
     {
         let mut url = None;
         let mut content_type = None;
+        let mut medium = None;
         let mut filesize = None;
         let mut width = None;
         let mut height = None;
@@ -930,6 +933,7 @@ impl FromAttributes for MediaContent {
             match attr.key.as_ref() {
                 b"url" => url = Some(bytes_to_string(&attr.value)),
                 b"type" => content_type = Some(bytes_to_string(&attr.value)),
+                b"medium" => medium = Some(bytes_to_string(&attr.value)),
                 b"fileSize" => filesize = bytes_to_string(&attr.value).parse().ok(),
                 b"width" => width = bytes_to_string(&attr.value).parse().ok(),
                 b"height" => height = bytes_to_string(&attr.value).parse().ok(),
@@ -941,6 +945,7 @@ impl FromAttributes for MediaContent {
         url.map(|url| Self {
             url: Url::new(url),
             content_type: content_type.map(MimeType::new),
+            medium,
             filesize,
             width,
             height,

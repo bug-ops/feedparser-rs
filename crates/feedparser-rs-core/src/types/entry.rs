@@ -179,8 +179,8 @@ impl Entry {
 
     /// Sets rights field with `TextConstruct`, storing both simple and detailed versions
     #[inline]
-    pub fn set_rights(&mut self, mut text: TextConstruct) {
-        self.rights = Some(std::mem::take(&mut text.value));
+    pub fn set_rights(&mut self, text: TextConstruct) {
+        self.rights = Some(text.value.clone());
         self.rights_detail = Some(text);
     }
 
