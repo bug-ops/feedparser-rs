@@ -430,7 +430,7 @@ jobs:
         run: cargo make ci-coverage-rust
 
       - name: Upload to codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info
@@ -479,7 +479,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Python coverage to codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: crates/feedparser-rs-py/coverage.xml
@@ -532,7 +532,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload Node.js coverage to codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: crates/feedparser-rs-node/coverage
