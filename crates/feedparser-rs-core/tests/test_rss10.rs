@@ -110,7 +110,10 @@ fn test_rss10_with_dublin_core() {
         entry.updated.is_some(),
         "dc:date should be parsed as updated date"
     );
-    assert!(entry.published.is_none(), "dc:date must not set published");
+    assert!(
+        entry.published.is_some(),
+        "dc:date must set published as fallback"
+    );
 
     if let Some(updated) = entry.updated {
         assert_eq!(updated.year(), 2024);

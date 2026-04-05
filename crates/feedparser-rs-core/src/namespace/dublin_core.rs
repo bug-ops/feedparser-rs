@@ -40,8 +40,12 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
             feed.authors.push(Person::from_name(text));
         }
         "date" => {
-            // dc:date → updated (always overrides pubDate promotion)
             if let Some(dt) = parse_date(text) {
+                if feed.published.is_none() {
+                    feed.published = Some(dt);
+                    feed.published_str = Some(text.to_string());
+                }
+                // dc:date → updated (always overrides pubDate promotion)
                 feed.updated = Some(dt);
                 feed.updated_str = Some(text.to_string());
             }
@@ -115,6 +119,10 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
         "date" => {
             if let Some(dt) = parse_date(text) {
                 entry.dc_date = Some(dt);
+                if entry.published.is_none() {
+                    entry.published = Some(dt);
+                    entry.published_str = Some(text.to_string());
+                }
                 // dc:date is more authoritative than pubDate for updated; always override
                 entry.updated = Some(dt);
                 entry.updated_str = Some(text.to_string());
@@ -236,12 +244,12 @@ mod tests {
     }
 
     #[test]
-    fn test_entry_updated_from_dc_date() {
+    fn test_entry_updated_and_published_from_dc_date() {
         let mut entry = Entry::default();
         handle_entry_element("date", "2024-01-15T10:30:00Z", &mut entry);
 
         assert!(entry.updated.is_some());
-        assert!(entry.published.is_none());
+        assert!(entry.published.is_some());
     }
 
     #[test]

@@ -633,7 +633,7 @@ mod tests {
         assert_eq!(feed.entries.len(), 1);
         let entry = &feed.entries[0];
         assert!(entry.updated.is_some());
-        assert!(entry.published.is_none());
+        assert!(entry.published.is_some());
         let dt = entry.updated.unwrap();
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 12);
@@ -764,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn test_dc_date_maps_to_updated_not_published() {
+    fn test_dc_date_maps_to_updated_and_published() {
         let xml = include_bytes!("../../../../tests/fixtures/rss10_dc_date.xml");
         let feed = parse_rss10(xml).unwrap();
         assert_eq!(feed.entries.len(), 1);
@@ -774,8 +774,8 @@ mod tests {
             "entry.updated should be set from dc:date"
         );
         assert!(
-            entry.published.is_none(),
-            "entry.published should not be set from dc:date"
+            entry.published.is_some(),
+            "entry.published should be set from dc:date as fallback"
         );
         let dt = entry.updated.unwrap();
         assert_eq!(dt.year(), 2025);
