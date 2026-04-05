@@ -521,3 +521,24 @@ fn test_rss10_with_syndication_module() {
         "Update base should be preserved"
     );
 }
+
+#[test]
+fn test_rss10_channel_selfclosing_refs() {
+    // Regression test: self-closing <image rdf:resource="..."/> and <textinput rdf:resource="..."/>
+    // inside <channel> are Event::Empty events and must NOT trigger skip_element, which would
+    // consume subsequent real events and cause items to be lost.
+    let xml = include_bytes!("fixtures/rss10/rss10_channel_selfclosing_refs.xml");
+    let feed = parse(xml).expect("Failed to parse RSS 1.0 feed with self-closing refs");
+
+    assert!(
+        !feed.bozo,
+        "Feed should not be bozo: {:?}",
+        feed.bozo_exception
+    );
+    assert_eq!(feed.entries.len(), 1, "Feed should have exactly 1 entry");
+    assert_eq!(
+        feed.entries[0].title.as_deref(),
+        Some("Item 1"),
+        "Entry title should be 'Item 1'"
+    );
+}
