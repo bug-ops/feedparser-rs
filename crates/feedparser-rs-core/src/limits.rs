@@ -143,6 +143,36 @@ pub struct ParserLimits {
     ///
     /// Default: 20 recipients
     pub max_value_recipients: usize,
+
+    /// Maximum number of alternate enclosures per entry
+    ///
+    /// Default: 20
+    pub max_podcast_alternate_enclosures: usize,
+
+    /// Maximum number of sources per alternate enclosure
+    ///
+    /// Default: 10
+    pub max_podcast_alternate_enclosure_sources: usize,
+
+    /// Maximum number of podroll entries per feed
+    ///
+    /// Default: 50
+    pub max_podcast_podroll: usize,
+
+    /// Maximum number of socialInteract elements per entry
+    ///
+    /// Default: 20
+    pub max_podcast_social_interact: usize,
+
+    /// Maximum number of txt records per feed or entry
+    ///
+    /// Default: 20
+    pub max_podcast_txt: usize,
+
+    /// Maximum number of follow links per feed or entry
+    ///
+    /// Default: 20
+    pub max_podcast_follow: usize,
 }
 
 impl Default for ParserLimits {
@@ -170,6 +200,12 @@ impl Default for ParserLimits {
             max_podcast_funding: 20,
             max_podcast_persons: 50,
             max_value_recipients: 20,
+            max_podcast_alternate_enclosures: 20,
+            max_podcast_alternate_enclosure_sources: 10,
+            max_podcast_podroll: 50,
+            max_podcast_social_interact: 20,
+            max_podcast_txt: 20,
+            max_podcast_follow: 20,
         }
     }
 }
@@ -209,6 +245,12 @@ impl ParserLimits {
             max_podcast_funding: 5,
             max_podcast_persons: 10,
             max_value_recipients: 5,
+            max_podcast_alternate_enclosures: 5,
+            max_podcast_alternate_enclosure_sources: 3,
+            max_podcast_podroll: 10,
+            max_podcast_social_interact: 5,
+            max_podcast_txt: 5,
+            max_podcast_follow: 5,
         }
     }
 
@@ -246,6 +288,12 @@ impl ParserLimits {
             max_podcast_funding: 50,
             max_podcast_persons: 200,
             max_value_recipients: 50,
+            max_podcast_alternate_enclosures: 100,
+            max_podcast_alternate_enclosure_sources: 50,
+            max_podcast_podroll: 200,
+            max_podcast_social_interact: 100,
+            max_podcast_txt: 100,
+            max_podcast_follow: 100,
         }
     }
 

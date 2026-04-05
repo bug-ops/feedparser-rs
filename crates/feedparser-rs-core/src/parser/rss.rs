@@ -9,9 +9,11 @@ use crate::{
     types::{
         Enclosure, Entry, FeedMeta, FeedVersion, Image, ItunesCategory, ItunesEntryMeta,
         ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright, MediaCredit,
-        MediaThumbnail, ParsedFeed, Person, PodcastChapters, PodcastEntryMeta, PodcastFunding,
-        PodcastMeta, PodcastPerson, PodcastSoundbite, PodcastTranscript, Source, Tag,
-        TextConstruct, TextType, parse_explicit,
+        MediaThumbnail, ParsedFeed, Person, PodcastAlternateEnclosure,
+        PodcastAlternateEnclosureSource, PodcastChapters, PodcastEntryMeta, PodcastFollow,
+        PodcastFunding, PodcastIntegrity, PodcastLocation, PodcastMeta, PodcastPerson,
+        PodcastRemoteItem, PodcastSocialInteract, PodcastSoundbite, PodcastTranscript, PodcastTxt,
+        PodcastUpdateFrequency, Source, Tag, TextConstruct, TextType, parse_explicit,
     },
     util::{
         base_url::BaseUrlContext,
@@ -962,13 +964,15 @@ fn parse_channel_podcast(
             .feed
             .podcast
             .get_or_insert_with(|| Box::new(PodcastMeta::default()));
-        podcast.funding.try_push_limited(
-            PodcastFunding {
-                url: url.into(),
-                message,
-            },
-            limits.max_podcast_funding,
-        );
+        if !url.is_empty() {
+            podcast.funding.try_push_limited(
+                PodcastFunding {
+                    url: url.into(),
+                    message,
+                },
+                limits.max_podcast_funding,
+            );
+        }
         Ok(true)
     } else if tag.starts_with(b"podcast:value") {
         if !is_empty {
@@ -1020,10 +1024,8 @@ fn parse_channel_podcast(
         Ok(true)
     } else if tag.starts_with(b"podcast:locked") {
         if !is_empty {
-            let owner = attrs
-                .iter()
-                .find(|(k, _)| k == b"owner")
-                .map(|(_, v)| v.clone());
+            let owner = find_attribute(attrs, b"owner")
+                .map(|v| truncate_to_length(v, limits.max_attribute_length));
             let text = read_text_str(reader, buf, limits)?;
             let podcast = feed
                 .feed
@@ -1036,6 +1038,23 @@ fn parse_channel_podcast(
                 podcast.locked_owner = Some(o);
             }
         }
+        Ok(true)
+    } else if tag.starts_with(b"podcast:location") {
+        parse_podcast_channel_location(reader, buf, attrs, feed, limits, is_empty)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:podroll") {
+        if !is_empty {
+            parse_podcast_podroll(reader, buf, feed, limits)?;
+        }
+        Ok(true)
+    } else if tag.starts_with(b"podcast:txt") {
+        parse_podcast_channel_txt(reader, buf, attrs, feed, limits, is_empty)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:updateFrequency") {
+        parse_podcast_update_frequency(reader, buf, attrs, feed, limits, is_empty)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:follow") {
+        parse_podcast_channel_follow(attrs, feed, limits);
         Ok(true)
     } else {
         Ok(false)
@@ -1658,6 +1677,23 @@ fn parse_item_podcast(
                 .episode = Some(v);
         }
         Ok(true)
+    } else if tag.starts_with(b"podcast:alternateEnclosure") {
+        if !is_empty {
+            parse_podcast_alternate_enclosure(reader, buf, attrs, entry, limits)?;
+        }
+        Ok(true)
+    } else if tag.starts_with(b"podcast:location") {
+        parse_podcast_item_location(reader, buf, attrs, entry, limits, is_empty)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:socialInteract") {
+        parse_podcast_social_interact(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:txt") {
+        parse_podcast_item_txt(reader, buf, attrs, entry, limits, is_empty)?;
+        Ok(true)
+    } else if tag.starts_with(b"podcast:follow") {
+        parse_podcast_item_follow(attrs, entry, limits);
+        Ok(true)
     } else {
         Ok(false)
     }
@@ -1824,6 +1860,429 @@ fn parse_podcast_soundbite(
     }
 
     Ok(())
+}
+
+/// Parse podcast:location at channel level
+fn parse_podcast_channel_location(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<()> {
+    let geo =
+        find_attribute(attrs, b"geo").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let osm =
+        find_attribute(attrs, b"osm").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let name = if is_empty {
+        String::new()
+    } else {
+        read_text_str(reader, buf, limits)?
+    };
+    if !name.is_empty() {
+        let podcast = feed
+            .feed
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+        podcast.location = Some(PodcastLocation { name, geo, osm });
+    }
+    Ok(())
+}
+
+/// Parse podcast:podroll container at channel level
+fn parse_podcast_podroll(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+) -> Result<()> {
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e) | Event::Empty(e))
+                if e.name().as_ref().starts_with(b"podcast:remoteItem") =>
+            {
+                let (item_attrs, _) = collect_attributes(&e);
+                let feed_guid = find_attribute(&item_attrs, b"feedGuid")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                let feed_url = find_attribute(&item_attrs, b"feedUrl")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                let item_guid = find_attribute(&item_attrs, b"itemGuid")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                let medium = find_attribute(&item_attrs, b"medium")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                let title = find_attribute(&item_attrs, b"title")
+                    .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                if feed_guid.is_some() || feed_url.is_some() {
+                    let podcast = feed
+                        .feed
+                        .podcast
+                        .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+                    podcast.podroll.try_push_limited(
+                        PodcastRemoteItem {
+                            feed_guid,
+                            feed_url: feed_url.map(Into::into),
+                            item_guid,
+                            medium,
+                            title,
+                        },
+                        limits.max_podcast_podroll,
+                    );
+                }
+            }
+            Ok(Event::End(e)) if e.name().as_ref().starts_with(b"podcast:podroll") => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(())
+}
+
+/// Parse podcast:txt at channel level
+fn parse_podcast_channel_txt(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<()> {
+    let purpose = find_attribute(attrs, b"purpose")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let value = if is_empty {
+        String::new()
+    } else {
+        read_text_str(reader, buf, limits)?
+    };
+    if !value.is_empty() {
+        let podcast = feed
+            .feed
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+        podcast
+            .txt
+            .try_push_limited(PodcastTxt { purpose, value }, limits.max_podcast_txt);
+    }
+    Ok(())
+}
+
+/// Parse podcast:updateFrequency at channel level
+fn parse_podcast_update_frequency(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<()> {
+    let rrule =
+        find_attribute(attrs, b"rrule").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let complete = find_attribute(attrs, b"complete").and_then(|v| {
+        if v.eq_ignore_ascii_case("true") {
+            Some(true)
+        } else if v.eq_ignore_ascii_case("false") {
+            Some(false)
+        } else {
+            None
+        }
+    });
+    let dtstart = find_attribute(attrs, b"dtstart")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let label = if is_empty {
+        None
+    } else {
+        let text = read_text_str(reader, buf, limits)?;
+        if text.is_empty() { None } else { Some(text) }
+    };
+    let podcast = feed
+        .feed
+        .podcast
+        .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+    podcast.update_frequency = Some(PodcastUpdateFrequency {
+        rrule,
+        complete,
+        dtstart,
+        label,
+    });
+    Ok(())
+}
+
+/// Parse podcast:follow at channel level
+fn parse_podcast_channel_follow(
+    attrs: &[(Vec<u8>, String)],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+) {
+    let url = find_attribute(attrs, b"url")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    if !url.is_empty() {
+        let platform = find_attribute(attrs, b"platform")
+            .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        let podcast = feed
+            .feed
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+        podcast.follow.try_push_limited(
+            PodcastFollow {
+                url: url.into(),
+                platform,
+            },
+            limits.max_podcast_follow,
+        );
+    }
+}
+
+fn parse_alternate_enclosure_attrs(
+    attrs: &[(Vec<u8>, String)],
+    limits: &ParserLimits,
+) -> Option<PodcastAlternateEnclosure> {
+    let type_ = find_attribute(attrs, b"type")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    if type_.is_empty() {
+        return None;
+    }
+    let length = find_attribute(attrs, b"length").and_then(|v| v.parse::<u64>().ok());
+    let bitrate = find_attribute(attrs, b"bitrate").and_then(|v| v.parse::<f64>().ok());
+    let height = find_attribute(attrs, b"height").and_then(|v| v.parse::<u32>().ok());
+    let lang =
+        find_attribute(attrs, b"lang").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let title =
+        find_attribute(attrs, b"title").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let rel =
+        find_attribute(attrs, b"rel").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let codecs = find_attribute(attrs, b"codecs")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let default_val = find_attribute(attrs, b"default").and_then(|v| {
+        if v.eq_ignore_ascii_case("true") {
+            Some(true)
+        } else if v.eq_ignore_ascii_case("false") {
+            Some(false)
+        } else {
+            None
+        }
+    });
+    Some(PodcastAlternateEnclosure {
+        type_: type_.into(),
+        length,
+        bitrate,
+        height,
+        lang,
+        title,
+        rel,
+        codecs,
+        default: default_val,
+        sources: Vec::with_capacity(limits.max_podcast_alternate_enclosure_sources.min(4)),
+        integrity: None,
+    })
+}
+
+fn parse_alternate_enclosure_children(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    enc: &mut PodcastAlternateEnclosure,
+    limits: &ParserLimits,
+) -> Result<()> {
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e) | Event::Empty(e)) => {
+                let tag_name = e.name();
+                let tag_bytes = tag_name.as_ref();
+                if tag_bytes.starts_with(b"podcast:source") {
+                    let (src_attrs, _) = collect_attributes(&e);
+                    let uri = find_attribute(&src_attrs, b"uri")
+                        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                        .unwrap_or_default();
+                    if !uri.is_empty() {
+                        let content_type = find_attribute(&src_attrs, b"contentType")
+                            .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                        enc.sources.try_push_limited(
+                            PodcastAlternateEnclosureSource {
+                                uri: uri.into(),
+                                content_type: content_type.map(Into::into),
+                            },
+                            limits.max_podcast_alternate_enclosure_sources,
+                        );
+                    }
+                } else if tag_bytes.starts_with(b"podcast:integrity") {
+                    let (int_attrs, is_empty_int) = collect_attributes(&e);
+                    let int_type = find_attribute(&int_attrs, b"type")
+                        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                        .unwrap_or_default();
+                    let value = if is_empty_int {
+                        String::new()
+                    } else {
+                        buf.clear();
+                        read_text_str(reader, buf, limits)?
+                    };
+                    if !int_type.is_empty() && !value.is_empty() {
+                        enc.integrity = Some(PodcastIntegrity {
+                            type_: int_type,
+                            value,
+                        });
+                    }
+                }
+            }
+            Ok(Event::End(e)) if e.name().as_ref().starts_with(b"podcast:alternateEnclosure") => {
+                break;
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(())
+}
+
+/// Parse podcast:alternateEnclosure container at item level
+fn parse_podcast_alternate_enclosure(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+) -> Result<()> {
+    let Some(mut enc) = parse_alternate_enclosure_attrs(attrs, limits) else {
+        return Ok(());
+    };
+    parse_alternate_enclosure_children(reader, buf, &mut enc, limits)?;
+    let podcast = entry
+        .podcast
+        .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+    podcast
+        .alternate_enclosures
+        .try_push_limited(enc, limits.max_podcast_alternate_enclosures);
+    Ok(())
+}
+
+/// Parse podcast:location at item level
+fn parse_podcast_item_location(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<()> {
+    let geo =
+        find_attribute(attrs, b"geo").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let osm =
+        find_attribute(attrs, b"osm").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let name = if is_empty {
+        String::new()
+    } else {
+        read_text_str(reader, buf, limits)?
+    };
+    if !name.is_empty() {
+        let podcast = entry
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+        podcast.location = Some(PodcastLocation { name, geo, osm });
+    }
+    Ok(())
+}
+
+/// Parse podcast:socialInteract at item level
+fn parse_podcast_social_interact(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    is_empty: bool,
+    depth: usize,
+) -> Result<()> {
+    let uri = find_attribute(attrs, b"uri")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    if uri.is_empty() {
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
+        return Ok(());
+    }
+    let protocol = find_attribute(attrs, b"protocol")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let account_id = find_attribute(attrs, b"accountId")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let account_url = find_attribute(attrs, b"accountUrl")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let priority = find_attribute(attrs, b"priority").and_then(|v| v.parse::<u32>().ok());
+
+    if !is_empty {
+        skip_element(reader, buf, limits, depth)?;
+    }
+
+    let podcast = entry
+        .podcast
+        .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+    podcast.social_interact.try_push_limited(
+        PodcastSocialInteract {
+            uri: uri.into(),
+            protocol,
+            account_id,
+            account_url: account_url.map(Into::into),
+            priority,
+        },
+        limits.max_podcast_social_interact,
+    );
+    Ok(())
+}
+
+/// Parse podcast:txt at item level
+fn parse_podcast_item_txt(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<()> {
+    let purpose = find_attribute(attrs, b"purpose")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let value = if is_empty {
+        String::new()
+    } else {
+        read_text_str(reader, buf, limits)?
+    };
+    if !value.is_empty() {
+        let podcast = entry
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+        podcast
+            .txt
+            .try_push_limited(PodcastTxt { purpose, value }, limits.max_podcast_txt);
+    }
+    Ok(())
+}
+
+/// Parse podcast:follow at item level
+fn parse_podcast_item_follow(
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+) {
+    let url = find_attribute(attrs, b"url")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    if !url.is_empty() {
+        let platform = find_attribute(attrs, b"platform")
+            .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        let podcast = entry
+            .podcast
+            .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+        podcast.follow.try_push_limited(
+            PodcastFollow {
+                url: url.into(),
+                platform,
+            },
+            limits.max_podcast_follow,
+        );
+    }
 }
 
 /// Parse Dublin Core, Content, and Media RSS namespace tags at item level
@@ -3752,6 +4211,323 @@ mod tests {
             .expect("entry.podcast must be Some");
         assert!(podcast.season.is_none());
         assert!(podcast.episode.is_none());
+    }
+
+    #[test]
+    fn test_podcast_location_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Geo Feed</title>
+                <podcast:location geo="geo:37.786971,-122.399677" osm="R113314">San Francisco</podcast:location>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        let loc = podcast.location.as_ref().expect("location should be Some");
+        assert_eq!(loc.name, "San Francisco");
+        assert_eq!(loc.geo.as_deref(), Some("geo:37.786971,-122.399677"));
+        assert_eq!(loc.osm.as_deref(), Some("R113314"));
+    }
+
+    #[test]
+    fn test_podcast_location_channel_missing_name_skipped() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:location geo="geo:0,0"></podcast:location>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.feed.podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.location.is_none()));
+    }
+
+    #[test]
+    fn test_podcast_podroll_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:podroll>
+                    <podcast:remoteItem feedGuid="abc123" feedUrl="https://example.com/feed.xml" title="Example Podcast"/>
+                    <podcast:remoteItem feedGuid="def456" medium="podcast"/>
+                </podcast:podroll>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.podroll.len(), 2);
+        assert_eq!(podcast.podroll[0].feed_guid.as_deref(), Some("abc123"));
+        assert_eq!(
+            podcast.podroll[0].feed_url.as_deref(),
+            Some("https://example.com/feed.xml")
+        );
+        assert_eq!(podcast.podroll[0].title.as_deref(), Some("Example Podcast"));
+        assert_eq!(podcast.podroll[1].feed_guid.as_deref(), Some("def456"));
+        assert_eq!(podcast.podroll[1].medium.as_deref(), Some("podcast"));
+    }
+
+    #[test]
+    fn test_podcast_podroll_skips_items_without_guid_or_url() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:podroll>
+                    <podcast:remoteItem medium="podcast"/>
+                </podcast:podroll>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.feed.podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.podroll.is_empty()));
+    }
+
+    #[test]
+    fn test_podcast_txt_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:txt purpose="verify">abc123verify</podcast:txt>
+                <podcast:txt>plain text record</podcast:txt>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.txt.len(), 2);
+        assert_eq!(podcast.txt[0].purpose.as_deref(), Some("verify"));
+        assert_eq!(podcast.txt[0].value, "abc123verify");
+        assert!(podcast.txt[1].purpose.is_none());
+        assert_eq!(podcast.txt[1].value, "plain text record");
+    }
+
+    #[test]
+    fn test_podcast_update_frequency_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:updateFrequency rrule="FREQ=WEEKLY" dtstart="2023-01-01T00:00:00Z" complete="false">weekly</podcast:updateFrequency>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        let uf = podcast
+            .update_frequency
+            .as_ref()
+            .expect("update_frequency should be Some");
+        assert_eq!(uf.rrule.as_deref(), Some("FREQ=WEEKLY"));
+        assert_eq!(uf.dtstart.as_deref(), Some("2023-01-01T00:00:00Z"));
+        assert_eq!(uf.complete, Some(false));
+        assert_eq!(uf.label.as_deref(), Some("weekly"));
+    }
+
+    #[test]
+    fn test_podcast_follow_channel() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:follow url="https://mastodon.social/@podcast" platform="activitypub"/>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.follow.len(), 1);
+        assert_eq!(podcast.follow[0].url, "https://mastodon.social/@podcast");
+        assert_eq!(podcast.follow[0].platform.as_deref(), Some("activitypub"));
+    }
+
+    #[test]
+    fn test_podcast_follow_channel_missing_url_skipped() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:follow platform="activitypub"/>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.feed.podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.follow.is_empty()));
+    }
+
+    #[test]
+    fn test_podcast_alternate_enclosure_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:alternateEnclosure type="audio/mpeg" length="12345" bitrate="128" default="true">
+                        <podcast:source uri="https://example.com/ep1.mp3"/>
+                        <podcast:source uri="https://cdn.example.com/ep1.mp3" contentType="audio/mpeg"/>
+                    </podcast:alternateEnclosure>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        let podcast = entry
+            .podcast
+            .as_deref()
+            .expect("entry podcast should be Some");
+        assert_eq!(podcast.alternate_enclosures.len(), 1);
+        let ae = &podcast.alternate_enclosures[0];
+        assert_eq!(ae.type_.as_ref(), "audio/mpeg");
+        assert_eq!(ae.length, Some(12345));
+        assert_eq!(ae.bitrate, Some(128.0));
+        assert_eq!(ae.default, Some(true));
+        assert_eq!(ae.sources.len(), 2);
+        assert_eq!(ae.sources[0].uri, "https://example.com/ep1.mp3");
+        assert_eq!(ae.sources[1].uri, "https://cdn.example.com/ep1.mp3");
+        assert_eq!(ae.sources[1].content_type.as_deref(), Some("audio/mpeg"));
+    }
+
+    #[test]
+    fn test_podcast_alternate_enclosure_missing_type_skipped() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:alternateEnclosure length="12345">
+                        <podcast:source uri="https://example.com/ep1.mp3"/>
+                    </podcast:alternateEnclosure>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let entry = &feed.entries[0];
+        let podcast = entry.podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.alternate_enclosures.is_empty()));
+    }
+
+    #[test]
+    fn test_podcast_location_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:location geo="geo:40.7128,-74.0060">New York</podcast:location>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        let loc = podcast.location.as_ref().expect("location should be Some");
+        assert_eq!(loc.name, "New York");
+        assert_eq!(loc.geo.as_deref(), Some("geo:40.7128,-74.0060"));
+        assert!(loc.osm.is_none());
+    }
+
+    #[test]
+    fn test_podcast_social_interact_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:socialInteract uri="https://mastodon.social/@host/status/1" protocol="activitypub" accountId="@host@mastodon.social" priority="1"/>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.social_interact.len(), 1);
+        let si = &podcast.social_interact[0];
+        assert_eq!(si.uri, "https://mastodon.social/@host/status/1");
+        assert_eq!(si.protocol.as_deref(), Some("activitypub"));
+        assert_eq!(si.account_id.as_deref(), Some("@host@mastodon.social"));
+        assert_eq!(si.priority, Some(1));
+    }
+
+    #[test]
+    fn test_podcast_social_interact_missing_uri_skipped() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:socialInteract protocol="activitypub"/>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.entries[0].podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.social_interact.is_empty()));
+    }
+
+    #[test]
+    fn test_podcast_txt_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:txt purpose="license">MIT</podcast:txt>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.txt.len(), 1);
+        assert_eq!(podcast.txt[0].purpose.as_deref(), Some("license"));
+        assert_eq!(podcast.txt[0].value, "MIT");
+    }
+
+    #[test]
+    fn test_podcast_follow_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:follow url="https://twitter.com/podcast" platform="twitter"/>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.follow.len(), 1);
+        assert_eq!(podcast.follow[0].url, "https://twitter.com/podcast");
+        assert_eq!(podcast.follow[0].platform.as_deref(), Some("twitter"));
     }
 
     // PRIORITY 3: Namespace Tests
