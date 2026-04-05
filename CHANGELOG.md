@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- RSS 1.0: self-closing `<image rdf:resource="..."/>` and `<textinput rdf:resource="..."/>` inside `<channel>` no longer consume subsequent events; `skip_element` is now skipped for `Event::Empty` throughout the RSS 1.0 parser, fixing item loss when these reference elements appear in the channel block (#345)
 - Python binding: `Cloud.registerprocedure` (no underscore) now correctly exposed as `registerprocedure` to match Python feedparser API (#335)
 - Node.js binding: `cloud.registerprocedure` (no underscore) now correctly exposed as `registerprocedure` instead of `registerProcedure` for Python feedparser compatibility (#335)
 - Namespace extension parsers (Dublin Core, Media RSS, iTunes) now resolve namespace URIs instead of matching only hardcoded prefixes; feeds using non-standard prefixes (e.g. `xmlns:dublin="http://purl.org/dc/elements/1.1/"`) are correctly parsed (#334)

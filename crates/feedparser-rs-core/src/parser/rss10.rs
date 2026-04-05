@@ -80,7 +80,11 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
                 let name = e.local_name();
                 let full_name = e.name();
 
@@ -88,11 +92,11 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
 
                 // Handle RDF root element - continue to parse children
                 if name.as_ref() == b"RDF" || full_name.as_ref() == b"rdf:RDF" {
-                    extract_namespaces(&e, &mut feed, &limits);
+                    extract_namespaces(e, &mut feed, &limits);
                     // Extract xml:lang and xml:base from <rdf:RDF> root
                     rdf_lang =
-                        extract_xml_lang(&e, limits.max_attribute_length).filter(|s| !s.is_empty());
-                    if let Some(xml_base) = extract_xml_base(&e, limits.max_attribute_length) {
+                        extract_xml_lang(e, limits.max_attribute_length).filter(|s| !s.is_empty());
+                    if let Some(xml_base) = extract_xml_base(e, limits.max_attribute_length) {
                         base_ctx.update_base(&xml_base);
                     }
                 } else if name.as_ref() == b"channel" {
@@ -111,6 +115,12 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                     }
                     depth = depth.saturating_sub(1);
                 } else if name.as_ref() == b"item" {
+                    if is_empty {
+                        depth = depth.saturating_sub(1);
+                        buf.clear();
+                        continue;
+                    }
+
                     if depth > limits.max_nesting_depth {
                         feed.bozo = true;
                         feed.bozo_exception = Some(format!(
@@ -136,9 +146,9 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
 
                     // Extract item-level xml:lang (falls back to rdf_lang) and xml:base
                     let item_lang_owned =
-                        extract_xml_lang(&e, limits.max_attribute_length).filter(|s| !s.is_empty());
+                        extract_xml_lang(e, limits.max_attribute_length).filter(|s| !s.is_empty());
                     let effective_item_lang = item_lang_owned.as_deref().or(rdf_lang.as_deref());
-                    let item_base_owned = extract_xml_base(&e, limits.max_attribute_length);
+                    let item_base_owned = extract_xml_base(e, limits.max_attribute_length);
                     let item_base_ctx = item_base_owned
                         .as_deref()
                         .map_or_else(|| base_ctx.child(), |b| base_ctx.child_with_base(b));
@@ -181,17 +191,23 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                     }
                     depth = depth.saturating_sub(1);
                 } else if name.as_ref() == b"image" {
-                    if let Ok(image) = parse_image(&mut reader, &mut buf, &limits, &mut depth) {
+                    if !is_empty
+                        && let Ok(image) = parse_image(&mut reader, &mut buf, &limits, &mut depth)
+                    {
                         feed.feed.image = Some(image);
                     }
                     depth = depth.saturating_sub(1);
                 } else if name.as_ref() == b"textinput" || name.as_ref() == b"textInput" {
-                    // Skip textinput element (rarely used)
-                    skip_element(&mut reader, &mut buf, &limits, depth)?;
+                    // Skip textinput element (rarely used); self-closing refs need no skip
+                    if !is_empty {
+                        skip_element(&mut reader, &mut buf, &limits, depth)?;
+                    }
                     depth = depth.saturating_sub(1);
                 } else {
-                    // Skip unknown elements at RDF level
-                    skip_element(&mut reader, &mut buf, &limits, depth)?;
+                    // Skip unknown elements at RDF level; self-closing tags need no skip
+                    if !is_empty {
+                        skip_element(&mut reader, &mut buf, &limits, depth)?;
+                    }
                     depth = depth.saturating_sub(1);
                 }
             }
@@ -230,7 +246,12 @@ fn parse_channel(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
+
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
 
@@ -238,33 +259,36 @@ fn parse_channel(
                 let full_name = e.name();
 
                 match name.as_ref() {
-                    b"title" => {
+                    b"title" if !is_empty => {
                         feed.feed.title = Some(read_text_str(reader, &mut buf, limits)?);
                     }
-                    b"link" => {
+                    b"link" if !is_empty => {
                         let link_text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed
                             .set_alternate_link(link_text, limits.max_links_per_feed);
                     }
-                    b"description" => {
+                    b"description" if !is_empty => {
                         feed.feed.subtitle = Some(read_text_str(reader, &mut buf, limits)?);
                     }
                     b"items" => {
                         // RSS 1.0 has an <items> element containing rdf:Seq with rdf:li references
                         // We skip this as items are parsed at the RDF root level
-                        skip_element(reader, &mut buf, limits, *depth)?;
+                        if !is_empty {
+                            skip_element(reader, &mut buf, limits, *depth)?;
+                        }
                     }
-                    b"image" => {
-                        // This is a reference, not the actual image - skip it
-                        skip_element(reader, &mut buf, limits, *depth)?;
-                    }
-                    b"textinput" | b"textInput" => {
-                        // This is a reference, not the actual textinput - skip it
-                        skip_element(reader, &mut buf, limits, *depth)?;
+                    b"image" | b"textinput" | b"textInput" => {
+                        // Self-closing refs (e.g. <image rdf:resource="..."/>) need no skip
+                        if !is_empty {
+                            skip_element(reader, &mut buf, limits, *depth)?;
+                        }
                     }
                     _ => {
-                        // Check for Dublin Core and other namespace tags
-                        if let Some(dc_element) = is_dc_tag(full_name.as_ref(), &feed.namespaces) {
+                        if is_empty {
+                            // Self-closing elements: no text content to read
+                        } else if let Some(dc_element) =
+                            is_dc_tag(full_name.as_ref(), &feed.namespaces)
+                        {
                             let dc_elem = dc_element.to_string();
                             let text = read_text_str(reader, &mut buf, limits)?;
                             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
@@ -340,7 +364,7 @@ fn parse_item(
                 let full_name = e.name();
 
                 match name.as_ref() {
-                    b"title" => {
+                    b"title" if !is_empty => {
                         let (text, had_bozo) = read_text(reader, buf, limits)?;
                         *bozo |= had_bozo;
                         entry.title = Some(text.clone());
@@ -351,11 +375,11 @@ fn parse_item(
                             base: base_ctx.base().map(ToString::to_string),
                         });
                     }
-                    b"link" => {
+                    b"link" if !is_empty => {
                         let link_text = read_text_str(reader, buf, limits)?;
                         entry.set_alternate_link(link_text, limits.max_links_per_entry);
                     }
-                    b"description" => {
+                    b"description" if !is_empty => {
                         let (desc, had_bozo) = read_text(reader, buf, limits)?;
                         *bozo |= had_bozo;
                         entry.summary = Some(desc.clone());
@@ -367,8 +391,22 @@ fn parse_item(
                         });
                     }
                     _ => {
-                        // Check for Dublin Core and other namespace tags
-                        if let Some(dc_element) = is_dc_tag(full_name.as_ref(), namespaces) {
+                        if is_empty
+                            && let Some(thr_element) = is_thr_tag(full_name.as_ref())
+                            && thr_element == "in-reply-to"
+                        {
+                            // thr:in-reply-to may be self-closing and carry attributes
+                            if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+                                e.attributes().flatten(),
+                                limits.max_attribute_length,
+                            ) {
+                                entry
+                                    .in_reply_to
+                                    .try_push_limited(reply, limits.max_links_per_entry);
+                            }
+                        } else if is_empty {
+                            // other self-closing elements: no content to process
+                        } else if let Some(dc_element) = is_dc_tag(full_name.as_ref(), namespaces) {
                             let dc_elem = dc_element.to_string();
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
@@ -417,9 +455,7 @@ fn parse_item(
                                             .in_reply_to
                                             .try_push_limited(reply, limits.max_links_per_entry);
                                     }
-                                    if !is_empty {
-                                        skip_element(reader, buf, limits, *depth)?;
-                                    }
+                                    skip_element(reader, buf, limits, *depth)?;
                                 }
                                 "total" => {
                                     let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -468,15 +504,22 @@ fn parse_image(
 
     loop {
         match reader.read_event_into(buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
+
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
 
-                match e.local_name().as_ref() {
-                    b"url" => url = read_text_str(reader, buf, limits)?,
-                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
-                    b"link" => link = Some(read_text_str(reader, buf, limits)?),
-                    _ => skip_element(reader, buf, limits, *depth)?,
+                if !is_empty {
+                    match e.local_name().as_ref() {
+                        b"url" => url = read_text_str(reader, buf, limits)?,
+                        b"title" => title = Some(read_text_str(reader, buf, limits)?),
+                        b"link" => link = Some(read_text_str(reader, buf, limits)?),
+                        _ => skip_element(reader, buf, limits, *depth)?,
+                    }
                 }
                 *depth = depth.saturating_sub(1);
             }
