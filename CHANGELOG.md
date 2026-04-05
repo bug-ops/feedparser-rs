@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python binding: `Cloud.registerprocedure` (no underscore) now correctly exposed as `registerprocedure` to match Python feedparser API (#335)
 - Node.js binding: `cloud.registerprocedure` (no underscore) now correctly exposed as `registerprocedure` instead of `registerProcedure` for Python feedparser compatibility (#335)
 - Namespace extension parsers (Dublin Core, Media RSS, iTunes) now resolve namespace URIs instead of matching only hardcoded prefixes; feeds using non-standard prefixes (e.g. `xmlns:dublin="http://purl.org/dc/elements/1.1/"`) are correctly parsed (#334)
+- `podcast:season` and `podcast:episode` now read element text content as primary value per Podcast 2.0 spec, with `number` attribute as fallback; fixes feeds like TWiT that use text content (#348)
 
 ## [0.5.1] - 2026-03-24
 
