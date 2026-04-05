@@ -136,6 +136,19 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
         buf.clear();
     }
 
+    // RFC 4287 §4.1.2: entries with no authors inherit feed-level authors.
+    if !feed.feed.authors.is_empty() {
+        let feed_authors = feed.feed.authors.clone();
+        for entry in &mut feed.entries {
+            if entry.authors.is_empty() {
+                entry.authors.clone_from(&feed_authors);
+                if entry.author.is_none() {
+                    entry.author.clone_from(&feed.feed.author);
+                }
+            }
+        }
+    }
+
     Ok(feed)
 }
 
@@ -3572,5 +3585,102 @@ mod tests {
                 .is_none(),
             "entry title under xml:lang=\"\" entry should have None language"
         );
+    }
+
+    #[test]
+    fn test_atom_author_inheritance_from_feed() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <author><name>Feed Author</name><email>feed@example.com</email></author>
+            <entry>
+                <title>Entry without author</title>
+                <id>entry1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.entries.len(), 1);
+        assert_eq!(feed.entries[0].authors.len(), 1);
+        assert_eq!(
+            feed.entries[0].authors[0].name.as_deref(),
+            Some("Feed Author")
+        );
+        // author is flat_string() which may include email
+        assert!(
+            feed.entries[0]
+                .author
+                .as_deref()
+                .unwrap_or("")
+                .contains("Feed Author")
+        );
+    }
+
+    #[test]
+    fn test_atom_entry_author_takes_precedence() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <author><name>Feed Author</name></author>
+            <entry>
+                <title>Entry with own author</title>
+                <id>entry1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <author><name>Entry Author</name></author>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.entries[0].authors.len(), 1);
+        assert_eq!(
+            feed.entries[0].authors[0].name.as_deref(),
+            Some("Entry Author")
+        );
+        assert_eq!(feed.entries[0].author.as_deref(), Some("Entry Author"));
+    }
+
+    #[test]
+    fn test_atom_author_inheritance_mixed_entries() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <author><name>Feed Author</name></author>
+            <entry>
+                <title>Entry with own author</title>
+                <id>entry1</id>
+                <updated>2024-01-01T00:00:00Z</updated>
+                <author><name>Entry Author</name></author>
+            </entry>
+            <entry>
+                <title>Entry without author</title>
+                <id>entry2</id>
+                <updated>2024-01-02T00:00:00Z</updated>
+            </entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.entries[0].author.as_deref(), Some("Entry Author"));
+        assert_eq!(feed.entries[1].author.as_deref(), Some("Feed Author"));
+    }
+
+    #[test]
+    fn test_atom_null_bytes_stripped_from_title() {
+        let xml = b"<?xml version=\"1.0\"?>\
+        <feed xmlns=\"http://www.w3.org/2005/Atom\">\
+            <title>Hello\x00World</title>\
+            <entry>\
+                <title>Entry\x00Title</title>\
+                <id>e1</id>\
+                <updated>2024-01-01T00:00:00Z</updated>\
+            </entry>\
+        </feed>";
+
+        let feed = parse_atom10(xml).unwrap();
+        assert_eq!(feed.feed.title.as_deref(), Some("HelloWorld"));
+        assert_eq!(feed.entries[0].title.as_deref(), Some("EntryTitle"));
     }
 }

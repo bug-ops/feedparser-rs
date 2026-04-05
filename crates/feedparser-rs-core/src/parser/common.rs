@@ -584,7 +584,7 @@ pub fn read_text(
         buf.clear();
     }
 
-    let trimmed = text.trim().to_string();
+    let trimmed = text.trim().replace('\0', "");
     Ok((trimmed, had_bozo))
 }
 
@@ -1443,5 +1443,25 @@ mod tests {
         ));
         // Unprefixed path traversal also rejected (no colon → direct match, but value differs)
         assert!(!is_itunes_tag(b"../../etc/passwd", b"author", &empty));
+    }
+
+    #[test]
+    fn test_read_text_strips_null_bytes() {
+        let xml = b"<title>Hello\x00World</title>";
+        let mut reader = Reader::from_reader(&xml[..]);
+        let mut buf = Vec::new();
+        let limits = ParserLimits::default();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(_)) => break,
+                Ok(Event::Eof) => panic!("Unexpected EOF"),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        let (text, _bozo) = read_text(&mut reader, &mut buf, &limits).unwrap();
+        assert_eq!(text, "HelloWorld");
     }
 }
