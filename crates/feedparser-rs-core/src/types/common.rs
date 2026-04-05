@@ -515,6 +515,12 @@ impl Link {
         Self::new(href, "banner")
     }
 
+    /// Create a hub link (JSON Feed 1.1 `hubs` array, `WebSub` convention)
+    #[inline]
+    pub fn hub(href: impl Into<Url>) -> Self {
+        Self::new(href, "hub")
+    }
+
     /// Set MIME type (builder pattern)
     #[inline]
     #[must_use]

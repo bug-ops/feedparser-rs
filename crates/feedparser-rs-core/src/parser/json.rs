@@ -152,6 +152,24 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     {
         feed.next_url = Some(next_url.to_string());
     }
+
+    if let Some(hubs) = json.get("hubs").and_then(|v| v.as_array()) {
+        for hub in hubs {
+            if let Some(url) = hub.get("url").and_then(|v| v.as_str())
+                && !url.is_empty()
+                && url.len() <= limits.max_text_length
+            {
+                let hub_type = hub
+                    .get("type")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .map(Into::into);
+                let mut link = Link::hub(url);
+                link.link_type = hub_type;
+                let _ = feed.links.try_push_limited(link, limits.max_entries);
+            }
+        }
+    }
 }
 
 fn parse_item(
@@ -972,6 +990,127 @@ mod tests {
                 .unwrap()
                 .language
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn test_parse_json_feed_hubs_basic() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "hubs": [{"type": "WebSub", "url": "https://hub.example.com/"}],
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        let hub_links: Vec<_> = feed
+            .feed
+            .links
+            .iter()
+            .filter(|l| l.rel.as_deref() == Some("hub"))
+            .collect();
+        assert_eq!(hub_links.len(), 1);
+        assert_eq!(hub_links[0].href, "https://hub.example.com/");
+        assert_eq!(hub_links[0].link_type.as_deref(), Some("WebSub"));
+    }
+
+    #[test]
+    fn test_parse_json_feed_hubs_multiple() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "hubs": [
+                {"type": "WebSub", "url": "https://hub1.example.com/"},
+                {"type": "WebSub", "url": "https://hub2.example.com/"}
+            ],
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        let hub_links: Vec<_> = feed
+            .feed
+            .links
+            .iter()
+            .filter(|l| l.rel.as_deref() == Some("hub"))
+            .collect();
+        assert_eq!(hub_links.len(), 2);
+        assert_eq!(hub_links[0].href, "https://hub1.example.com/");
+        assert_eq!(hub_links[1].href, "https://hub2.example.com/");
+    }
+
+    #[test]
+    fn test_parse_json_feed_hub_without_type() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "hubs": [{"url": "https://hub.example.com/"}],
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        let hub = feed
+            .feed
+            .links
+            .iter()
+            .find(|l| l.rel.as_deref() == Some("hub"))
+            .unwrap();
+        assert_eq!(hub.href, "https://hub.example.com/");
+        assert!(hub.link_type.is_none());
+    }
+
+    #[test]
+    fn test_parse_json_feed_hub_missing_url_skipped() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "hubs": [{"type": "WebSub"}],
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(
+            !feed
+                .feed
+                .links
+                .iter()
+                .any(|l| l.rel.as_deref() == Some("hub"))
+        );
+    }
+
+    #[test]
+    fn test_parse_json_feed_hubs_non_array_ignored() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "hubs": "not-an-array",
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(
+            !feed
+                .feed
+                .links
+                .iter()
+                .any(|l| l.rel.as_deref() == Some("hub"))
+        );
+    }
+
+    #[test]
+    fn test_parse_json_feed_no_hubs_array() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(
+            !feed
+                .feed
+                .links
+                .iter()
+                .any(|l| l.rel.as_deref() == Some("hub"))
         );
     }
 }
