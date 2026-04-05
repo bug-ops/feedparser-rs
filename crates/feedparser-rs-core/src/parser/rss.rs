@@ -1619,25 +1619,43 @@ fn parse_item_podcast(
         }
         Ok(true)
     } else if tag.starts_with(b"podcast:season") {
-        if let Some(number) = find_attribute(attrs, b"number") {
-            let podcast = entry
+        let value = if is_empty {
+            find_attribute(attrs, b"number")
+                .map(|n| truncate_to_length(n, limits.max_attribute_length))
+        } else {
+            let text = read_text_str(reader, buf, limits)?;
+            if text.is_empty() {
+                find_attribute(attrs, b"number")
+                    .map(|n| truncate_to_length(n, limits.max_attribute_length))
+            } else {
+                Some(text)
+            }
+        };
+        if let Some(v) = value {
+            entry
                 .podcast
-                .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
-            podcast.season = Some(truncate_to_length(number, limits.max_attribute_length));
-        }
-        if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+                .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()))
+                .season = Some(v);
         }
         Ok(true)
     } else if tag.starts_with(b"podcast:episode") {
-        if let Some(number) = find_attribute(attrs, b"number") {
-            let podcast = entry
+        let value = if is_empty {
+            find_attribute(attrs, b"number")
+                .map(|n| truncate_to_length(n, limits.max_attribute_length))
+        } else {
+            let text = read_text_str(reader, buf, limits)?;
+            if text.is_empty() {
+                find_attribute(attrs, b"number")
+                    .map(|n| truncate_to_length(n, limits.max_attribute_length))
+            } else {
+                Some(text)
+            }
+        };
+        if let Some(v) = value {
+            entry
                 .podcast
-                .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
-            podcast.episode = Some(truncate_to_length(number, limits.max_attribute_length));
-        }
-        if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+                .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()))
+                .episode = Some(v);
         }
         Ok(true)
     } else {
@@ -3676,8 +3694,9 @@ mod tests {
             .podcast
             .as_deref()
             .expect("entry.podcast must be Some");
-        assert_eq!(podcast.season.as_deref(), Some("3"));
-        assert_eq!(podcast.episode.as_deref(), Some("42"));
+        // text content takes priority over number attribute
+        assert_eq!(podcast.season.as_deref(), Some("Season Three"));
+        assert_eq!(podcast.episode.as_deref(), Some("Bonus"));
     }
 
     #[test]
@@ -3696,13 +3715,13 @@ mod tests {
 
         let feed = parse_rss20(xml).unwrap();
         let entry = &feed.entries[0];
-        // podcast is Some because transcript forces it; season/episode must be None (no number attr)
+        // text content is used when number attribute is absent
         let podcast = entry
             .podcast
             .as_deref()
             .expect("entry.podcast must be Some due to transcript element");
-        assert!(podcast.season.is_none());
-        assert!(podcast.episode.is_none());
+        assert_eq!(podcast.season.as_deref(), Some("3"));
+        assert_eq!(podcast.episode.as_deref(), Some("42"));
     }
 
     #[test]
