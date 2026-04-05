@@ -4,7 +4,8 @@ use feedparser_rs::{
     PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
     PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
     PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
-    PodcastTranscript as CorePodcastTranscript,
+    PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
+    PodcastValueRecipient as CorePodcastValueRecipient,
 };
 use pyo3::prelude::*;
 
@@ -460,6 +461,14 @@ impl PyPodcastMeta {
         self.inner.locked_owner.as_deref()
     }
 
+    #[getter]
+    fn value(&self) -> Option<PyPodcastValue> {
+        self.inner
+            .value
+            .as_ref()
+            .map(|v| PyPodcastValue::from_core(v.clone()))
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastMeta(guid='{}', persons={}, medium='{}')",
@@ -764,9 +773,19 @@ impl PyPodcastEntryMeta {
         self.inner.medium.as_deref()
     }
 
+    #[getter]
+    fn season(&self) -> Option<&str> {
+        self.inner.season.as_deref()
+    }
+
+    #[getter]
+    fn episode(&self) -> Option<&str> {
+        self.inner.episode.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         format!(
-            "PodcastEntryMeta(transcripts={}, chapters={}, soundbites={}, persons={})",
+            "PodcastEntryMeta(transcripts={}, chapters={}, soundbites={}, persons={}, season={}, episode={})",
             self.inner.transcript.len(),
             if self.inner.chapters.is_some() {
                 "present"
@@ -774,7 +793,111 @@ impl PyPodcastEntryMeta {
                 "none"
             },
             self.inner.soundbite.len(),
-            self.inner.persons.len()
+            self.inner.persons.len(),
+            self.inner.season.as_deref().unwrap_or("none"),
+            self.inner.episode.as_deref().unwrap_or("none"),
+        )
+    }
+}
+
+#[pyclass(name = "PodcastValue", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastValue {
+    inner: CorePodcastValue,
+}
+
+impl PyPodcastValue {
+    pub fn from_core(core: CorePodcastValue) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastValue {
+    #[getter]
+    #[pyo3(name = "type")]
+    fn type_(&self) -> &str {
+        &self.inner.type_
+    }
+
+    #[getter]
+    fn method(&self) -> &str {
+        &self.inner.method
+    }
+
+    #[getter]
+    fn suggested(&self) -> Option<&str> {
+        self.inner.suggested.as_deref()
+    }
+
+    #[getter]
+    fn recipients(&self) -> Vec<PyPodcastValueRecipient> {
+        self.inner
+            .recipients
+            .iter()
+            .map(|r| PyPodcastValueRecipient::from_core(r.clone()))
+            .collect()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastValue(type='{}', method='{}', recipients={})",
+            &self.inner.type_,
+            &self.inner.method,
+            self.inner.recipients.len()
+        )
+    }
+}
+
+#[pyclass(
+    name = "PodcastValueRecipient",
+    module = "feedparser_rs",
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyPodcastValueRecipient {
+    inner: CorePodcastValueRecipient,
+}
+
+impl PyPodcastValueRecipient {
+    pub fn from_core(core: CorePodcastValueRecipient) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastValueRecipient {
+    #[getter]
+    fn name(&self) -> Option<&str> {
+        self.inner.name.as_deref()
+    }
+
+    #[getter]
+    #[pyo3(name = "type")]
+    fn type_(&self) -> &str {
+        &self.inner.type_
+    }
+
+    #[getter]
+    fn address(&self) -> &str {
+        &self.inner.address
+    }
+
+    #[getter]
+    fn split(&self) -> u32 {
+        self.inner.split
+    }
+
+    #[getter]
+    fn fee(&self) -> Option<bool> {
+        self.inner.fee
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastValueRecipient(name='{}', split={})",
+            self.inner.name.as_deref().unwrap_or("unknown"),
+            self.inner.split
         )
     }
 }
