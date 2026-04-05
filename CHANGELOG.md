@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `feed.skiphours` returns `Vec<u32>` with correctly parsed hour values and `feed.skipdays` returns `Vec<String>` with day names, versus Python feedparser which incorrectly returns empty strings for both fields. `feed.textinput` returns a populated `TextInput` struct with all child fields, versus Python feedparser which returns an empty dict. This is an intentional improvement over Python feedparser's behavior (#336).
+
 ## [0.5.1] - 2026-03-24
 
 ### Changed
