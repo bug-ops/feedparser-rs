@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Core, Python, Node.js bindings: `PodcastEntryMeta.season` and `PodcastEntryMeta.episode` fields parse `podcast:season` and `podcast:episode` elements via the `number` attribute (Podcast 2.0 spec) (#332)
+- Python binding: `PyPodcastValue` and `PyPodcastValueRecipient` classes expose existing `podcast:value` data to Python; `PodcastMeta.value` getter added to `PyPodcastMeta` (#337)
+
 ### Changed
 
 - `feed.skiphours` returns `Vec<u32>` with correctly parsed hour values and `feed.skipdays` returns `Vec<String>` with day names, versus Python feedparser which incorrectly returns empty strings for both fields. `feed.textinput` returns a populated `TextInput` struct with all child fields, versus Python feedparser which returns an empty dict. This is an intentional improvement over Python feedparser's behavior (#336).

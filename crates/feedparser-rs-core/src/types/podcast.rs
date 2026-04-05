@@ -474,6 +474,10 @@ pub struct PodcastEntryMeta {
     pub persons: Vec<PodcastPerson>,
     /// Content medium type (podcast:medium)
     pub medium: Option<String>,
+    /// Season number (podcast:season number attribute)
+    pub season: Option<String>,
+    /// Episode number (podcast:episode number attribute)
+    pub episode: Option<String>,
 }
 
 /// Parse iTunes explicit flag from various string representations
