@@ -911,6 +911,26 @@ describe('feedparser-rs', () => {
     });
   });
 
+  describe('Cloud element', () => {
+    it('should expose registerprocedure (no underscore) on cloud object', () => {
+      const xml = `
+        <?xml version="1.0"?>
+        <rss version="2.0">
+          <channel>
+            <title>Cloud Test</title>
+            <link>https://example.com</link>
+            <description>Feed with cloud</description>
+            <cloud domain="rpc.example.com" port="80" path="/rpc" registerProcedure="myCloud.rssPleaseNotify" protocol="xml-rpc" />
+          </channel>
+        </rss>
+      `;
+
+      const feed = parse(xml);
+      assert.ok(feed.feed.cloud != null, 'cloud should be present');
+      assert.strictEqual(feed.feed.cloud.registerprocedure, 'myCloud.rssPleaseNotify');
+    });
+  });
+
   describe('RSS 1.0 (RDF) handling', () => {
     it('should detect RSS 1.0 format', () => {
       const xml = `

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Python binding: `Cloud.registerprocedure` (no underscore) now correctly exposed as `registerprocedure` to match Python feedparser API (#335)
+- Node.js binding: `cloud.registerprocedure` (no underscore) now correctly exposed as `registerprocedure` instead of `registerProcedure` for Python feedparser compatibility (#335)
+
 ## [0.5.1] - 2026-03-24
 
 ### Changed
