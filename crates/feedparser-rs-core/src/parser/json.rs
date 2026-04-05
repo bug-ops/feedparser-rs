@@ -73,7 +73,8 @@ pub fn parse_json_feed_with_limits(data: &[u8], limits: ParserLimits) -> Result<
                 ));
                 break;
             }
-            feed.entries.push(parse_item(item, &limits, feed_lang));
+            feed.entries
+                .push(parse_item(item, &limits, feed_lang, &feed.feed.authors));
         }
     }
 
@@ -153,7 +154,12 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
     }
 }
 
-fn parse_item(json: &Value, limits: &ParserLimits, feed_lang: Option<&str>) -> Entry {
+fn parse_item(
+    json: &Value,
+    limits: &ParserLimits,
+    feed_lang: Option<&str>,
+    feed_authors: &[Person],
+) -> Entry {
     let mut entry = Entry::default();
 
     // Determine effective language: item-level overrides feed-level; empty clears it
@@ -261,6 +267,17 @@ fn parse_item(json: &Value, limits: &ParserLimits, feed_lang: Option<&str>) -> E
         &mut entry.authors,
         limits,
     );
+
+    // JSON Feed spec: inherit feed-level authors when entry has none
+    if entry.authors.is_empty() && !feed_authors.is_empty() {
+        entry.authors = feed_authors.to_vec();
+        if entry.author.is_none()
+            && let Some(first) = feed_authors.first()
+        {
+            entry.author.clone_from(&first.name);
+            entry.author_detail = Some(first.clone());
+        }
+    }
 
     if let Some(tags) = json.get("tags").and_then(|v| v.as_array()) {
         for tag_val in tags {
@@ -906,6 +923,36 @@ mod tests {
                 .as_deref(),
             Some("de")
         );
+    }
+
+    #[test]
+    fn test_entry_inherits_feed_authors_when_none() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "authors": [{"name": "Feed Author"}],
+            "items": [
+                {"id": "1"},
+                {"id": "2", "authors": [{"name": "Item Author"}]}
+            ]
+        }"#;
+
+        let feed = parse_json_feed(json).unwrap();
+        // Item without authors inherits from feed
+        assert_eq!(
+            feed.entries[0].author.as_deref(),
+            Some("Feed Author"),
+            "entry without authors should inherit feed-level author"
+        );
+        assert_eq!(feed.entries[0].authors.len(), 1);
+        // Item with its own authors does NOT inherit
+        assert_eq!(
+            feed.entries[1].author.as_deref(),
+            Some("Item Author"),
+            "entry with own authors should not be overridden"
+        );
+        assert_eq!(feed.entries[1].authors.len(), 1);
+        assert!(!feed.bozo);
     }
 
     #[test]
