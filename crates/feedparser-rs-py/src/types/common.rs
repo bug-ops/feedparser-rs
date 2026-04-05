@@ -1022,6 +1022,7 @@ impl PyCloud {
     }
 
     #[getter]
+    #[pyo3(name = "registerprocedure")]
     fn register_procedure(&self) -> Option<&str> {
         self.inner.register_procedure.as_deref()
     }

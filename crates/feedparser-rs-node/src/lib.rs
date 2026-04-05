@@ -908,7 +908,7 @@ pub struct Cloud {
     pub domain: Option<String>,
     pub port: Option<String>,
     pub path: Option<String>,
-    #[napi(js_name = "registerProcedure")]
+    #[napi(js_name = "registerprocedure")]
     pub register_procedure: Option<String>,
     pub protocol: Option<String>,
 }
