@@ -6,13 +6,14 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
+    namespace::namespaces as ns_uris,
     types::{FeedVersion, ParsedFeed},
 };
 use quick_xml::{
     Reader,
     events::{BytesRef, Event},
 };
-use std::io::Write as _;
+use std::{collections::HashMap, io::Write as _};
 
 pub use crate::types::{FromAttributes, LimitedCollectionExt};
 pub use crate::util::text::bytes_to_string;
@@ -189,18 +190,69 @@ pub fn extract_ns_local_name<'a>(name: &'a [u8], prefix: &[u8]) -> Option<&'a st
     }
 }
 
-/// Check if element is a Dublin Core namespaced tag
+/// Split a namespaced tag into `(prefix_bytes_with_colon, local_name_bytes)`.
+///
+/// Returns `None` if there is no colon separator or the local name is empty.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// assert_eq!(is_dc_tag(b"dc:creator"), Some("creator"));
-/// assert_eq!(is_dc_tag(b"dc:subject"), Some("subject"));
-/// assert_eq!(is_dc_tag(b"content:encoded"), None);
+/// assert_eq!(split_ns_tag(b"dc:creator"), Some((b"dc:" as &[u8], b"creator" as &[u8])));
+/// assert_eq!(split_ns_tag(b"title"), None); // no prefix
+/// assert_eq!(split_ns_tag(b"dc:"), None);  // empty local name
 /// ```
 #[inline]
-pub fn is_dc_tag(name: &[u8]) -> Option<&str> {
-    extract_ns_local_name(name, b"dc:")
+fn split_ns_tag(name: &[u8]) -> Option<(&[u8], &[u8])> {
+    let colon = name.iter().position(|&b| b == b':')?;
+    let local = &name[colon + 1..];
+    if local.is_empty() {
+        return None;
+    }
+    Some((&name[..=colon], local))
+}
+
+/// Match a tag against a namespace URI using the declared prefix mapping.
+///
+/// Resolves the tag prefix via `namespaces` (prefix → URI) and checks whether
+/// the resolved URI equals `target_uri`. If it does, returns the local element
+/// name (validated as alphanumeric/hyphen/underscore). Falls back to checking
+/// the canonical hardcoded prefix when the resolved prefix is absent from the map.
+#[inline]
+fn match_ns_tag_by_uri<'a>(
+    name: &'a [u8],
+    canonical_prefix: &[u8],
+    target_uri: &str,
+    namespaces: &HashMap<String, String>,
+) -> Option<&'a str> {
+    // Fast path: canonical prefix (e.g. "dc:")
+    if let Some(local) = extract_ns_local_name(name, canonical_prefix) {
+        return Some(local);
+    }
+    // URI-based fallback: find any declared prefix that maps to target_uri
+    let (prefix_with_colon, _) = split_ns_tag(name)?;
+    let prefix_str = std::str::from_utf8(&prefix_with_colon[..prefix_with_colon.len() - 1]).ok()?;
+    if namespaces.get(prefix_str).map(String::as_str) == Some(target_uri) {
+        extract_ns_local_name(name, prefix_with_colon)
+    } else {
+        None
+    }
+}
+
+/// Check if element is a Dublin Core namespaced tag.
+///
+/// Recognises the canonical `dc:` prefix and any custom prefix declared with
+/// `xmlns:X="http://purl.org/dc/elements/1.1/"`.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_dc_tag(b"dc:creator", &namespaces), Some("creator"));
+/// assert_eq!(is_dc_tag(b"dublin:creator", &namespaces_with_dublin_uri), Some("creator"));
+/// assert_eq!(is_dc_tag(b"content:encoded", &namespaces), None);
+/// ```
+#[inline]
+pub fn is_dc_tag<'a>(name: &'a [u8], namespaces: &HashMap<String, String>) -> Option<&'a str> {
+    match_ns_tag_by_uri(name, b"dc:", ns_uris::DUBLIN_CORE, namespaces)
 }
 
 /// Check if element is a Content namespaced tag
@@ -239,13 +291,13 @@ pub fn is_syn_tag(name: &[u8]) -> Option<&str> {
 /// # Examples
 ///
 /// ```ignore
-/// assert_eq!(is_media_tag(b"media:thumbnail"), Some("thumbnail"));
-/// assert_eq!(is_media_tag(b"media:content"), Some("content"));
-/// assert_eq!(is_media_tag(b"dc:creator"), None);
+/// assert_eq!(is_media_tag(b"media:thumbnail", &namespaces), Some("thumbnail"));
+/// assert_eq!(is_media_tag(b"mrss:content", &namespaces_with_mrss_uri), Some("content"));
+/// assert_eq!(is_media_tag(b"dc:creator", &namespaces), None);
 /// ```
 #[inline]
-pub fn is_media_tag(name: &[u8]) -> Option<&str> {
-    extract_ns_local_name(name, b"media:")
+pub fn is_media_tag<'a>(name: &'a [u8], namespaces: &HashMap<String, String>) -> Option<&'a str> {
+    match_ns_tag_by_uri(name, b"media:", ns_uris::MEDIA, namespaces)
 }
 
 /// Check if element is a Slash namespaced tag
@@ -316,25 +368,32 @@ pub fn is_thr_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"thr:")
 }
 
-/// Check if element matches an iTunes namespace tag
+/// Check if element matches an iTunes namespace tag.
 ///
-/// Supports both prefixed (itunes:author) and unprefixed (author) forms
-/// for compatibility with non-compliant feeds.
+/// Resolves the canonical `itunes:` prefix and any custom prefix declared with
+/// `xmlns:X="http://www.itunes.com/dtds/podcast-1.0.dtd"`. Also supports
+/// unprefixed element names for compatibility with non-compliant feeds.
+/// Local name is validated (alphanumeric, hyphen, underscore only) via
+/// `match_ns_tag_by_uri`.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// assert!(is_itunes_tag(b"itunes:author", b"author"));
-/// assert!(is_itunes_tag(b"author", b"author")); // Fallback for non-prefixed
-/// assert!(!is_itunes_tag(b"itunes:title", b"author"));
+/// assert!(is_itunes_tag(b"itunes:author", b"author", &namespaces));
+/// assert!(is_itunes_tag(b"author", b"author", &namespaces)); // Fallback for non-prefixed
+/// assert!(!is_itunes_tag(b"itunes:title", b"author", &namespaces));
 /// ```
 #[inline]
-pub fn is_itunes_tag(name: &[u8], tag: &[u8]) -> bool {
-    if name.starts_with(b"itunes:") && &name[7..] == tag {
-        return true;
+pub fn is_itunes_tag(name: &[u8], tag: &[u8], namespaces: &HashMap<String, String>) -> bool {
+    // Prefixed: resolve via URI and validate local name via match_ns_tag_by_uri
+    if let Some(local) = match_ns_tag_by_uri(name, b"itunes:", ns_uris::ITUNES, namespaces) {
+        return local.as_bytes() == tag;
     }
-    // Fallback for feeds without prefix
-    name == tag
+    // Fallback for feeds without prefix: compare directly (no colon means no namespace)
+    if !name.contains(&b':') {
+        return name == tag;
+    }
+    false
 }
 
 /// Extract xml:base attribute from element
@@ -1300,5 +1359,89 @@ mod tests {
         let feed = parse_namespaces_from_element(xml.as_bytes(), &limits);
         assert!(feed.bozo);
         assert!(feed.namespaces.is_empty());
+    }
+
+    #[test]
+    fn test_is_dc_tag_custom_prefix() {
+        let mut ns = HashMap::new();
+        ns.insert(
+            "dublin".to_string(),
+            "http://purl.org/dc/elements/1.1/".to_string(),
+        );
+        assert_eq!(is_dc_tag(b"dublin:creator", &ns), Some("creator"));
+        assert_eq!(is_dc_tag(b"dublin:date", &ns), Some("date"));
+        // canonical prefix still works
+        let empty = HashMap::new();
+        assert_eq!(is_dc_tag(b"dc:creator", &empty), Some("creator"));
+        // unrelated prefix does not match
+        assert!(is_dc_tag(b"foo:creator", &ns).is_none());
+    }
+
+    #[test]
+    fn test_is_media_tag_custom_prefix() {
+        let mut ns = HashMap::new();
+        ns.insert(
+            "mrss".to_string(),
+            "http://search.yahoo.com/mrss/".to_string(),
+        );
+        assert_eq!(is_media_tag(b"mrss:thumbnail", &ns), Some("thumbnail"));
+        assert_eq!(is_media_tag(b"mrss:content", &ns), Some("content"));
+        // canonical prefix still works
+        let empty = HashMap::new();
+        assert_eq!(is_media_tag(b"media:thumbnail", &empty), Some("thumbnail"));
+        // unrelated prefix does not match
+        assert!(is_media_tag(b"foo:thumbnail", &ns).is_none());
+    }
+
+    #[test]
+    fn test_is_itunes_tag_custom_prefix() {
+        let mut ns = HashMap::new();
+        ns.insert(
+            "podcast".to_string(),
+            "http://www.itunes.com/dtds/podcast-1.0.dtd".to_string(),
+        );
+        assert!(is_itunes_tag(b"podcast:author", b"author", &ns));
+        assert!(is_itunes_tag(b"podcast:explicit", b"explicit", &ns));
+        // canonical prefix still works
+        let empty = HashMap::new();
+        assert!(is_itunes_tag(b"itunes:author", b"author", &empty));
+        // unrelated prefix does not match
+        assert!(!is_itunes_tag(b"foo:author", b"author", &ns));
+    }
+
+    #[test]
+    fn test_ns_tag_with_invalid_security_chars() {
+        let mut ns = HashMap::new();
+        ns.insert(
+            "dublin".to_string(),
+            "http://purl.org/dc/elements/1.1/".to_string(),
+        );
+        // Security: invalid chars in local name must be rejected
+        assert!(is_dc_tag(b"dublin:../../etc/passwd", &ns).is_none());
+        assert!(is_dc_tag(b"dublin:tag<script>", &ns).is_none());
+    }
+
+    #[test]
+    fn test_is_itunes_tag_security() {
+        let empty = HashMap::new();
+        // Path traversal in local name must not match
+        assert!(!is_itunes_tag(
+            b"itunes:../../etc/passwd",
+            b"../../etc/passwd",
+            &empty
+        ));
+        // Same with custom prefix
+        let mut ns = HashMap::new();
+        ns.insert(
+            "it".to_string(),
+            "http://www.itunes.com/dtds/podcast-1.0.dtd".to_string(),
+        );
+        assert!(!is_itunes_tag(
+            b"it:../../etc/passwd",
+            b"../../etc/passwd",
+            &ns
+        ));
+        // Unprefixed path traversal also rejected (no colon → direct match, but value differs)
+        assert!(!is_itunes_tag(b"../../etc/passwd", b"author", &empty));
     }
 }

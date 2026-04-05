@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:dublin="http://purl.org/dc/elements/1.1/"
+     xmlns:mrss="http://search.yahoo.com/mrss/">
+  <channel>
+    <title>Custom Prefix Test</title>
+    <link>https://example.com</link>
+    <dublin:creator>Test Author</dublin:creator>
+    <item>
+      <title>Item 1</title>
+      <dublin:creator>Item Author</dublin:creator>
+      <dublin:subject>Testing</dublin:subject>
+      <mrss:thumbnail url="https://example.com/thumb.jpg"/>
+    </item>
+  </channel>
+</rss>

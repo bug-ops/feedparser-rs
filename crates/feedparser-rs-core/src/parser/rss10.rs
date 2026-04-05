@@ -7,6 +7,8 @@
 //! - Items have `rdf:about` attributes for identification
 //! - Supports Dublin Core and other RDF vocabularies
 
+use std::collections::HashMap;
+
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
@@ -162,6 +164,7 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                         &mut item_bozo,
                         effective_item_lang,
                         &item_base_ctx,
+                        &feed.namespaces,
                     ) {
                         Ok(entry) => {
                             if item_bozo && !feed.bozo {
@@ -261,7 +264,7 @@ fn parse_channel(
                     }
                     _ => {
                         // Check for Dublin Core and other namespace tags
-                        if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
+                        if let Some(dc_element) = is_dc_tag(full_name.as_ref(), &feed.namespaces) {
                             let dc_elem = dc_element.to_string();
                             let text = read_text_str(reader, &mut buf, limits)?;
                             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
@@ -317,6 +320,7 @@ fn parse_item(
     bozo: &mut bool,
     lang: Option<&str>,
     base_ctx: &BaseUrlContext,
+    namespaces: &HashMap<String, String>,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
     entry.id = item_id.map(std::convert::Into::into);
@@ -364,7 +368,7 @@ fn parse_item(
                     }
                     _ => {
                         // Check for Dublin Core and other namespace tags
-                        if let Some(dc_element) = is_dc_tag(full_name.as_ref()) {
+                        if let Some(dc_element) = is_dc_tag(full_name.as_ref(), namespaces) {
                             let dc_elem = dc_element.to_string();
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
@@ -682,35 +686,38 @@ mod tests {
 
     #[test]
     fn test_is_dc_tag_valid() {
-        assert_eq!(is_dc_tag(b"dc:creator"), Some("creator"));
-        assert_eq!(is_dc_tag(b"dc:date"), Some("date"));
-        assert_eq!(is_dc_tag(b"dc:description"), Some("description"));
-        assert_eq!(is_dc_tag(b"dc:subject"), Some("subject"));
-        assert_eq!(is_dc_tag(b"dc:content-type"), Some("content-type"));
+        let ns = HashMap::new();
+        assert_eq!(is_dc_tag(b"dc:creator", &ns), Some("creator"));
+        assert_eq!(is_dc_tag(b"dc:date", &ns), Some("date"));
+        assert_eq!(is_dc_tag(b"dc:description", &ns), Some("description"));
+        assert_eq!(is_dc_tag(b"dc:subject", &ns), Some("subject"));
+        assert_eq!(is_dc_tag(b"dc:content-type", &ns), Some("content-type"));
     }
 
     #[test]
     fn test_is_dc_tag_rejects_malicious() {
+        let ns = HashMap::new();
         // Path traversal attempts
-        assert!(is_dc_tag(b"dc:../../etc/passwd").is_none());
-        assert!(is_dc_tag(b"dc:../../../root").is_none());
+        assert!(is_dc_tag(b"dc:../../etc/passwd", &ns).is_none());
+        assert!(is_dc_tag(b"dc:../../../root", &ns).is_none());
 
         // Special characters
-        assert!(is_dc_tag(b"dc:invalid<tag>").is_none());
-        assert!(is_dc_tag(b"dc:tag&name").is_none());
-        assert!(is_dc_tag(b"dc:tag;name").is_none());
-        assert!(is_dc_tag(b"dc:tag/name").is_none());
-        assert!(is_dc_tag(b"dc:tag\\name").is_none());
+        assert!(is_dc_tag(b"dc:invalid<tag>", &ns).is_none());
+        assert!(is_dc_tag(b"dc:tag&name", &ns).is_none());
+        assert!(is_dc_tag(b"dc:tag;name", &ns).is_none());
+        assert!(is_dc_tag(b"dc:tag/name", &ns).is_none());
+        assert!(is_dc_tag(b"dc:tag\\name", &ns).is_none());
 
         // Empty tag name
-        assert!(is_dc_tag(b"dc:").is_none());
+        assert!(is_dc_tag(b"dc:", &ns).is_none());
     }
 
     #[test]
     fn test_is_dc_tag_non_dc() {
-        assert!(is_dc_tag(b"title").is_none());
-        assert!(is_dc_tag(b"link").is_none());
-        assert!(is_dc_tag(b"atom:title").is_none());
+        let ns = HashMap::new();
+        assert!(is_dc_tag(b"title", &ns).is_none());
+        assert!(is_dc_tag(b"link", &ns).is_none());
+        assert!(is_dc_tag(b"atom:title", &ns).is_none());
     }
 
     #[test]

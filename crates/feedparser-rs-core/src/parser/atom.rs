@@ -1,5 +1,7 @@
 //! Atom 1.0 parser implementation
 
+use std::collections::HashMap;
+
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
@@ -337,6 +339,7 @@ fn parse_feed_element(
                             &entry_ctx,
                             &mut entry_bozo,
                             effective_lang,
+                            &feed.namespaces,
                         ) {
                             Ok(mut entry) => {
                                 if entry_bozo && !feed.bozo {
@@ -369,7 +372,7 @@ fn parse_feed_element(
                     }
                     tag => {
                         // Check for namespace elements
-                        let handled = if let Some(dc_element) = is_dc_tag(tag) {
+                        let handled = if let Some(dc_element) = is_dc_tag(tag, &feed.namespaces) {
                             let dc_elem = dc_element.to_string();
                             if !is_empty {
                                 let text = read_text_str(reader, &mut buf, limits)?;
@@ -382,7 +385,7 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
-                        } else if let Some(media_element) = is_media_tag(tag) {
+                        } else if let Some(media_element) = is_media_tag(tag, &feed.namespaces) {
                             match media_element {
                                 "thumbnail" => {
                                     if let Some(thumb) = MediaThumbnail::from_attributes(
@@ -446,7 +449,7 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
-                        } else if is_itunes_tag(tag, b"image") {
+                        } else if is_itunes_tag(tag, b"image", &feed.namespaces) {
                             if let Some(url) = extract_href_attr(&element, limits) {
                                 let itunes = feed
                                     .feed
@@ -468,12 +471,12 @@ fn parse_feed_element(
                                 skip_element(reader, &mut buf, limits, *depth)?;
                             }
                             true
-                        } else if is_itunes_tag(tag, b"category") {
+                        } else if is_itunes_tag(tag, b"category", &feed.namespaces) {
                             parse_atom_itunes_category(
                                 reader, &mut buf, &element, feed, limits, is_empty,
                             )?;
                             true
-                        } else if is_itunes_tag(tag, b"owner") && !is_empty {
+                        } else if is_itunes_tag(tag, b"owner", &feed.namespaces) && !is_empty {
                             if let Ok(owner) =
                                 parse_atom_itunes_owner(reader, &mut buf, limits, depth)
                             {
@@ -484,7 +487,7 @@ fn parse_feed_element(
                                 itunes.owner = Some(owner);
                             }
                             true
-                        } else if is_itunes_tag(tag, b"author") && !is_empty {
+                        } else if is_itunes_tag(tag, b"author", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             if feed.feed.author.is_none() {
                                 feed.feed.set_author(Person::from_name(&text));
@@ -498,7 +501,7 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.author = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"subtitle") && !is_empty {
+                        } else if is_itunes_tag(tag, b"subtitle", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -506,7 +509,7 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.subtitle = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"summary") && !is_empty {
+                        } else if is_itunes_tag(tag, b"summary", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -514,7 +517,7 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.summary = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"explicit") && !is_empty {
+                        } else if is_itunes_tag(tag, b"explicit", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -522,7 +525,7 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.explicit = parse_explicit(&text);
                             true
-                        } else if is_itunes_tag(tag, b"keywords") && !is_empty {
+                        } else if is_itunes_tag(tag, b"keywords", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -534,7 +537,7 @@ fn parse_feed_element(
                                 .filter(|s| !s.is_empty())
                                 .collect();
                             true
-                        } else if is_itunes_tag(tag, b"type") && !is_empty {
+                        } else if is_itunes_tag(tag, b"type", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -542,7 +545,7 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.podcast_type = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"complete") && !is_empty {
+                        } else if is_itunes_tag(tag, b"complete", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -550,7 +553,8 @@ fn parse_feed_element(
                                 .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
                             itunes.complete = Some(text.trim().to_string());
                             true
-                        } else if is_itunes_tag(tag, b"new-feed-url") && !is_empty {
+                        } else if is_itunes_tag(tag, b"new-feed-url", &feed.namespaces) && !is_empty
+                        {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             if !text.is_empty() {
                                 let itunes = feed
@@ -560,7 +564,7 @@ fn parse_feed_element(
                                 itunes.new_feed_url = Some(text.trim().to_string().into());
                             }
                             true
-                        } else if is_itunes_tag(tag, b"block") && !is_empty {
+                        } else if is_itunes_tag(tag, b"block", &feed.namespaces) && !is_empty {
                             let text = read_text_str(reader, &mut buf, limits)?;
                             let itunes = feed
                                 .feed
@@ -615,7 +619,7 @@ fn parse_feed_element(
 }
 
 /// Parse <entry> element
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn parse_entry(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -624,6 +628,7 @@ fn parse_entry(
     base_ctx: &BaseUrlContext,
     bozo: &mut bool,
     entry_lang: Option<&str>,
+    namespaces: &HashMap<String, String>,
 ) -> Result<Entry> {
     let mut entry = Entry::with_capacity();
 
@@ -770,7 +775,7 @@ fn parse_entry(
                     }
                     tag => {
                         // Check for namespace elements
-                        let handled = if let Some(dc_element) = is_dc_tag(tag) {
+                        let handled = if let Some(dc_element) = is_dc_tag(tag, namespaces) {
                             let dc_elem = dc_element.to_string();
                             if !is_empty {
                                 let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -792,7 +797,7 @@ fn parse_entry(
                                 );
                             }
                             true
-                        } else if let Some(media_element) = is_media_tag(tag) {
+                        } else if let Some(media_element) = is_media_tag(tag, namespaces) {
                             // Media RSS namespace
                             if media_element == "thumbnail" {
                                 if let Some(thumbnail) = MediaThumbnail::from_attributes(
@@ -817,13 +822,13 @@ fn parse_entry(
                                 }
                                 if !is_empty {
                                     parse_atom_media_content_children(
-                                        reader, buf, &mut entry, limits, depth, bozo,
+                                        reader, buf, &mut entry, limits, depth, bozo, namespaces,
                                     )?;
                                 }
                             } else if media_element == "group" && !is_empty {
                                 // media:group is a transparent container; promote children to entry
                                 parse_atom_media_group(
-                                    reader, buf, &mut entry, limits, depth, bozo,
+                                    reader, buf, &mut entry, limits, depth, bozo, namespaces,
                                 )?;
                             } else if media_element == "credit" {
                                 let role = element
@@ -964,7 +969,7 @@ fn parse_entry(
                                 slash::handle_wfw_entry_element(&wfw_elem, &text, &mut entry);
                             }
                             true
-                        } else if is_itunes_tag(tag, b"image") {
+                        } else if is_itunes_tag(tag, b"image", namespaces) {
                             if let Some(url) = extract_href_attr(&element, limits) {
                                 let itunes = entry
                                     .itunes
@@ -977,7 +982,7 @@ fn parse_entry(
                                 skip_element(reader, buf, limits, *depth)?;
                             }
                             true
-                        } else if is_itunes_tag(tag, b"title") && !is_empty {
+                        } else if is_itunes_tag(tag, b"title", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -985,7 +990,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.title = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"author") && !is_empty {
+                        } else if is_itunes_tag(tag, b"author", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             if entry.author.is_none() {
@@ -999,7 +1004,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.author = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"subtitle") && !is_empty {
+                        } else if is_itunes_tag(tag, b"subtitle", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1007,7 +1012,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.subtitle = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"summary") && !is_empty {
+                        } else if is_itunes_tag(tag, b"summary", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1015,7 +1020,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.summary = Some(text);
                             true
-                        } else if is_itunes_tag(tag, b"duration") && !is_empty {
+                        } else if is_itunes_tag(tag, b"duration", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1023,7 +1028,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.duration = if text.is_empty() { None } else { Some(text) };
                             true
-                        } else if is_itunes_tag(tag, b"explicit") && !is_empty {
+                        } else if is_itunes_tag(tag, b"explicit", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1031,7 +1036,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.explicit = parse_explicit(&text);
                             true
-                        } else if is_itunes_tag(tag, b"episode") && !is_empty {
+                        } else if is_itunes_tag(tag, b"episode", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1039,7 +1044,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.episode = text.trim().parse().ok();
                             true
-                        } else if is_itunes_tag(tag, b"season") && !is_empty {
+                        } else if is_itunes_tag(tag, b"season", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1047,7 +1052,7 @@ fn parse_entry(
                                 .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
                             itunes.season = text.trim().parse().ok();
                             true
-                        } else if is_itunes_tag(tag, b"episodeType") && !is_empty {
+                        } else if is_itunes_tag(tag, b"episodeType", namespaces) && !is_empty {
                             let (text, had_bozo) = read_text(reader, buf, limits)?;
                             *bozo |= had_bozo;
                             let itunes = entry
@@ -1352,17 +1357,18 @@ fn parse_atom_media_group(
     limits: &ParserLimits,
     depth: &mut usize,
     bozo: &mut bool,
+    namespaces: &HashMap<String, String>,
 ) -> Result<()> {
     loop {
         buf.clear();
         match reader.read_event_into(buf) {
             Ok(Event::Empty(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                handle_atom_media_group_child(&tag, &e, entry, limits);
+                handle_atom_media_group_child(&tag, &e, entry, limits, namespaces);
             }
             Ok(Event::Start(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                handle_atom_media_group_child(&tag, &e, entry, limits);
+                handle_atom_media_group_child(&tag, &e, entry, limits, namespaces);
                 *depth += 1;
                 skip_element(reader, buf, limits, *depth)?;
                 *depth = depth.saturating_sub(1);
@@ -1389,13 +1395,14 @@ fn parse_atom_media_content_children(
     limits: &ParserLimits,
     depth: &mut usize,
     bozo: &mut bool,
+    namespaces: &HashMap<String, String>,
 ) -> Result<()> {
     loop {
         buf.clear();
         match reader.read_event_into(buf) {
             Ok(Event::Empty(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag) == Some("thumbnail") {
+                if is_media_tag(&tag, namespaces) == Some("thumbnail") {
                     let thumbnail = MediaThumbnail::from_attributes(
                         e.attributes().flatten(),
                         limits.max_attribute_length,
@@ -1409,7 +1416,7 @@ fn parse_atom_media_content_children(
             }
             Ok(Event::Start(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag) == Some("thumbnail") {
+                if is_media_tag(&tag, namespaces) == Some("thumbnail") {
                     let thumbnail = MediaThumbnail::from_attributes(
                         e.attributes().flatten(),
                         limits.max_attribute_length,
@@ -1440,8 +1447,9 @@ fn handle_atom_media_group_child(
     element: &quick_xml::events::BytesStart<'_>,
     entry: &mut Entry,
     limits: &ParserLimits,
+    namespaces: &HashMap<String, String>,
 ) {
-    let Some(child_elem) = is_media_tag(tag) else {
+    let Some(child_elem) = is_media_tag(tag, namespaces) else {
         return;
     };
     match child_elem {
@@ -1672,9 +1680,9 @@ fn parse_atom_itunes_owner(
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
                 let tag_name = e.local_name();
-                if is_itunes_tag(tag_name.as_ref(), b"name") {
+                if tag_name.as_ref() == b"name" {
                     owner.name = Some(read_text_str(reader, buf, limits)?);
-                } else if is_itunes_tag(tag_name.as_ref(), b"email") {
+                } else if tag_name.as_ref() == b"email" {
                     owner.email = Some(read_text_str(reader, buf, limits)?);
                 } else {
                     skip_element(reader, buf, limits, *depth)?;
@@ -1718,14 +1726,18 @@ fn parse_atom_itunes_category(
         loop {
             buf.clear();
             match reader.read_event_into(buf) {
-                Ok(Event::Empty(e)) if is_itunes_tag(e.name().as_ref(), b"category") => {
+                Ok(Event::Empty(e))
+                    if is_itunes_tag(e.name().as_ref(), b"category", &feed.namespaces) =>
+                {
                     subcategory = e
                         .attributes()
                         .flatten()
                         .find(|a| a.key.as_ref() == b"text")
                         .and_then(|a| String::from_utf8(a.value.into_owned()).ok());
                 }
-                Ok(Event::Start(e)) if is_itunes_tag(e.name().as_ref(), b"category") => {
+                Ok(Event::Start(e))
+                    if is_itunes_tag(e.name().as_ref(), b"category", &feed.namespaces) =>
+                {
                     subcategory = e
                         .attributes()
                         .flatten()
