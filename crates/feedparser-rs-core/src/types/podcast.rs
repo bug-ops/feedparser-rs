@@ -179,6 +179,16 @@ pub struct PodcastMeta {
     pub locked: Option<String>,
     /// Email of the lock owner (podcast:locked owner attribute)
     pub locked_owner: Option<String>,
+    /// Geographic location (podcast:location)
+    pub location: Option<PodcastLocation>,
+    /// Related feed references (podcast:podroll)
+    pub podroll: Vec<PodcastRemoteItem>,
+    /// Text records (podcast:txt)
+    pub txt: Vec<PodcastTxt>,
+    /// Update frequency schedule (podcast:updateFrequency)
+    pub update_frequency: Option<PodcastUpdateFrequency>,
+    /// Follow links (podcast:follow)
+    pub follow: Vec<PodcastFollow>,
 }
 
 /// Podcast 2.0 value element for monetization
@@ -448,6 +458,175 @@ pub struct PodcastSoundbite {
     pub title: Option<String>,
 }
 
+/// Podcast 2.0 alternate enclosure source
+///
+/// A single source URI within a `podcast:alternateEnclosure` element.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastAlternateEnclosureSource {
+    /// Source URI (uri attribute, required)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    /// Applications MUST validate URLs before fetching to prevent SSRF attacks.
+    pub uri: Url,
+    /// Optional MIME type override (contentType attribute)
+    pub content_type: Option<MimeType>,
+}
+
+/// Podcast 2.0 integrity verification for alternate enclosures
+///
+/// Cryptographic integrity check for enclosure sources.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastIntegrity {
+    /// Integrity type (type attribute): "sri" or "pgp-signature"
+    pub type_: String,
+    /// Integrity value (text content)
+    pub value: String,
+}
+
+/// Podcast 2.0 alternate enclosure
+///
+/// An alternate version of the main episode audio/video in a different format or quality.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+#[derive(Debug, Clone, Default, PartialEq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+pub struct PodcastAlternateEnclosure {
+    /// MIME type (type attribute, required)
+    pub type_: MimeType,
+    /// File size in bytes (length attribute)
+    pub length: Option<u64>,
+    /// Bitrate in kbps (bitrate attribute)
+    pub bitrate: Option<f64>,
+    /// Video height in pixels (height attribute)
+    pub height: Option<u32>,
+    /// Language code (lang attribute)
+    pub lang: Option<String>,
+    /// Title (title attribute)
+    pub title: Option<String>,
+    /// Relationship (rel attribute): "default", "alternate", etc.
+    pub rel: Option<String>,
+    /// Codecs string (codecs attribute)
+    pub codecs: Option<String>,
+    /// Whether this is the default enclosure (default attribute)
+    pub default: Option<bool>,
+    /// Source URIs for this enclosure
+    pub sources: Vec<PodcastAlternateEnclosureSource>,
+    /// Integrity verification
+    pub integrity: Option<PodcastIntegrity>,
+}
+
+/// Podcast 2.0 geographic location
+///
+/// Location information for a podcast or episode.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastLocation {
+    /// Human-readable location name (text content)
+    pub name: String,
+    /// Geographic coordinates (geo attribute): "geo:37.786971,-122.399677"
+    pub geo: Option<String>,
+    /// OpenStreetMap reference (osm attribute): "R113314"
+    pub osm: Option<String>,
+}
+
+/// Podcast 2.0 remote item reference
+///
+/// A reference to a remote podcast feed or episode, used within `podcast:podroll`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastRemoteItem {
+    /// Feed GUID (feedGuid attribute)
+    pub feed_guid: Option<String>,
+    /// Feed URL (feedUrl attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    pub feed_url: Option<Url>,
+    /// Item GUID (itemGuid attribute)
+    pub item_guid: Option<String>,
+    /// Content medium type (medium attribute)
+    pub medium: Option<String>,
+    /// Display title (title attribute)
+    pub title: Option<String>,
+}
+
+/// Podcast 2.0 social interaction
+///
+/// Links a podcast episode to a social media thread.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastSocialInteract {
+    /// Social thread URI (uri attribute, required)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    pub uri: Url,
+    /// Social protocol (protocol attribute): "activitypub", "twitter", etc.
+    pub protocol: Option<String>,
+    /// Account identifier (accountId attribute)
+    pub account_id: Option<String>,
+    /// Account URL (accountUrl attribute)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    pub account_url: Option<Url>,
+    /// Priority (priority attribute, lower = higher priority)
+    pub priority: Option<u32>,
+}
+
+/// Podcast 2.0 text record
+///
+/// Arbitrary text metadata with an optional purpose tag.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastTxt {
+    /// Purpose of the text (purpose attribute)
+    pub purpose: Option<String>,
+    /// Text content
+    pub value: String,
+}
+
+/// Podcast 2.0 update frequency
+///
+/// Indicates how often a podcast publishes new episodes.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastUpdateFrequency {
+    /// iCalendar RRULE string (rrule attribute)
+    pub rrule: Option<String>,
+    /// Whether the podcast is complete (complete attribute)
+    pub complete: Option<bool>,
+    /// Start date in ISO 8601 (dtstart attribute)
+    pub dtstart: Option<String>,
+    /// Human-readable label (text content)
+    pub label: Option<String>,
+}
+
+/// Podcast 2.0 follow link
+///
+/// A URL and optional platform for following the podcast.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastFollow {
+    /// Follow URL (url attribute, required)
+    ///
+    /// # Security Warning
+    ///
+    /// This URL comes from untrusted feed input and has NOT been validated for SSRF.
+    pub url: Url,
+    /// Platform name (platform attribute)
+    pub platform: Option<String>,
+}
+
 /// Podcast 2.0 metadata for episodes
 ///
 /// Container for entry-level podcast metadata.
@@ -478,6 +657,16 @@ pub struct PodcastEntryMeta {
     pub season: Option<String>,
     /// Episode number (podcast:episode number attribute)
     pub episode: Option<String>,
+    /// Alternate enclosures (podcast:alternateEnclosure)
+    pub alternate_enclosures: Vec<PodcastAlternateEnclosure>,
+    /// Geographic location (podcast:location)
+    pub location: Option<PodcastLocation>,
+    /// Social interaction threads (podcast:socialInteract)
+    pub social_interact: Vec<PodcastSocialInteract>,
+    /// Text records (podcast:txt)
+    pub txt: Vec<PodcastTxt>,
+    /// Follow links (podcast:follow)
+    pub follow: Vec<PodcastFollow>,
 }
 
 /// Parse iTunes explicit flag from various string representations
@@ -626,6 +815,82 @@ mod tests {
         assert!(meta.funding.is_empty());
         assert!(meta.persons.is_empty());
         assert!(meta.guid.is_none());
+        assert!(meta.location.is_none());
+        assert!(meta.podroll.is_empty());
+        assert!(meta.txt.is_empty());
+        assert!(meta.update_frequency.is_none());
+        assert!(meta.follow.is_empty());
+    }
+
+    #[test]
+    fn test_podcast_entry_meta_new_fields_default() {
+        let meta = PodcastEntryMeta::default();
+        assert!(meta.alternate_enclosures.is_empty());
+        assert!(meta.location.is_none());
+        assert!(meta.social_interact.is_empty());
+        assert!(meta.txt.is_empty());
+        assert!(meta.follow.is_empty());
+    }
+
+    #[test]
+    fn test_podcast_location_default() {
+        let loc = PodcastLocation::default();
+        assert!(loc.name.is_empty());
+        assert!(loc.geo.is_none());
+        assert!(loc.osm.is_none());
+    }
+
+    #[test]
+    fn test_podcast_social_interact_default() {
+        let si = PodcastSocialInteract::default();
+        assert!(si.uri.is_empty());
+        assert!(si.protocol.is_none());
+        assert!(si.account_id.is_none());
+        assert!(si.account_url.is_none());
+        assert!(si.priority.is_none());
+    }
+
+    #[test]
+    fn test_podcast_txt_default() {
+        let txt = PodcastTxt::default();
+        assert!(txt.purpose.is_none());
+        assert!(txt.value.is_empty());
+    }
+
+    #[test]
+    fn test_podcast_update_frequency_default() {
+        let uf = PodcastUpdateFrequency::default();
+        assert!(uf.rrule.is_none());
+        assert!(uf.complete.is_none());
+        assert!(uf.dtstart.is_none());
+        assert!(uf.label.is_none());
+    }
+
+    #[test]
+    fn test_podcast_follow_default() {
+        let f = PodcastFollow::default();
+        assert!(f.url.is_empty());
+        assert!(f.platform.is_none());
+    }
+
+    #[test]
+    fn test_podcast_remote_item_default() {
+        let item = PodcastRemoteItem::default();
+        assert!(item.feed_guid.is_none());
+        assert!(item.feed_url.is_none());
+        assert!(item.item_guid.is_none());
+        assert!(item.medium.is_none());
+        assert!(item.title.is_none());
+    }
+
+    #[test]
+    fn test_podcast_alternate_enclosure_default() {
+        let ae = PodcastAlternateEnclosure::default();
+        assert!(ae.type_.is_empty());
+        assert!(ae.length.is_none());
+        assert!(ae.bitrate.is_none());
+        assert!(ae.sources.is_empty());
+        assert!(ae.integrity.is_none());
     }
 
     #[test]
