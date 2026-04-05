@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:it="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Custom iTunes Prefix Test</title>
+    <link>https://example.com</link>
+    <it:author>John Doe</it:author>
+    <it:explicit>no</it:explicit>
+    <item>
+      <title>Episode 1</title>
+      <it:duration>30:00</it:duration>
+      <it:explicit>no</it:explicit>
+      <it:author>Jane Smith</it:author>
+    </item>
+  </channel>
+</rss>
