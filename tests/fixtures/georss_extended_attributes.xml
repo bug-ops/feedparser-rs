@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:georss="http://www.georss.org/georss">
+  <channel>
+    <title>GeoRSS Extended Test</title>
+    <item>
+      <title>Mountain Peak</title>
+      <georss:point>45.256 -71.92</georss:point>
+      <georss:elev>1337.5</georss:elev>
+      <georss:featuretypetag>mountain</georss:featuretypetag>
+      <georss:featurename>Mont Mégantic</georss:featurename>
+      <georss:relationshiptag>is-located-at</georss:relationshiptag>
+    </item>
+    <item>
+      <title>City</title>
+      <georss:point>48.8566 2.3522</georss:point>
+      <georss:featuretypetag>city</georss:featuretypetag>
+      <georss:featurename>Paris</georss:featurename>
+    </item>
+    <item>
+      <title>Metadata Only</title>
+      <georss:featurename>Unknown Location</georss:featurename>
+    </item>
+    <item>
+      <title>Attrs Before Geometry</title>
+      <georss:featurename>Reverse Order</georss:featurename>
+      <georss:elev>500.0</georss:elev>
+      <georss:point>40.0 -74.0</georss:point>
+    </item>
+  </channel>
+</rss>

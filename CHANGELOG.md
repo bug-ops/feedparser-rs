@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Core: parse 8 additional Podcast 2.0 namespace elements: `podcast:transcript`, `podcast:alternateEnclosure` (with `podcast:source` and `podcast:integrity` children), `podcast:location`, `podcast:podroll` (with `podcast:remoteItem` children), `podcast:socialInteract`, `podcast:txt`, `podcast:updateFrequency`, `podcast:follow`; new types `PodcastAlternateEnclosure`, `PodcastAlternateEnclosureSource`, `PodcastIntegrity`, `PodcastLocation`, `PodcastRemoteItem`, `PodcastSocialInteract`, `PodcastTxt`, `PodcastUpdateFrequency`, `PodcastFollow` added to public API (#351)
 - JSON Feed 1.1 `hubs` array is now parsed into `feed.links` with `rel="hub"`; hub `type` field is stored as `link_type` (#359)
+- Core, Python, Node.js bindings: `GeoLocation` now exposes `elev` (elevation in meters), `feature_type_tag`, `feature_name`, and `relationship_tag` fields from `georss:elev`, `georss:featuretypetag`, `georss:featurename`, and `georss:relationshiptag` elements; geometry handlers use merge pattern to preserve extended attributes regardless of element order (#355)
 - Core, Python, Node.js bindings: `PodcastEntryMeta.season` and `PodcastEntryMeta.episode` fields parse `podcast:season` and `podcast:episode` elements via the `number` attribute (Podcast 2.0 spec) (#332)
 - Python binding: `PyPodcastValue` and `PyPodcastValueRecipient` classes expose existing `podcast:value` data to Python; `PodcastMeta.value` getter added to `PyPodcastMeta` (#337)
 

@@ -1110,6 +1110,17 @@ pub struct GeoLocation {
     pub coordinates: Vec<Vec<f64>>,
     /// Coordinate Reference System (e.g., "EPSG:4326" for WGS84 latitude/longitude)
     pub crs: Option<String>,
+    /// Elevation in meters (from `georss:elev`)
+    pub elev: Option<f64>,
+    /// Feature type classification (from `georss:featuretypetag`)
+    #[napi(js_name = "featureTypeTag")]
+    pub feature_type_tag: Option<String>,
+    /// Human-readable place name (from `georss:featurename`)
+    #[napi(js_name = "featureName")]
+    pub feature_name: Option<String>,
+    /// Relationship type (from `georss:relationshiptag`)
+    #[napi(js_name = "relationshipTag")]
+    pub relationship_tag: Option<String>,
 }
 
 impl From<feedparser_rs::namespace::georss::GeoLocation> for GeoLocation {
@@ -1129,6 +1140,10 @@ impl From<feedparser_rs::namespace::georss::GeoLocation> for GeoLocation {
                 .map(|(lat, lng)| vec![lat, lng])
                 .collect(),
             crs: core.srs_name,
+            elev: core.elev,
+            feature_type_tag: core.feature_type_tag,
+            feature_name: core.feature_name,
+            relationship_tag: core.relationship_tag,
         }
     }
 }

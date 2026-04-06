@@ -408,3 +408,54 @@ fn test_issue_248_geo_lat_only_no_where_constructed() {
         "where should not be constructed without both lat and long"
     );
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// GeoRSS extended attributes tests (issue #355)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_issue_355_georss_extended_attrs_fixture() {
+    let xml = include_bytes!("../../../tests/fixtures/georss_extended_attributes.xml");
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo);
+    assert_eq!(feed.entries.len(), 4);
+
+    // Item 1: Mountain Peak — all extended attrs + geometry
+    let geo0 = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("item 1 should have geo");
+    assert_eq!(geo0.geo_type, GeoType::Point);
+    assert_eq!(geo0.coordinates[0], (45.256, -71.92));
+    assert_eq!(geo0.elev, Some(1337.5));
+    assert_eq!(geo0.feature_type_tag.as_deref(), Some("mountain"));
+    assert_eq!(geo0.feature_name.as_deref(), Some("Mont Mégantic"));
+    assert_eq!(geo0.relationship_tag.as_deref(), Some("is-located-at"));
+
+    // Item 2: City — partial extended attrs
+    let geo1 = feed.entries[1]
+        .r#where
+        .as_ref()
+        .expect("item 2 should have geo");
+    assert_eq!(geo1.feature_type_tag.as_deref(), Some("city"));
+    assert_eq!(geo1.feature_name.as_deref(), Some("Paris"));
+    assert!(geo1.elev.is_none());
+
+    // Item 3: Metadata Only — no geometry, only feature_name
+    let geo2 = feed.entries[2]
+        .r#where
+        .as_ref()
+        .expect("item 3 should have geo");
+    assert_eq!(geo2.feature_name.as_deref(), Some("Unknown Location"));
+    assert!(geo2.coordinates.is_empty());
+
+    // Item 4: Attrs Before Geometry — regression test for merge pattern (C1)
+    let geo3 = feed.entries[3]
+        .r#where
+        .as_ref()
+        .expect("item 4 should have geo");
+    assert_eq!(geo3.geo_type, GeoType::Point);
+    assert_eq!(geo3.coordinates[0], (40.0, -74.0));
+    assert_eq!(geo3.feature_name.as_deref(), Some("Reverse Order"));
+    assert_eq!(geo3.elev, Some(500.0));
+}

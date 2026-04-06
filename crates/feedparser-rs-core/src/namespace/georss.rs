@@ -51,6 +51,14 @@ pub struct GeoLocation {
     ///
     /// Default is WGS84 (latitude/longitude) if not specified
     pub srs_name: Option<String>,
+    /// Elevation in meters (from `georss:elev`)
+    pub elev: Option<f64>,
+    /// Feature type classification (from `georss:featuretypetag`)
+    pub feature_type_tag: Option<String>,
+    /// Human-readable place name (from `georss:featurename`)
+    pub feature_name: Option<String>,
+    /// Relationship type (from `georss:relationshiptag`)
+    pub relationship_tag: Option<String>,
 }
 
 impl GeoLocation {
@@ -74,7 +82,7 @@ impl GeoLocation {
         Self {
             geo_type: GeoType::Point,
             coordinates: vec![(lat, lon)],
-            srs_name: None,
+            ..Default::default()
         }
     }
 
@@ -94,11 +102,11 @@ impl GeoLocation {
     /// assert_eq!(loc.coordinates.len(), 2);
     /// ```
     #[must_use]
-    pub const fn line(coords: Vec<(f64, f64)>) -> Self {
+    pub fn line(coords: Vec<(f64, f64)>) -> Self {
         Self {
             geo_type: GeoType::Line,
             coordinates: coords,
-            srs_name: None,
+            ..Default::default()
         }
     }
 
@@ -122,11 +130,11 @@ impl GeoLocation {
     /// let loc = GeoLocation::polygon(coords);
     /// ```
     #[must_use]
-    pub const fn polygon(coords: Vec<(f64, f64)>) -> Self {
+    pub fn polygon(coords: Vec<(f64, f64)>) -> Self {
         Self {
             geo_type: GeoType::Polygon,
             coordinates: coords,
-            srs_name: None,
+            ..Default::default()
         }
     }
 
@@ -152,7 +160,7 @@ impl GeoLocation {
         Self {
             geo_type: GeoType::Box,
             coordinates: vec![(lower_lat, lower_lon), (upper_lat, upper_lon)],
-            srs_name: None,
+            ..Default::default()
         }
     }
 }
@@ -258,26 +266,78 @@ pub fn handle_entry_element(
     match tag {
         b"point" => {
             if let Some(loc) = parse_point(text) {
-                entry.r#where = Some(Box::new(loc));
+                let existing = entry
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
             true
         }
         b"line" => {
             if let Some(loc) = parse_line(text) {
-                entry.r#where = Some(Box::new(loc));
+                let existing = entry
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
             true
         }
         b"polygon" => {
             if let Some(loc) = parse_polygon(text) {
-                entry.r#where = Some(Box::new(loc));
+                let existing = entry
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
             true
         }
         b"box" => {
             if let Some(loc) = parse_box(text) {
-                entry.r#where = Some(Box::new(loc));
+                let existing = entry
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
+            true
+        }
+        b"elev" => {
+            if let Ok(v) = text.trim().parse::<f64>()
+                && v.is_finite()
+            {
+                entry
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                    .elev = Some(v);
+            }
+            true
+        }
+        b"featuretypetag" => {
+            entry
+                .r#where
+                .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                .feature_type_tag = Some(text.to_string());
+            true
+        }
+        b"featurename" => {
+            entry
+                .r#where
+                .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                .feature_name = Some(text.to_string());
+            true
+        }
+        b"relationshiptag" => {
+            entry
+                .r#where
+                .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                .relationship_tag = Some(text.to_string());
             true
         }
         _ => false,
@@ -305,26 +365,74 @@ pub fn handle_feed_element(
     match tag {
         b"point" => {
             if let Some(loc) = parse_point(text) {
-                feed.r#where = Some(Box::new(loc));
+                let existing = feed
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
             true
         }
         b"line" => {
             if let Some(loc) = parse_line(text) {
-                feed.r#where = Some(Box::new(loc));
+                let existing = feed
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
             true
         }
         b"polygon" => {
             if let Some(loc) = parse_polygon(text) {
-                feed.r#where = Some(Box::new(loc));
+                let existing = feed
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
             true
         }
         b"box" => {
             if let Some(loc) = parse_box(text) {
-                feed.r#where = Some(Box::new(loc));
+                let existing = feed
+                    .r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()));
+                existing.geo_type = loc.geo_type;
+                existing.coordinates = loc.coordinates;
+                existing.srs_name = loc.srs_name;
             }
+            true
+        }
+        b"elev" => {
+            if let Ok(v) = text.trim().parse::<f64>()
+                && v.is_finite()
+            {
+                feed.r#where
+                    .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                    .elev = Some(v);
+            }
+            true
+        }
+        b"featuretypetag" => {
+            feed.r#where
+                .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                .feature_type_tag = Some(text.to_string());
+            true
+        }
+        b"featurename" => {
+            feed.r#where
+                .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                .feature_name = Some(text.to_string());
+            true
+        }
+        b"relationshiptag" => {
+            feed.r#where
+                .get_or_insert_with(|| Box::new(GeoLocation::default()))
+                .relationship_tag = Some(text.to_string());
             true
         }
         _ => false,
@@ -341,7 +449,7 @@ fn parse_point(text: &str) -> Option<GeoLocation> {
         Some(GeoLocation {
             geo_type: GeoType::Point,
             coordinates: coords,
-            srs_name: None,
+            ..Default::default()
         })
     } else {
         None
@@ -358,7 +466,7 @@ fn parse_line(text: &str) -> Option<GeoLocation> {
         Some(GeoLocation {
             geo_type: GeoType::Line,
             coordinates: coords,
-            srs_name: None,
+            ..Default::default()
         })
     } else {
         None
@@ -375,7 +483,7 @@ fn parse_polygon(text: &str) -> Option<GeoLocation> {
         Some(GeoLocation {
             geo_type: GeoType::Polygon,
             coordinates: coords,
-            srs_name: None,
+            ..Default::default()
         })
     } else {
         None
@@ -392,7 +500,7 @@ fn parse_box(text: &str) -> Option<GeoLocation> {
         Some(GeoLocation {
             geo_type: GeoType::Box,
             coordinates: coords,
-            srs_name: None,
+            ..Default::default()
         })
     } else {
         None
@@ -630,5 +738,119 @@ mod tests {
         let handled = handle_feed_element(b"point", "invalid data", &mut feed, &limits);
         assert!(handled);
         assert!(feed.r#where.is_none());
+    }
+
+    #[test]
+    fn test_handle_entry_element_elev() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_entry_element(b"elev", "1337.5", &mut entry, &limits);
+        assert!(handled);
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.elev, Some(1337.5));
+    }
+
+    #[test]
+    fn test_handle_entry_element_feature_name() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_entry_element(b"featurename", "Mont Mégantic", &mut entry, &limits);
+        assert!(handled);
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.feature_name.as_deref(), Some("Mont Mégantic"));
+    }
+
+    #[test]
+    fn test_handle_entry_element_feature_type_tag() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_entry_element(b"featuretypetag", "mountain", &mut entry, &limits);
+        assert!(handled);
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.feature_type_tag.as_deref(), Some("mountain"));
+    }
+
+    #[test]
+    fn test_handle_entry_element_relationship_tag() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        let handled =
+            handle_entry_element(b"relationshiptag", "is-located-at", &mut entry, &limits);
+        assert!(handled);
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.relationship_tag.as_deref(), Some("is-located-at"));
+    }
+
+    #[test]
+    fn test_extended_attrs_without_geometry() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        handle_entry_element(b"featurename", "Unknown Location", &mut entry, &limits);
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.feature_name.as_deref(), Some("Unknown Location"));
+        assert!(geo.coordinates.is_empty());
+    }
+
+    #[test]
+    fn test_extended_attrs_invalid_elev() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        let handled = handle_entry_element(b"elev", "not-a-number", &mut entry, &limits);
+        assert!(handled);
+        // GeoLocation not created because elev parse failed
+        assert!(entry.r#where.is_none());
+    }
+
+    #[test]
+    fn test_extended_attrs_elev_non_finite_ignored() {
+        let limits = ParserLimits::default();
+
+        for value in ["NaN", "Infinity", "-Infinity"] {
+            let mut entry = Entry::default();
+            let handled = handle_entry_element(b"elev", value, &mut entry, &limits);
+            assert!(handled, "element must be recognized for value {value}");
+            assert!(
+                entry.r#where.is_none(),
+                "non-finite elev '{value}' must not create GeoLocation"
+            );
+        }
+    }
+
+    #[test]
+    fn test_extended_attrs_before_geometry() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        handle_entry_element(b"featurename", "Reverse Order", &mut entry, &limits);
+        handle_entry_element(b"elev", "500.0", &mut entry, &limits);
+        handle_entry_element(b"point", "40.0 -74.0", &mut entry, &limits);
+
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.geo_type, GeoType::Point);
+        assert_eq!(geo.coordinates[0], (40.0, -74.0));
+        assert_eq!(geo.feature_name.as_deref(), Some("Reverse Order"));
+        assert_eq!(geo.elev, Some(500.0));
+    }
+
+    #[test]
+    fn test_extended_attrs_after_geometry() {
+        let mut entry = Entry::default();
+        let limits = ParserLimits::default();
+
+        handle_entry_element(b"point", "45.256 -71.92", &mut entry, &limits);
+        handle_entry_element(b"featurename", "Mont Mégantic", &mut entry, &limits);
+        handle_entry_element(b"elev", "1337.5", &mut entry, &limits);
+
+        let geo = entry.r#where.as_ref().unwrap();
+        assert_eq!(geo.geo_type, GeoType::Point);
+        assert_eq!(geo.coordinates[0], (45.256, -71.92));
+        assert_eq!(geo.feature_name.as_deref(), Some("Mont Mégantic"));
+        assert_eq!(geo.elev, Some(1337.5));
     }
 }
