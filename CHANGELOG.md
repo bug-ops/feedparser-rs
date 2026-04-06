@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-04-06
+
 ### Added
 
 - Core: parse 8 additional Podcast 2.0 namespace elements: `podcast:transcript`, `podcast:alternateEnclosure` (with `podcast:source` and `podcast:integrity` children), `podcast:location`, `podcast:podroll` (with `podcast:remoteItem` children), `podcast:socialInteract`, `podcast:txt`, `podcast:updateFrequency`, `podcast:follow`; new types `PodcastAlternateEnclosure`, `PodcastAlternateEnclosureSource`, `PodcastIntegrity`, `PodcastLocation`, `PodcastRemoteItem`, `PodcastSocialInteract`, `PodcastTxt`, `PodcastUpdateFrequency`, `PodcastFollow` added to public API (#351)
@@ -468,7 +470,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.8...v0.5.0
 [0.4.8]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.7...v0.4.8
