@@ -39,6 +39,26 @@ impl PyGeoLocation {
         self.inner.srs_name.as_deref()
     }
 
+    #[getter]
+    fn elev(&self) -> Option<f64> {
+        self.inner.elev
+    }
+
+    #[getter]
+    fn feature_type_tag(&self) -> Option<&str> {
+        self.inner.feature_type_tag.as_deref()
+    }
+
+    #[getter]
+    fn feature_name(&self) -> Option<&str> {
+        self.inner.feature_name.as_deref()
+    }
+
+    #[getter]
+    fn relationship_tag(&self) -> Option<&str> {
+        self.inner.relationship_tag.as_deref()
+    }
+
     fn __repr__(&self) -> String {
         match self.inner.geo_type {
             GeoType::Point => {
@@ -60,8 +80,6 @@ impl PyGeoLocation {
     }
 
     fn __eq__(&self, other: &Self) -> bool {
-        self.inner.geo_type == other.inner.geo_type
-            && self.inner.coordinates == other.inner.coordinates
-            && self.inner.srs_name == other.inner.srs_name
+        self.inner == other.inner
     }
 }
