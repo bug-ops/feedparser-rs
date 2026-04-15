@@ -350,11 +350,11 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node: ['20']
+        node: ['22']
         include:
-          # Test Node 22 only on Linux
+          # Test Node 24 only on Linux
           - os: ubuntu-latest
-            node: '22'
+            node: '24'
 
     steps:
       - uses: actions/checkout@v6
@@ -379,7 +379,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: 10
 
       - name: Setup Node.js ${{ matrix.node }}
         uses: actions/setup-node@v6
@@ -515,12 +515,12 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v6
         with:
-          version: 9
+          version: 10
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: crates/feedparser-rs-node/pnpm-lock.yaml
 
