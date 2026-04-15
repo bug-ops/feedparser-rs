@@ -6,7 +6,15 @@ version = 2
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 # List of advisory IDs to ignore
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0097: rand 0.8.5 unsoundness via aliased mutable reference in ThreadRng.
+    # This rand version is a transitive build-time-only dependency:
+    #   ammonia → html5ever → markup5ever → web_atoms (build) → phf_codegen/string_cache_codegen → phf_generator → rand
+    # The unsoundness requires a custom logger calling rand::rng() during ThreadRng reseed,
+    # which cannot occur in a build script context. Upgrade is blocked until ammonia migrates
+    # from phf 0.11.x to phf 0.13.x.
+    { id = "RUSTSEC-2026-0097", reason = "build-time-only transitive dep via phf_generator; unsoundness conditions unreachable in build scripts" },
+]
 
 [licenses]
 version = 2
