@@ -428,6 +428,11 @@ impl PyEntry {
     }
 
     #[getter]
+    fn media_title(&self) -> Option<&str> {
+        self.inner.media_title.as_deref()
+    }
+
+    #[getter]
     fn podcast(&self) -> Option<PyPodcastEntryMeta> {
         self.inner
             .podcast
@@ -523,6 +528,7 @@ impl PyEntry {
             "media_rating",
             "media_keywords",
             "media_description",
+            "media_title",
             "podcast",
             "thr_in_reply_to",
             "thr_total",
@@ -1083,6 +1089,13 @@ impl PyEntry {
             "media_description" => Ok(self
                 .inner
                 .media_description
+                .as_deref()
+                .into_pyobject(py)?
+                .into_any()
+                .unbind()),
+            "media_title" => Ok(self
+                .inner
+                .media_title
                 .as_deref()
                 .into_pyobject(py)?
                 .into_any()

@@ -670,6 +670,9 @@ pub struct Entry {
     /// Media RSS description (plain text only)
     #[napi(js_name = "mediaDescription")]
     pub media_description: Option<String>,
+    /// Media RSS title (plain text only)
+    #[napi(js_name = "mediaTitle")]
+    pub media_title: Option<String>,
     /// iTunes episode metadata
     pub itunes: Option<ItunesEntryMeta>,
     /// Podcast 2.0 episode metadata
@@ -773,6 +776,7 @@ impl From<CoreEntry> for Entry {
             media_rating: core.media_rating.map(MediaRating::from),
             media_keywords: core.media_keywords,
             media_description: core.media_description,
+            media_title: core.media_title,
             itunes: core.itunes.map(|b| ItunesEntryMeta::from(*b)),
             podcast: core.podcast.map(|b| PodcastEntryMeta::from(*b)),
             thr_in_reply_to: core.in_reply_to.into_iter().map(InReplyTo::from).collect(),

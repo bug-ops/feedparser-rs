@@ -89,14 +89,12 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
                 }
             }
         }
-        "updateFrequency" => {
-            if !text.is_empty() {
-                if feed.syndication.is_none() {
-                    feed.syndication = Some(Box::new(SyndicationMeta::default()));
-                }
-                if let Some(syn) = &mut feed.syndication {
-                    syn.update_frequency = Some(text.to_string());
-                }
+        "updateFrequency" if !text.is_empty() => {
+            if feed.syndication.is_none() {
+                feed.syndication = Some(Box::new(SyndicationMeta::default()));
+            }
+            if let Some(syn) = &mut feed.syndication {
+                syn.update_frequency = Some(text.to_string());
             }
         }
         "updateBase" => {

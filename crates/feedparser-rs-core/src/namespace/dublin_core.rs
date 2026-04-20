@@ -54,43 +54,29 @@ pub fn handle_feed_element(element: &str, text: &str, feed: &mut FeedMeta) {
             // dc:subject → tags
             feed.tags.push(Tag::new(text));
         }
-        "description" => {
-            // dc:description → subtitle (if not already set)
-            if feed.subtitle.is_none() {
-                feed.subtitle = Some(text.to_string());
-            }
+        "description" if feed.subtitle.is_none() => {
+            feed.subtitle = Some(text.to_string());
         }
         "publisher" => {
-            // dc:publisher → publisher
             if feed.publisher.is_none() {
                 feed.publisher = Some(text.into());
             }
             feed.dc_publisher = Some(text.into());
         }
         "rights" => {
-            // dc:rights → rights (if not already set)
             if feed.rights.is_none() {
                 feed.rights = Some(text.to_string());
             }
             feed.dc_rights = Some(text.to_string());
         }
-        "title" => {
-            // dc:title → title (fallback)
-            if feed.title.is_none() {
-                feed.title = Some(text.to_string());
-            }
+        "title" if feed.title.is_none() => {
+            feed.title = Some(text.to_string());
         }
-        "language" => {
-            // dc:language → language
-            if feed.language.is_none() {
-                feed.language = Some(text.into());
-            }
+        "language" if feed.language.is_none() => {
+            feed.language = Some(text.into());
         }
-        "identifier" => {
-            // dc:identifier → id (fallback)
-            if feed.id.is_none() {
-                feed.id = Some(text.to_string());
-            }
+        "identifier" if feed.id.is_none() => {
+            feed.id = Some(text.to_string());
         }
         "contributor" => {
             // dc:contributor → contributors
@@ -132,20 +118,14 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
             entry.dc_subject.push(text.to_string());
             entry.tags.push(Tag::new(text));
         }
-        "description" => {
-            if entry.summary.is_none() {
-                entry.summary = Some(text.to_string());
-            }
+        "description" if entry.summary.is_none() => {
+            entry.summary = Some(text.to_string());
         }
-        "title" => {
-            if entry.title.is_none() {
-                entry.title = Some(text.to_string());
-            }
+        "title" if entry.title.is_none() => {
+            entry.title = Some(text.to_string());
         }
-        "identifier" => {
-            if entry.id.is_none() {
-                entry.id = Some(text.into());
-            }
+        "identifier" if entry.id.is_none() => {
+            entry.id = Some(text.into());
         }
         "contributor" => {
             entry.contributors.push(Person::from_name(text));

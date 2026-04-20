@@ -156,15 +156,11 @@ fn parse_rating(scheme: Option<&str>, text: &str) -> Option<MediaRating> {
 /// * `feed` - Feed metadata to update
 pub fn handle_feed_element(element: &str, scheme: Option<&str>, text: &str, feed: &mut FeedMeta) {
     match element {
-        "rating" => {
-            if feed.media_rating.is_none() {
-                feed.media_rating = parse_rating(scheme, text);
-            }
+        "rating" if feed.media_rating.is_none() => {
+            feed.media_rating = parse_rating(scheme, text);
         }
-        "keywords" => {
-            if feed.media_keywords.is_none() && !text.trim().is_empty() {
-                feed.media_keywords = Some(text.trim().to_string());
-            }
+        "keywords" if feed.media_keywords.is_none() && !text.trim().is_empty() => {
+            feed.media_keywords = Some(text.trim().to_string());
         }
         _ => {}
     }
@@ -182,15 +178,11 @@ pub fn handle_feed_element(element: &str, scheme: Option<&str>, text: &str, feed
 /// * `entry` - Entry to update
 pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
     match element {
-        "title" => {
-            if entry.title.is_none() {
-                entry.title = Some(text.to_string());
-            }
+        "title" if entry.title.is_none() => {
+            entry.title = Some(text.to_string());
         }
-        "description" => {
-            if entry.summary.is_none() {
-                entry.summary = Some(text.to_string());
-            }
+        "description" if entry.summary.is_none() => {
+            entry.summary = Some(text.to_string());
         }
         "keywords" => {
             // Store raw comma-separated string
@@ -205,10 +197,8 @@ pub fn handle_entry_element(element: &str, text: &str, entry: &mut Entry) {
                 }
             }
         }
-        "category" => {
-            if !text.is_empty() {
-                entry.tags.push(Tag::new(text));
-            }
+        "category" if !text.is_empty() => {
+            entry.tags.push(Tag::new(text));
         }
         _ => {
             // Other elements like media:content, media:thumbnail, media:credit

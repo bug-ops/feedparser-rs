@@ -35,7 +35,7 @@ High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node
 |-----------|-------------|
 | Dublin Core | Creator, date, rights metadata |
 | Content | Encoded HTML content |
-| Media RSS | Media attachments and metadata |
+| Media RSS | Media attachments and metadata (`media:content`, `media:thumbnail`, `media:title`, `media:description`, `media:credit`, `media:copyright`, `media:rating`, `media:keywords`) |
 | iTunes | Podcast metadata (author, duration, explicit) |
 | Podcast 2.0 | Chapters, transcripts, funding |
 | Syndication | Update schedule (period, frequency, base) |

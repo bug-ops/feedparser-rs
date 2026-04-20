@@ -922,6 +922,26 @@ fn parse_entry(
                                         entry.summary = Some(text);
                                     }
                                 }
+                            } else if media_element == "title" {
+                                let type_attr = element
+                                    .attributes()
+                                    .flatten()
+                                    .find(|a| a.key.as_ref() == b"type")
+                                    .and_then(|a| {
+                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
+                                    });
+                                if !is_empty {
+                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                                    *bozo |= had_bozo;
+                                    let is_plain =
+                                        type_attr.as_deref().is_none_or(|t| t == "plain");
+                                    if is_plain && !text.is_empty() {
+                                        entry.media_title = Some(text.clone());
+                                    }
+                                    if entry.title.is_none() && !text.is_empty() {
+                                        entry.title = Some(text);
+                                    }
+                                }
                             } else if media_element == "keywords" {
                                 if !is_empty {
                                     let (text, had_bozo) = read_text(reader, buf, limits)?;
@@ -1381,10 +1401,42 @@ fn parse_atom_media_group(
             }
             Ok(Event::Start(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                handle_atom_media_group_child(&tag, &e, entry, limits, namespaces);
-                *depth += 1;
-                skip_element(reader, buf, limits, *depth)?;
-                *depth = depth.saturating_sub(1);
+                if is_media_tag(&tag, namespaces) == Some("title") {
+                    let type_attr = e
+                        .attributes()
+                        .flatten()
+                        .find(|a| a.key.as_ref() == b"type")
+                        .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned));
+                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                    *bozo |= had_bozo;
+                    let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
+                    if is_plain && !text.is_empty() {
+                        entry.media_title = Some(text.clone());
+                    }
+                    if entry.title.is_none() && !text.is_empty() {
+                        entry.title = Some(text);
+                    }
+                } else if is_media_tag(&tag, namespaces) == Some("description") {
+                    let type_attr = e
+                        .attributes()
+                        .flatten()
+                        .find(|a| a.key.as_ref() == b"type")
+                        .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned));
+                    let (text, had_bozo) = read_text(reader, buf, limits)?;
+                    *bozo |= had_bozo;
+                    let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
+                    if is_plain && !text.is_empty() {
+                        entry.media_description = Some(text.clone());
+                    }
+                    if entry.summary.is_none() && !text.is_empty() {
+                        entry.summary = Some(text);
+                    }
+                } else {
+                    handle_atom_media_group_child(&tag, &e, entry, limits, namespaces);
+                    *depth += 1;
+                    skip_element(reader, buf, limits, *depth)?;
+                    *depth = depth.saturating_sub(1);
+                }
             }
             Ok(Event::End(_) | Event::Eof) => break,
             Err(_) => {
