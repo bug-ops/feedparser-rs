@@ -848,27 +848,11 @@ fn parse_itunes_category(
         let mut nesting = 0;
         loop {
             match reader.read_event_into(buf) {
-                Ok(Event::Start(sub_e)) => {
-                    if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces) {
-                        nesting += 1;
-                        if nesting == 1 {
-                            for attr in sub_e.attributes().flatten() {
-                                if attr.key.as_ref() == b"text"
-                                    && let Ok(value) = attr.unescape_value()
-                                {
-                                    subcategory_text = Some(
-                                        value.chars().take(limits.max_attribute_length).collect(),
-                                    );
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                Ok(Event::Empty(sub_e)) => {
-                    if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces)
-                        && subcategory_text.is_none()
-                    {
+                Ok(Event::Start(sub_e))
+                    if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces) =>
+                {
+                    nesting += 1;
+                    if nesting == 1 {
                         for attr in sub_e.attributes().flatten() {
                             if attr.key.as_ref() == b"text"
                                 && let Ok(value) = attr.unescape_value()
@@ -880,13 +864,27 @@ fn parse_itunes_category(
                         }
                     }
                 }
-                Ok(Event::End(end_e)) => {
-                    if is_itunes_tag(end_e.name().as_ref(), b"category", &feed.namespaces) {
-                        if nesting == 0 {
+                Ok(Event::Empty(sub_e))
+                    if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces)
+                        && subcategory_text.is_none() =>
+                {
+                    for attr in sub_e.attributes().flatten() {
+                        if attr.key.as_ref() == b"text"
+                            && let Ok(value) = attr.unescape_value()
+                        {
+                            subcategory_text =
+                                Some(value.chars().take(limits.max_attribute_length).collect());
                             break;
                         }
-                        nesting -= 1;
                     }
+                }
+                Ok(Event::End(end_e))
+                    if is_itunes_tag(end_e.name().as_ref(), b"category", &feed.namespaces) =>
+                {
+                    if nesting == 0 {
+                        break;
+                    }
+                    nesting -= 1;
                 }
                 Ok(Event::Eof) | Err(_) => break,
                 _ => {}
@@ -2529,6 +2527,21 @@ fn parse_item_media(
             }
             if entry.summary.is_none() && !text.is_empty() {
                 entry.summary = Some(text);
+            }
+        }
+        "title" => {
+            let type_attr = find_attribute(attrs, b"type").map(str::to_owned);
+            let text = if is_empty {
+                String::new()
+            } else {
+                read_text_str(reader, buf, limits)?
+            };
+            let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
+            if is_plain && !text.is_empty() {
+                entry.media_title = Some(text.clone());
+            }
+            if entry.title.is_none() && !text.is_empty() {
+                entry.title = Some(text);
             }
         }
         _ => {

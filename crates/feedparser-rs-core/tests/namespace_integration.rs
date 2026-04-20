@@ -513,6 +513,12 @@ fn test_media_credit_copyright_rating() {
         entry.media_description.as_deref(),
         Some("A test description")
     );
+
+    // media_title
+    assert_eq!(
+        entry.media_title.as_deref(),
+        Some("Alternative Video Title")
+    );
 }
 
 #[test]
@@ -594,4 +600,134 @@ fn test_rss_media_rating_no_scheme() {
     let rating = feed.feed.media_rating.as_ref().unwrap();
     assert!(rating.scheme.is_none());
     assert_eq!(rating.content, "adult");
+}
+
+#[test]
+fn test_rss_media_title_item_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel><title>T</title><link>http://example.com</link>
+            <item>
+                <title>Item Title</title>
+                <media:title>Media Plain Title</media:title>
+            </item>
+        </channel>
+    </rss>"#;
+    let feed = parse(xml).unwrap();
+    let entry = &feed.entries[0];
+    assert_eq!(entry.media_title.as_deref(), Some("Media Plain Title"));
+    // entry.title stays as original item title, not overwritten (media:title only fills if empty)
+    assert_eq!(entry.title.as_deref(), Some("Item Title"));
+}
+
+#[test]
+fn test_rss_media_title_html_type_not_stored() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel><title>T</title><link>http://example.com</link>
+            <item>
+                <media:title type="html">&lt;b&gt;Bold Title&lt;/b&gt;</media:title>
+            </item>
+        </channel>
+    </rss>"#;
+    let feed = parse(xml).unwrap();
+    let entry = &feed.entries[0];
+    assert!(entry.media_title.is_none());
+    // entry.title filled regardless of type; entities decoded, HTML tags not stripped
+    assert_eq!(entry.title.as_deref(), Some("<b>Bold Title</b>"));
+}
+
+#[test]
+fn test_rss_media_title_last_write_wins() {
+    // item-level title followed by group-level title: last one wins
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel><title>T</title><link>http://example.com</link>
+            <item>
+                <media:title>Item Title</media:title>
+                <media:group>
+                    <media:title>Group Title</media:title>
+                </media:group>
+            </item>
+        </channel>
+    </rss>"#;
+    let feed = parse(xml).unwrap();
+    assert_eq!(feed.entries[0].media_title.as_deref(), Some("Group Title"));
+}
+
+#[test]
+fn test_atom_media_title_item_level() {
+    let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Feed</title>
+        <id>urn:test</id>
+        <entry>
+            <id>urn:1</id>
+            <title>Atom Entry Title</title>
+            <media:title>Atom Media Title</media:title>
+        </entry>
+    </feed>"#;
+    let feed = parse(xml).unwrap();
+    let entry = &feed.entries[0];
+    assert_eq!(entry.media_title.as_deref(), Some("Atom Media Title"));
+}
+
+#[test]
+fn test_atom_media_title_group_level() {
+    let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Feed</title>
+        <id>urn:test</id>
+        <entry>
+            <id>urn:1</id>
+            <title>Atom Entry</title>
+            <media:group>
+                <media:title>Group Media Title</media:title>
+            </media:group>
+        </entry>
+    </feed>"#;
+    let feed = parse(xml).unwrap();
+    assert_eq!(
+        feed.entries[0].media_title.as_deref(),
+        Some("Group Media Title")
+    );
+}
+
+// O1: last-write-wins — group-first ordering means item-level wins
+#[test]
+fn test_rss_media_title_last_write_wins_item_last() {
+    // <media:group> emitted before item-level <media:title>: item-level is last, so it wins
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:media="http://search.yahoo.com/mrss/">
+        <channel><title>T</title><link>http://example.com</link>
+            <item>
+                <media:group>
+                    <media:title>Group Title</media:title>
+                </media:group>
+                <media:title>Item Title</media:title>
+            </item>
+        </channel>
+    </rss>"#;
+    let feed = parse(xml).unwrap();
+    // item-level comes after group in this feed: item-level wins (last-write-wins, not group-wins)
+    assert_eq!(feed.entries[0].media_title.as_deref(), Some("Item Title"));
+}
+
+// O2: Atom media:title with type="html" must not be stored in media_title
+#[test]
+fn test_atom_media_title_html_type_not_stored() {
+    let xml = br#"<?xml version="1.0" encoding="utf-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Feed</title>
+        <id>urn:test</id>
+        <entry>
+            <id>urn:1</id>
+            <media:title type="html">&lt;b&gt;Bold Title&lt;/b&gt;</media:title>
+        </entry>
+    </feed>"#;
+    let feed = parse(xml).unwrap();
+    let entry = &feed.entries[0];
+    assert!(entry.media_title.is_none());
+    // entry.title filled as fallback; entities decoded, HTML tags not stripped
+    assert_eq!(entry.title.as_deref(), Some("<b>Bold Title</b>"));
 }

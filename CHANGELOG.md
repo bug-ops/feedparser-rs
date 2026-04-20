@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- feat(core): parse `media:title` element into `entry.media_title` for RSS and Atom feeds (including inside `<media:group>`); exposed in Python and Node.js bindings (#363)
+
 ## [0.5.2] - 2026-04-06
 
 ### Added

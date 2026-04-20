@@ -94,6 +94,8 @@ pub struct Entry {
     pub media_keywords: Option<String>,
     /// Media RSS description (plain text only; None if type != "plain")
     pub media_description: Option<String>,
+    /// Media RSS title (`media:title` element, plain text only; `None` if `type != "plain"`)
+    pub media_title: Option<String>,
     /// Podcast 2.0 transcripts for this episode
     pub podcast_transcripts: Vec<PodcastTranscript>,
     /// Podcast 2.0 persons for this episode (hosts, guests, etc.)

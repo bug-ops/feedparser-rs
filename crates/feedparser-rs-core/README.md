@@ -17,7 +17,7 @@ This is the core parsing library that powers the Python and Node.js bindings.
 - **Safe**: No unsafe code, comprehensive error handling
 - **HTTP support**: Fetch feeds from URLs with compression and conditional GET
 - **Podcast support**: iTunes and Podcast 2.0 namespace extensions
-- **Namespace extensions**: Dublin Core, Media RSS, Syndication, GeoRSS, Creative Commons
+- **Namespace extensions**: Dublin Core, Media RSS (`media:title`, `media:description`, `media:content`, `media:thumbnail`, `media:credit`, `media:copyright`, `media:rating`, `media:keywords`), Syndication, GeoRSS, Creative Commons
 - **Well-tested**: 91%+ test coverage with real-world feed fixtures
 
 ## Installation
