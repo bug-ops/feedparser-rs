@@ -165,6 +165,7 @@ interface Entry {
   authors: Person[];
   tags: Tag[];
   enclosures: Enclosure[];
+  media_title?: string;
 }
 ```
 
