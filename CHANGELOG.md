@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-04-24
+
 ### Added
 
 - feat(core): parse `media:title` element into `entry.media_title` for RSS and Atom feeds (including inside `<media:group>`); exposed in Python and Node.js bindings (#363)
+
+### Security
+
+- Update `rustls-webpki` to 0.103.13 to address RUSTSEC-2026-0104
 
 ## [0.5.2] - 2026-04-06
 
@@ -474,7 +480,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.3...HEAD
+[0.5.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.4.8...v0.5.0
