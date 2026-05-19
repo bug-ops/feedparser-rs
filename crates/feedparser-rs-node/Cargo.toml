@@ -22,4 +22,4 @@ default = ["http"]
 http = ["feedparser-rs/http"]
 
 [build-dependencies]
-napi-build = "2.1"
+napi-build = "2.3"
