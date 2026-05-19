@@ -49,7 +49,7 @@ fn collect_attributes(e: &quick_xml::events::BytesStart) -> (Vec<(Vec<u8>, Strin
     for result in e.attributes() {
         match result {
             Ok(attr) => {
-                if let Ok(v) = attr.unescape_value() {
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     attrs.push((attr.key.as_ref().to_vec(), v.to_string()));
                 } else {
                     has_errors = true;
@@ -855,7 +855,8 @@ fn parse_itunes_category(
                     if nesting == 1 {
                         for attr in sub_e.attributes().flatten() {
                             if attr.key.as_ref() == b"text"
-                                && let Ok(value) = attr.unescape_value()
+                                && let Ok(value) =
+                                    attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             {
                                 subcategory_text =
                                     Some(value.chars().take(limits.max_attribute_length).collect());
@@ -870,7 +871,8 @@ fn parse_itunes_category(
                 {
                     for attr in sub_e.attributes().flatten() {
                         if attr.key.as_ref() == b"text"
-                            && let Ok(value) = attr.unescape_value()
+                            && let Ok(value) =
+                                attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         {
                             subcategory_text =
                                 Some(value.chars().take(limits.max_attribute_length).collect());

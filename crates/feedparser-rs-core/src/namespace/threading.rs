@@ -65,7 +65,7 @@ pub fn parse_in_reply_to_from_attrs<'a>(
         if attr.value.len() > max_attr_len {
             continue;
         }
-        let Ok(value) = attr.unescape_value() else {
+        let Ok(value) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) else {
             continue;
         };
         match attr.key.as_ref() {

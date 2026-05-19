@@ -104,7 +104,8 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                     for attr in e.attributes().flatten() {
                         if (attr.key.as_ref() == b"rdf:about"
                             || attr.key.local_name().as_ref() == b"about")
-                            && let Ok(value) = attr.unescape_value()
+                            && let Ok(value) =
+                                attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         {
                             feed.feed.id = Some(value.as_ref().into());
                         }
@@ -138,7 +139,9 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
                         if attr.key.as_ref() == b"rdf:about"
                             || attr.key.local_name().as_ref() == b"about"
                         {
-                            attr.unescape_value().ok().map(|v| v.to_string())
+                            attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                .ok()
+                                .map(|v| v.to_string())
                         } else {
                             None
                         }

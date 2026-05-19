@@ -433,7 +433,11 @@ fn parse_feed_element(
                                             .flatten()
                                             .find(|a| a.key.as_ref() == b"scheme")
                                             .and_then(|a| {
-                                                a.unescape_value().ok().map(|v| {
+                                                a.normalized_value(
+                                                    quick_xml::XmlVersion::Implicit1_0,
+                                                )
+                                                .ok()
+                                                .map(|v| {
                                                     truncate_to_length(
                                                         &v,
                                                         limits.max_attribute_length,
@@ -891,9 +895,14 @@ fn parse_entry(
                                         .flatten()
                                         .find(|a| a.key.as_ref() == b"scheme")
                                         .and_then(|a| {
-                                            a.unescape_value().ok().map(|v| {
-                                                truncate_to_length(&v, limits.max_attribute_length)
-                                            })
+                                            a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                                .ok()
+                                                .map(|v| {
+                                                    truncate_to_length(
+                                                        &v,
+                                                        limits.max_attribute_length,
+                                                    )
+                                                })
                                         });
                                     let text = read_text_str(reader, buf, limits)?;
                                     media_rss::handle_entry_rating(
@@ -1186,14 +1195,14 @@ fn parse_text_construct(
                 _ => {}
             },
             b"xml:base" | b"base" => {
-                if let Ok(v) = attr.unescape_value()
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
                     elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
             b"xml:lang" | b"lang" => {
-                if let Ok(v) = attr.unescape_value() {
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     elem_lang = Some(v.to_string());
                 }
             }
@@ -1329,14 +1338,14 @@ fn parse_content(
             }
             b"src" => src = Some(bytes_to_string(&attr.value)),
             b"xml:base" | b"base" => {
-                if let Ok(v) = attr.unescape_value()
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
                     elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
             b"xml:lang" | b"lang" => {
-                if let Ok(v) = attr.unescape_value() {
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     elem_lang = Some(v.to_string());
                 }
             }
@@ -1572,14 +1581,14 @@ fn parse_content_empty(
             }
             b"src" => src = Some(bytes_to_string(&attr.value)),
             b"xml:base" | b"base" => {
-                if let Ok(v) = attr.unescape_value()
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
                     elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
             b"xml:lang" | b"lang" => {
-                if let Ok(v) = attr.unescape_value() {
+                if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     elem_lang = Some(v.to_string());
                 }
             }

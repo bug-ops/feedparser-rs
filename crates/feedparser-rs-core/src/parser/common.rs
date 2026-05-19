@@ -433,7 +433,10 @@ pub fn extract_xml_base(
             key == b"xml:base" || key == b"base"
         })
         .filter(|attr| attr.value.len() <= max_attr_length)
-        .and_then(|attr| attr.unescape_value().ok())
+        .and_then(|attr| {
+            attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .ok()
+        })
         .map(|s| s.to_string())
 }
 
@@ -474,7 +477,10 @@ pub fn extract_xml_lang(
             key == b"xml:lang" || key == b"lang"
         })
         .filter(|attr| attr.value.len() <= max_attr_length)
-        .and_then(|attr| attr.unescape_value().ok())
+        .and_then(|attr| {
+            attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .ok()
+        })
         .map(|s| s.to_string())
 }
 
@@ -529,7 +535,7 @@ pub fn extract_namespaces(
             continue;
         }
 
-        let uri = if let Ok(v) = attr.unescape_value() {
+        let uri = if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
             v.to_string()
         } else {
             feed.bozo = true;
