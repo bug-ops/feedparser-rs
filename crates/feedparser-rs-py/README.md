@@ -155,7 +155,7 @@ if d.feed.itunes:
 # Episode metadata
 for entry in d.entries:
     if entry.itunes:
-        print(f"Duration: {entry.itunes.duration}s")
+        print(f"Duration: {entry.itunes.duration}")  # e.g. "01:30:00"
 ```
 
 ## API Reference

@@ -92,7 +92,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.4", default-features = false }
+feedparser-rs = { version = "0.5", default-features = false }
 ```
 
 ## Cargo Features
