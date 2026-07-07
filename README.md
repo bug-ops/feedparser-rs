@@ -57,7 +57,7 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.5.4"
+feedparser-rs = "0.5.5"
 ```
 
 > [!IMPORTANT]
