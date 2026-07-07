@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Update `quick-xml` to 0.41.0 to address RUSTSEC-2026-0195 (unbounded namespace-declaration allocation in `NsReader` enabling memory-exhaustion DoS)
+- Update `ammonia` to 4.1.3 to address an mXSS bypass via MathML `annotation-xml` encoding strip
+- Update `crossbeam-epoch` (dev dependency, via `criterion`) to 0.9.20 to address RUSTSEC-2026-0204
+
 ## [0.5.4] - 2026-05-26
 
 ### Changed
