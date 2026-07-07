@@ -187,7 +187,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.5.0", default-features = false }
+feedparser-rs = { version = "0.5", default-features = false }
 ```
 
 ## Workspace Structure
