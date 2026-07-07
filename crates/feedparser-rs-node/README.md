@@ -57,14 +57,22 @@ console.log(feed.version);  // "rss20"
 Fetch and parse feeds directly from URLs:
 
 ```javascript
-import { fetchAndParse } from 'feedparser-rs';
+import { parseUrl } from 'feedparser-rs';
 
-const feed = await fetchAndParse('https://example.com/feed.xml');
+const feed = parseUrl('https://example.com/feed.xml');
 console.log(feed.feed.title);
 console.log(`Fetched ${feed.entries.length} entries`);
+
+// Subsequent fetch with conditional GET (uses ETag/Last-Modified)
+const feed2 = parseUrl('https://example.com/feed.xml', feed.etag, feed.modified);
+if (feed2.status === 304) {
+  console.log('Not modified, use cached version');
+}
 ```
 
-> **Tip:** `fetchAndParse` automatically handles compression (gzip, deflate, brotli) and follows redirects.
+> **Important:** `parseUrl` is synchronous — it blocks the event loop for the duration of the HTTP request. Run it inside a worker thread if you need to avoid blocking on slow feeds.
+
+> **Tip:** `parseUrl` automatically handles compression (gzip, deflate, brotli) and follows redirects.
 
 ### Parsing from Buffer
 
@@ -78,30 +86,45 @@ const feed = parse(buffer);
 
 ## API
 
-### `parse(source: Buffer | string | Uint8Array): ParsedFeed`
+### `parse(source: Buffer | string): ParsedFeed`
 
 Parse a feed from bytes or string.
 
 **Parameters:**
-- `source` - Feed content as Buffer, string, or Uint8Array
+- `source` - Feed content as Buffer or string
 
 **Returns:**
 - `ParsedFeed` object with feed metadata and entries
 
 **Throws:**
-- `Error` if parsing fails catastrophically
+- `Error` if the input exceeds the size limit or parsing fails catastrophically
 
-### `fetchAndParse(url: string): Promise<ParsedFeed>`
+### `parseWithOptions(source: Buffer | string, maxSize?: number): ParsedFeed`
 
-Fetch and parse a feed from URL.
+Like `parse`, with a custom maximum feed size in bytes (default: 100 MB). Guards against
+DoS via oversized input.
+
+### `parseUrl(url: string, etag?: string, modified?: string, userAgent?: string): ParsedFeed`
+
+Fetch and parse a feed from an HTTP/HTTPS URL, with conditional GET support. **Synchronous**
+— blocks the event loop for the duration of the request.
 
 **Parameters:**
 - `url` - Feed URL to fetch
+- `etag` - ETag from a previous fetch, for conditional GET
+- `modified` - Last-Modified value from a previous fetch, for conditional GET
+- `userAgent` - Custom `User-Agent` header
 
 **Returns:**
-- Promise resolving to `ParsedFeed` object
+- `ParsedFeed` object with HTTP metadata (`status`, `href`, `etag`, `modified`, `headers`) populated. On a `304 Not Modified` response, `entries` is empty and `status` is `304`.
 
-### `detectFormat(source: Buffer | string | Uint8Array): string`
+> **Note:** Only available when the `http` Cargo feature is enabled (the default for the published npm package).
+
+### `parseUrlWithOptions(url: string, etag?: string, modified?: string, userAgent?: string, maxSize?: number): ParsedFeed`
+
+Like `parseUrl`, with a custom maximum feed size in bytes.
+
+### `detectFormat(source: Buffer | string): string`
 
 Detect feed format without full parsing.
 
@@ -115,6 +138,8 @@ console.log(format);  // "atom10"
 
 ## Types
 
+> **Note:** Field names follow napi-rs's automatic snake_case → camelCase conversion. Fields below are a representative subset — see `index.d.ts` for the complete definitions, including `Link`, `Person`, `Tag`, `Image`, `Enclosure`, `Itunes*`, `Podcast*`, `Media*`, and Dublin Core/GeoRSS fields.
+
 ### ParsedFeed
 
 ```typescript
@@ -122,30 +147,45 @@ interface ParsedFeed {
   feed: FeedMeta;
   entries: Entry[];
   bozo: boolean;
-  bozo_exception?: string;
+  bozoException?: string;
   encoding: string;
   version: string;
   namespaces: Record<string, string>;
+  status?: number;                   // HTTP status code (parseUrl only)
+  href?: string;                      // Final URL after redirects (parseUrl only)
+  etag?: string;                      // For conditional GET (parseUrl only)
+  modified?: string;                  // Last-Modified header (parseUrl only)
+  headers?: Record<string, string>;   // Full response headers (parseUrl only)
 }
 ```
 
 ### FeedMeta
 
+Dates are exposed as a raw string (original value, timezone preserved) plus a `*Parsed`
+variant with milliseconds since epoch.
+
 ```typescript
 interface FeedMeta {
   title?: string;
-  title_detail?: TextConstruct;
+  titleDetail?: TextConstruct;
   link?: string;
   links: Link[];
   subtitle?: string;
-  updated?: number;  // Milliseconds since epoch
+  updated?: string;          // Raw date string
+  updatedParsed?: number;    // Milliseconds since epoch
+  published?: string;
+  publishedParsed?: number;
   author?: string;
   authors: Person[];
   language?: string;
   image?: Image;
   tags: Tag[];
   id?: string;
-  ttl?: number;
+  ttl?: string;               // Kept as string for feedparser compatibility
+  itunes?: ItunesFeedMeta;
+  podcast?: PodcastMeta;
+  // ...and more: subtitleDetail, summary, contributors, publisher, rights,
+  // generator, icon, logo, syndication, media*, cloud, textinput, etc.
 }
 ```
 
@@ -159,17 +199,23 @@ interface Entry {
   links: Link[];
   summary?: string;
   content: Content[];
-  published?: number;  // Milliseconds since epoch
-  updated?: number;
+  published?: string;         // Raw date string
+  publishedParsed?: number;   // Milliseconds since epoch
+  updated?: string;
+  updatedParsed?: number;
   author?: string;
   authors: Person[];
   tags: Tag[];
   enclosures: Enclosure[];
-  media_title?: string;
+  mediaTitle?: string;
+  itunes?: ItunesEntryMeta;   // Episode duration, explicit, image, episode/season number
+  podcast?: PodcastEntryMeta; // Podcast 2.0: transcripts, chapters, soundbites, persons
+  // ...and more: titleDetail, subtitleDetail, rights, created*, expired*,
+  // publisher, contributors, comments, source, media*, thr*, dc*, etc.
 }
 ```
 
-> **Note:** See `index.d.ts` for complete type definitions including `Link`, `Person`, `Tag`, `Image`, `Enclosure`, and more.
+> **Note:** See `index.d.ts` for complete type definitions.
 
 ## Error Handling
 
@@ -179,7 +225,7 @@ The library uses a "bozo" flag (like feedparser) to indicate parsing errors whil
 const feed = parse('<rss><channel><title>Broken</title></rss>');
 
 if (feed.bozo) {
-  console.warn('Feed has errors:', feed.bozo_exception);
+  console.warn('Feed has errors:', feed.bozoException);
 }
 
 // Still can access parsed data
@@ -188,12 +234,14 @@ console.log(feed.feed.title);  // "Broken"
 
 ## Dates
 
-All date fields are returned as milliseconds since Unix epoch. Convert to JavaScript Date:
+Each date field is exposed twice: the raw string as it appeared in the feed (timezone
+preserved) and a `*Parsed` variant with milliseconds since Unix epoch, ready for `Date`:
 
 ```javascript
 const entry = feed.entries[0];
-if (entry.published) {
-  const date = new Date(entry.published);
+console.log(entry.published);        // e.g. "Mon, 06 Jul 2026 10:00:00 -0800" (raw string)
+if (entry.publishedParsed) {
+  const date = new Date(entry.publishedParsed);
   console.log(date.toISOString());
 }
 ```
@@ -227,7 +275,7 @@ Pre-built binaries available for:
 | Linux | x64, arm64 |
 | Windows | x64 |
 
-Supported Node.js versions: 18, 20, 22+
+Minimum Node.js version: 18 (per `package.json` `engines`). CI tests run on Node.js 22 and 24.
 
 ## Development
 

@@ -122,17 +122,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #### Fetching from URL
 
 ```rust
-use feedparser_rs::fetch_and_parse;
+use feedparser_rs::parse_url;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let feed = fetch_and_parse("https://example.com/feed.xml")?;
+    let feed = parse_url("https://example.com/feed.xml", None, None, None)?;
     println!("Fetched {} entries", feed.entries.len());
     Ok(())
 }
 ```
 
 > [!TIP]
-> Use `fetch_and_parse` for URL fetching with automatic compression handling (gzip, deflate, brotli).
+> Use `parse_url` for URL fetching with automatic compression handling (gzip, deflate, brotli) and conditional GET via the `etag`/`modified` parameters.
 
 ### Python
 
@@ -163,7 +163,7 @@ print(d.channel.title)     # -> d.feed.title
 ### Node.js
 
 ```javascript
-import { parse, fetchAndParse } from 'feedparser-rs';
+import { parse, parseUrl } from 'feedparser-rs';
 
 // Parse from string
 const feed = parse('<rss version="2.0">...</rss>');
@@ -171,8 +171,8 @@ console.log(feed.version);  // 'rss20'
 console.log(feed.feed.title);
 console.log(feed.entries.length);
 
-// Fetch from URL
-const remoteFeed = await fetchAndParse('https://example.com/feed.xml');
+// Fetch from URL (synchronous)
+const remoteFeed = parseUrl('https://example.com/feed.xml');
 ```
 
 See [Node.js API documentation](crates/feedparser-rs-node/README.md) for complete reference.
