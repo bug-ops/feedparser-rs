@@ -7,11 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2026-07-07
+
 ### Security
 
-- Update `quick-xml` to 0.41.0 to address RUSTSEC-2026-0195 (unbounded namespace-declaration allocation in `NsReader` enabling memory-exhaustion DoS)
-- Update `ammonia` to 4.1.3 to address an mXSS bypass via MathML `annotation-xml` encoding strip
-- Update `crossbeam-epoch` (dev dependency, via `criterion`) to 0.9.20 to address RUSTSEC-2026-0204
+- Update `quick-xml` to 0.41.0 to address RUSTSEC-2026-0195 (unbounded namespace-declaration allocation in `NsReader` enabling memory-exhaustion DoS) (#408)
+- Update `ammonia` to 4.1.3 to address an mXSS bypass via MathML `annotation-xml` encoding strip (#408)
+- Update `crossbeam-epoch` (dev dependency, via `criterion`) to 0.9.20 to address RUSTSEC-2026-0204 (#408)
+
+### Changed
+
+- Bump `pyo3` from 0.28.3 to 0.29.0 (#395)
+- Bump `napi` from 3.9.0 to 3.10.3 across the patch- and minor-updates groups (#398, #400, #402, #406)
+- Bump `napi-derive` from 3.5.6 to 3.5.9 (#402, #409)
+- Bump `chrono` in the patch-updates group (#394)
+- Bump `reqwest`, `compact_str`, and `memchr` in the patch-updates group (#392)
+- Bump `memchr`, `regex`, and `napi-sys` in the patch-updates group (#398)
+- Bump `anyhow` in the patch-updates group (#402)
+- Bump `html-escape` in the patch-updates group (#409)
+- Bump `@biomejs/biome` and `@napi-rs/cli` (Node.js dev tooling) (#391, #397, #401, #404)
+- Bump `lewagon/wait-on-check-action` from 1.7.0 to 1.8.1 (#396, #403)
+- Bump `actions/checkout` from 6 to 7 (#399)
+- Bump `codecov/codecov-action` from 6 to 7 (#393)
 
 ## [0.5.4] - 2026-05-26
 
@@ -498,7 +515,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.1...v0.5.2
