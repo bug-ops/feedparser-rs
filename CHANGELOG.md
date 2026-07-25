@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Update `brace-expansion` to 5.0.8 and `js-yaml` to 4.3.0 (transitive Node.js dev dependencies) to address high-severity `npm audit` advisories (DoS via numeric-range expansion and YAML merge-key chains)
+
 ## [0.5.5] - 2026-07-07
 
 ### Security
