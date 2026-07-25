@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Update `brace-expansion` to 5.0.8 and `js-yaml` to 4.3.0 (transitive Node.js dev dependencies) to address high-severity `npm audit` advisories (DoS via numeric-range expansion and YAML merge-key chains)
 - Update `ammonia` to 4.1.4 to address RUSTSEC-2026-0213 (XSS via SVG `animate`/`set` animation tags with `javascript:` scheme)
+- Update `quinn-proto` (transitive, via `reqwest`) to 0.11.15 to address RUSTSEC-2026-0185/GHSA-4w2j-m93h-cj5j (remote memory exhaustion from unbounded out-of-order stream reassembly)
 
 ## [0.5.5] - 2026-07-07
 
