@@ -33,18 +33,18 @@ pip install feedparser-rs
 import feedparser_rs
 
 # Parse from string, bytes, or URL (auto-detected)
-d = feedparser_rs.parse('<rss>...</rss>')
-d = feedparser_rs.parse(b'<rss>...</rss>')
-d = feedparser_rs.parse('https://example.com/feed.xml')  # URL auto-detected
+d = feedparser_rs.parse("<rss>...</rss>")
+d = feedparser_rs.parse(b"<rss>...</rss>")
+d = feedparser_rs.parse("https://example.com/feed.xml")  # URL auto-detected
 
 # Attribute-style access (feedparser-compatible)
 print(d.feed.title)
 print(d.version)  # "rss20", "atom10", etc.
-print(d.bozo)     # True if parsing errors occurred
+print(d.bozo)  # True if parsing errors occurred
 
 # Dict-style access (feedparser-compatible)
-print(d['feed']['title'])
-print(d['entries'][0]['link'])
+print(d["feed"]["title"])
+print(d["entries"][0]["link"])
 
 for entry in d.entries:
     print(entry.title)
@@ -59,23 +59,19 @@ for entry in d.entries:
 import feedparser_rs
 
 # Option 1: Auto-detection (recommended)
-d = feedparser_rs.parse('https://example.com/feed.xml')
+d = feedparser_rs.parse("https://example.com/feed.xml")
 
 # Option 2: Explicit URL function
-d = feedparser_rs.parse_url('https://example.com/feed.xml')
+d = feedparser_rs.parse_url("https://example.com/feed.xml")
 
 # With conditional GET for efficient polling
-d = feedparser_rs.parse(
-    'https://example.com/feed.xml',
-    etag=cached_etag,
-    modified=cached_modified
-)
+d = feedparser_rs.parse("https://example.com/feed.xml", etag=cached_etag, modified=cached_modified)
 if d.status == 304:
     print("Feed not modified")
 
 # With custom limits
 limits = feedparser_rs.ParserLimits(max_entries=100)
-d = feedparser_rs.parse_with_limits('https://example.com/feed.xml', limits=limits)
+d = feedparser_rs.parse_with_limits("https://example.com/feed.xml", limits=limits)
 ```
 
 > **Tip:** URL fetching supports automatic compression (gzip, deflate, brotli) and follows redirects.
@@ -89,15 +85,15 @@ feedparser-rs is designed as a drop-in replacement for Python feedparser:
 import feedparser_rs as feedparser
 
 # Same API patterns work
-d = feedparser.parse('https://example.com/feed.xml')
+d = feedparser.parse("https://example.com/feed.xml")
 print(d.feed.title)
-print(d['feed']['title'])  # Dict-style access works too
+print(d["feed"]["title"])  # Dict-style access works too
 print(d.entries[0].link)
 
 # Deprecated field names supported
 print(d.feed.description)  # → d.feed.subtitle
-print(d.channel.title)     # → d.feed.title
-print(d.items[0].guid)     # → d.entries[0].id
+print(d.channel.title)  # → d.feed.title
+print(d.items[0].guid)  # → d.entries[0].id
 ```
 
 ### Supported Field Aliases
