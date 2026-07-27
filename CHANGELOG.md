@@ -7,11 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-07-27
+
 ### Security
 
-- Update `brace-expansion` to 5.0.8 and `js-yaml` to 4.3.0 (transitive Node.js dev dependencies) to address high-severity `npm audit` advisories (DoS via numeric-range expansion and YAML merge-key chains)
-- Update `ammonia` to 4.1.4 to address RUSTSEC-2026-0213 (XSS via SVG `animate`/`set` animation tags with `javascript:` scheme)
-- Update `quinn-proto` (transitive, via `reqwest`) to 0.11.15 to address RUSTSEC-2026-0185/GHSA-4w2j-m93h-cj5j (remote memory exhaustion from unbounded out-of-order stream reassembly)
+- Update `brace-expansion` to 5.0.8 and `js-yaml` to 4.3.0 (transitive Node.js dev dependencies) to address high-severity `npm audit` advisories (DoS via numeric-range expansion and YAML merge-key chains) (#415)
+- Update `ammonia` to 4.1.4 to address RUSTSEC-2026-0213 (XSS via SVG `animate`/`set` animation tags with `javascript:` scheme) (#415)
+- Update `quinn-proto` (transitive, via `reqwest`) to 0.11.15 to address RUSTSEC-2026-0185/GHSA-4w2j-m93h-cj5j (remote memory exhaustion from unbounded out-of-order stream reassembly) (#420)
+
+### Fixed
+
+- Root and binding READMEs: corrected nonexistent `fetch_and_parse`/`fetchAndParse` API references to the real `parse_url`/`parseUrl` functions, fixed Node.js binding docs (synchronous `parseUrl`, `bozoException` naming, date field shapes, missing `parseWithOptions`/`parseUrlWithOptions` and HTTP fields, supported Node.js versions), fixed the Python binding's `itunes.duration` example, and bumped a stale version pin in the core crate README (#411)
+
+### Changed
+
+- Bump `compact_str` from 0.9.1 to 0.10.0 (#426)
+- Bump `napi` from 3.10.3 to 3.11.0 and `napi-derive` from 3.5.9 to 3.6.0 (#419, #425)
+- Bump `regex` from 1.12.4 to 1.13.1 (#414, #419)
+- Bump `anyhow`, `memchr`, `serde`, `serde_json`, and `thiserror` in the patch-updates group (#419)
+- Bump `@biomejs/biome`, `@napi-rs/cli`, and `c8` (Node.js dev tooling) (#415, #424)
+- Bump `actions/labeler` from 6 to 7 (#423)
+- Bump `actions/setup-python` from 6 to 7 (#421)
+- Bump `actions/setup-node` from 6 to 7 (#416)
+- Bump `lewagon/wait-on-check-action` from 1.8.1 to 1.9.0 (#422)
 
 ## [0.5.5] - 2026-07-07
 
@@ -521,7 +539,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...HEAD
+[0.5.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.2...v0.5.3
