@@ -1,8 +1,8 @@
 [package]
 name = "feedparser-rs-py"
 version.workspace = true
-edition = "2024"
-rust-version = "1.85"
+edition.workspace = true
+rust-version.workspace = true
 license = "MIT OR Apache-2.0"
 description = "High-performance RSS/Atom/JSON Feed parser for Python (drop-in feedparser replacement)"
 repository = "https://github.com/bug-ops/feedparser-rs"
