@@ -16,7 +16,10 @@ use crate::{
     types::{Entry, FeedVersion, Image, ParsedFeed, TextConstruct, TextType},
     util::base_url::BaseUrlContext,
 };
-use quick_xml::{Reader, events::Event};
+use quick_xml::{
+    Reader,
+    events::{BytesStart, Event},
+};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_base,
@@ -97,134 +100,23 @@ pub fn parse_rss10_with_options(
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
                     unreachable!()
                 };
-                let name = e.local_name();
-                let full_name = e.name();
+                // NOTE: Allocation here is necessary due to borrow checker constraints.
+                // We need an owned element to pass &mut buf to helper functions simultaneously.
+                let element = e.to_owned();
 
                 depth += 1;
 
-                // Handle RDF root element - continue to parse children
-                if name.as_ref() == b"RDF" || full_name.as_ref() == b"rdf:RDF" {
-                    extract_namespaces(e, &mut feed, &limits);
-                    // Extract xml:lang and xml:base from <rdf:RDF> root
-                    rdf_lang =
-                        extract_xml_lang(e, limits.max_attribute_length).filter(|s| !s.is_empty());
-                    if let Some(xml_base) = extract_xml_base(e, limits.max_attribute_length) {
-                        base_ctx.update_base(&xml_base);
-                    }
-                } else if name.as_ref() == b"channel" {
-                    // Extract rdf:about as feed ID
-                    for attr in e.attributes().flatten() {
-                        if (attr.key.as_ref() == b"rdf:about"
-                            || attr.key.local_name().as_ref() == b"about")
-                            && let Ok(value) =
-                                attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
-                        {
-                            feed.feed.id = Some(value.as_ref().into());
-                        }
-                    }
-                    if let Err(e) = parse_channel(&mut reader, &mut feed, &limits, &mut depth) {
-                        feed.bozo = true;
-                        feed.bozo_exception = Some(e.to_string());
-                    }
-                    depth = depth.saturating_sub(1);
-                } else if name.as_ref() == b"item" {
-                    if is_empty {
-                        depth = depth.saturating_sub(1);
-                        buf.clear();
-                        continue;
-                    }
-
-                    if depth > limits.max_nesting_depth {
-                        feed.bozo = true;
-                        feed.bozo_exception = Some(format!(
-                            "XML nesting depth {} exceeds maximum {}",
-                            depth, limits.max_nesting_depth
-                        ));
-                        skip_element(&mut reader, &mut buf, &limits, depth)?;
-                        depth = depth.saturating_sub(1);
-                        buf.clear();
-                        continue;
-                    }
-
-                    // Extract rdf:about as item ID first (before releasing borrow on buf)
-                    let item_id = e.attributes().flatten().find_map(|attr| {
-                        if attr.key.as_ref() == b"rdf:about"
-                            || attr.key.local_name().as_ref() == b"about"
-                        {
-                            attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
-                                .ok()
-                                .map(|v| v.to_string())
-                        } else {
-                            None
-                        }
-                    });
-
-                    // Extract item-level xml:lang (falls back to rdf_lang) and xml:base
-                    let item_lang_owned =
-                        extract_xml_lang(e, limits.max_attribute_length).filter(|s| !s.is_empty());
-                    let effective_item_lang = item_lang_owned.as_deref().or(rdf_lang.as_deref());
-                    let item_base_owned = extract_xml_base(e, limits.max_attribute_length);
-                    let item_base_ctx = item_base_owned
-                        .as_deref()
-                        .map_or_else(|| base_ctx.child(), |b| base_ctx.child_with_base(b));
-
-                    // Check entry limit (inline to avoid borrow issues)
-                    if feed.entries.is_at_limit(limits.max_entries) {
-                        feed.bozo = true;
-                        feed.bozo_exception =
-                            Some(format!("Entry limit exceeded: {}", limits.max_entries));
-                        skip_element(&mut reader, &mut buf, &limits, depth)?;
-                        depth = depth.saturating_sub(1);
-                        buf.clear();
-                        continue;
-                    }
-
-                    let mut item_bozo = false;
-                    match parse_item(
-                        &mut reader,
-                        &mut buf,
-                        &limits,
-                        &mut depth,
-                        item_id,
-                        &mut item_bozo,
-                        effective_item_lang,
-                        &item_base_ctx,
-                        &feed.namespaces,
-                    ) {
-                        Ok(entry) => {
-                            if item_bozo && !feed.bozo {
-                                feed.bozo = true;
-                                feed.bozo_exception =
-                                    Some("Unresolvable entity in entry field".to_string());
-                            }
-                            feed.entries.push(entry);
-                        }
-                        Err(err) => {
-                            feed.bozo = true;
-                            feed.bozo_exception = Some(err.to_string());
-                        }
-                    }
-                    depth = depth.saturating_sub(1);
-                } else if name.as_ref() == b"image" {
-                    if !is_empty
-                        && let Ok(image) = parse_image(&mut reader, &mut buf, &limits, &mut depth)
-                    {
-                        feed.feed.image = Some(image);
-                    }
-                    depth = depth.saturating_sub(1);
-                } else if name.as_ref() == b"textinput" || name.as_ref() == b"textInput" {
-                    // Skip textinput element (rarely used); self-closing refs need no skip
-                    if !is_empty {
-                        skip_element(&mut reader, &mut buf, &limits, depth)?;
-                    }
-                    depth = depth.saturating_sub(1);
-                } else {
-                    // Skip unknown elements at RDF level; self-closing tags need no skip
-                    if !is_empty {
-                        skip_element(&mut reader, &mut buf, &limits, depth)?;
-                    }
-                    depth = depth.saturating_sub(1);
-                }
+                dispatch_rdf_element(
+                    &mut reader,
+                    &mut buf,
+                    &element,
+                    is_empty,
+                    &mut feed,
+                    &limits,
+                    &mut depth,
+                    &mut rdf_lang,
+                    &mut base_ctx,
+                )?;
             }
             Ok(Event::End(_)) => {
                 depth = depth.saturating_sub(1);
@@ -248,6 +140,199 @@ pub fn parse_rss10_with_options(
     }
 
     Ok(feed)
+}
+
+/// Dispatch a single RDF root child element (`channel`, `item`, `image`, `textinput`,
+/// or the RDF root itself) to its handler.
+///
+/// Depth accounting: `depth` is already incremented by the caller for this event.
+/// `rdf:RDF` nets `+1` with no matching `-1` here (deferred to its `Event::End`);
+/// `item` decrements internally in [`parse_rdf_item`] on every exit path; every
+/// other branch decrements exactly once here.
+#[allow(clippy::too_many_arguments)]
+fn dispatch_rdf_element(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    is_empty: bool,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    rdf_lang: &mut Option<String>,
+    base_ctx: &mut BaseUrlContext,
+) -> Result<()> {
+    let name = element.local_name();
+    let full_name = element.name();
+
+    if name.as_ref() == b"RDF" || full_name.as_ref() == b"rdf:RDF" {
+        handle_rdf_root(element, feed, limits, rdf_lang, base_ctx);
+    } else if name.as_ref() == b"channel" {
+        handle_rdf_channel(reader, element, feed, limits, depth);
+        *depth = depth.saturating_sub(1);
+    } else if name.as_ref() == b"item" {
+        parse_rdf_item(
+            reader,
+            buf,
+            element,
+            is_empty,
+            feed,
+            limits,
+            depth,
+            rdf_lang.as_deref(),
+            base_ctx,
+        )?;
+    } else if name.as_ref() == b"image" {
+        if !is_empty && let Ok(image) = parse_image(reader, buf, limits, depth) {
+            feed.feed.image = Some(image);
+        }
+        *depth = depth.saturating_sub(1);
+    } else if name.as_ref() == b"textinput" || name.as_ref() == b"textInput" {
+        // Skip textinput element (rarely used); self-closing refs need no skip
+        if !is_empty {
+            skip_element(reader, buf, limits, *depth)?;
+        }
+        *depth = depth.saturating_sub(1);
+    } else {
+        // Skip unknown elements at RDF level; self-closing tags need no skip
+        if !is_empty {
+            skip_element(reader, buf, limits, *depth)?;
+        }
+        *depth = depth.saturating_sub(1);
+    }
+    Ok(())
+}
+
+/// Handle the `<rdf:RDF>` root element: namespaces, xml:lang, xml:base.
+///
+/// Does not decrement `depth` — the root element's matching decrement happens
+/// later at its `Event::End`.
+fn handle_rdf_root(
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    rdf_lang: &mut Option<String>,
+    base_ctx: &mut BaseUrlContext,
+) {
+    extract_namespaces(element, feed, limits);
+    // Extract xml:lang and xml:base from <rdf:RDF> root
+    *rdf_lang = extract_xml_lang(element, limits.max_attribute_length).filter(|s| !s.is_empty());
+    if let Some(xml_base) = extract_xml_base(element, limits.max_attribute_length) {
+        base_ctx.update_base(&xml_base);
+    }
+}
+
+/// Handle the `<channel>` element: extract `rdf:about` as feed ID, then parse.
+///
+/// Converts a `parse_channel` error into a feed-level bozo internally — this is
+/// the only RDF-root branch that does so; all others propagate via `?`.
+fn handle_rdf_channel(
+    reader: &mut Reader<&[u8]>,
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+) {
+    for attr in element.attributes().flatten() {
+        if (attr.key.as_ref() == b"rdf:about" || attr.key.local_name().as_ref() == b"about")
+            && let Ok(value) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+        {
+            feed.feed.id = Some(value.as_ref().into());
+        }
+    }
+    if let Err(e) = parse_channel(reader, feed, limits, depth) {
+        feed.bozo = true;
+        feed.bozo_exception = Some(e.to_string());
+    }
+}
+
+/// Parse a top-level `<item>` element (RSS 1.0 items are siblings of `<channel>`).
+///
+/// Decrements `depth` exactly once on every exit path (`is_empty`, depth-exceeded,
+/// entry-limit, normal) — this is the only branch of [`dispatch_rdf_element`] that
+/// owns its own decrement, since the caller passes `depth` through unchanged.
+#[allow(clippy::too_many_arguments)]
+fn parse_rdf_item(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    is_empty: bool,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    rdf_lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
+) -> Result<()> {
+    if is_empty {
+        *depth = depth.saturating_sub(1);
+        return Ok(());
+    }
+
+    if *depth > limits.max_nesting_depth {
+        feed.bozo = true;
+        feed.bozo_exception = Some(format!(
+            "XML nesting depth {} exceeds maximum {}",
+            depth, limits.max_nesting_depth
+        ));
+        skip_element(reader, buf, limits, *depth)?;
+        *depth = depth.saturating_sub(1);
+        return Ok(());
+    }
+
+    // Extract rdf:about as item ID first (before releasing borrow on buf)
+    let item_id = element.attributes().flatten().find_map(|attr| {
+        if attr.key.as_ref() == b"rdf:about" || attr.key.local_name().as_ref() == b"about" {
+            attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                .ok()
+                .map(|v| v.to_string())
+        } else {
+            None
+        }
+    });
+
+    // Extract item-level xml:lang (falls back to rdf_lang) and xml:base
+    let item_lang_owned =
+        extract_xml_lang(element, limits.max_attribute_length).filter(|s| !s.is_empty());
+    let effective_item_lang = item_lang_owned.as_deref().or(rdf_lang);
+    let item_base_owned = extract_xml_base(element, limits.max_attribute_length);
+    let item_base_ctx = item_base_owned
+        .as_deref()
+        .map_or_else(|| base_ctx.child(), |b| base_ctx.child_with_base(b));
+
+    // Check entry limit (inline to avoid borrow issues)
+    if feed.entries.is_at_limit(limits.max_entries) {
+        feed.bozo = true;
+        feed.bozo_exception = Some(format!("Entry limit exceeded: {}", limits.max_entries));
+        skip_element(reader, buf, limits, *depth)?;
+        *depth = depth.saturating_sub(1);
+        return Ok(());
+    }
+
+    let mut item_bozo = false;
+    match parse_item(
+        reader,
+        buf,
+        limits,
+        depth,
+        item_id,
+        &mut item_bozo,
+        effective_item_lang,
+        &item_base_ctx,
+        &feed.namespaces,
+    ) {
+        Ok(entry) => {
+            if item_bozo && !feed.bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+            }
+            feed.entries.push(entry);
+        }
+        Err(err) => {
+            feed.bozo = true;
+            feed.bozo_exception = Some(err.to_string());
+        }
+    }
+    *depth = depth.saturating_sub(1);
+    Ok(())
 }
 
 /// Parse <channel> element (feed metadata)
@@ -315,38 +400,21 @@ fn parse_channel(
                         }
                     }
                     _ => {
-                        if is_empty {
-                            // Self-closing elements: no text content to read
-                        } else if let Some(dc_element) =
-                            is_dc_tag(full_name.as_ref(), &feed.namespaces)
-                        {
-                            let dc_elem = dc_element.to_string();
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
-                        } else if let Some(syn_element) = is_syn_tag(full_name.as_ref()) {
-                            let syn_elem = syn_element.to_string();
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
-                        } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
-                            let georss_elem = georss_element.to_string();
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            georss::handle_feed_element(
-                                georss_elem.as_bytes(),
-                                &text,
-                                &mut feed.feed,
+                        if !is_empty {
+                            // NOTE: Allocation here is necessary due to borrow checker
+                            // constraints — full_name borrows from buf, which the
+                            // namespace dispatcher also needs mutably.
+                            let full_name_owned = full_name.as_ref().to_vec();
+                            parse_rss10_channel_namespace(
+                                reader,
+                                &mut buf,
+                                &full_name_owned,
+                                feed,
                                 limits,
-                            );
-                        } else if let Some(geo_element) = is_geo_tag(full_name.as_ref()) {
-                            let geo_elem = geo_element.to_string();
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            georss::handle_feed_geo_element(
-                                geo_elem.as_bytes(),
-                                &text,
-                                &mut feed.feed,
-                            );
-                        } else {
-                            skip_element(reader, &mut buf, limits, *depth)?;
+                                *depth,
+                            )?;
                         }
+                        // Self-closing elements: no text content to read
                     }
                 }
                 *depth = depth.saturating_sub(1);
@@ -361,6 +429,38 @@ fn parse_channel(
         buf.clear();
     }
 
+    Ok(())
+}
+
+/// Parse Dublin Core, Syndication, `GeoRSS`, and W3C Geo namespace tags at RSS 1.0
+/// channel level. Falls back to `skip_element` for unrecognized tags.
+fn parse_rss10_channel_namespace(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    full_name: &[u8],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: usize,
+) -> Result<()> {
+    if let Some(dc_element) = is_dc_tag(full_name, &feed.namespaces) {
+        let dc_elem = dc_element.to_string();
+        let text = read_text_str(reader, buf, limits)?;
+        dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
+    } else if let Some(syn_element) = is_syn_tag(full_name) {
+        let syn_elem = syn_element.to_string();
+        let text = read_text_str(reader, buf, limits)?;
+        syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
+    } else if let Some(georss_element) = is_georss_tag(full_name) {
+        let georss_elem = georss_element.to_string();
+        let text = read_text_str(reader, buf, limits)?;
+        georss::handle_feed_element(georss_elem.as_bytes(), &text, &mut feed.feed, limits);
+    } else if let Some(geo_element) = is_geo_tag(full_name) {
+        let geo_elem = geo_element.to_string();
+        let text = read_text_str(reader, buf, limits)?;
+        georss::handle_feed_geo_element(geo_elem.as_bytes(), &text, &mut feed.feed);
+    } else {
+        skip_element(reader, buf, limits, depth)?;
+    }
     Ok(())
 }
 
@@ -387,121 +487,48 @@ fn parse_item(
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
                     unreachable!()
                 };
+                // NOTE: Allocation here is necessary due to borrow checker constraints.
+                // We need an owned element to pass &mut buf to helper functions simultaneously.
+                let element = e.to_owned();
 
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
 
-                let name = e.local_name();
-                let full_name = e.name();
+                let name = element.local_name();
+                let full_name = element.name();
 
+                // NOTE: the tag list below must stay in sync with the inner `match` in
+                // parse_rss10_item_standard — a tag routed there that the handler
+                // doesn't also match falls through its silent `_ => {}` and consumes
+                // no events, desyncing the event stream.
                 match name.as_ref() {
-                    b"title" if !is_empty => {
-                        let (text, had_bozo) = read_text(reader, buf, limits)?;
-                        *bozo |= had_bozo;
-                        entry.title = Some(text.clone());
-                        // See feed-level <title> above: no type attribute, so treated
-                        // as potentially unsafe HTML by default (fail-closed, #438).
-                        entry.title_detail = Some(TextConstruct {
-                            value: text,
-                            content_type: TextType::Html,
-                            language: lang.filter(|s| !s.is_empty()).map(Into::into),
-                            base: base_ctx.base().map(ToString::to_string),
-                        });
-                    }
-                    b"link" if !is_empty => {
-                        let link_text = read_text_str(reader, buf, limits)?;
-                        entry.set_alternate_link(link_text, limits.max_links_per_entry);
-                    }
-                    b"description" if !is_empty => {
-                        let (desc, had_bozo) = read_text(reader, buf, limits)?;
-                        *bozo |= had_bozo;
-                        entry.summary = Some(desc.clone());
-                        entry.summary_detail = Some(TextConstruct {
-                            value: desc,
-                            content_type: TextType::Html,
-                            language: lang.filter(|s| !s.is_empty()).map(Into::into),
-                            base: base_ctx.base().map(ToString::to_string),
-                        });
+                    b"title" | b"link" | b"description" if !is_empty => {
+                        parse_rss10_item_standard(
+                            reader,
+                            buf,
+                            name.as_ref(),
+                            &mut entry,
+                            limits,
+                            bozo,
+                            lang,
+                            base_ctx,
+                        )?;
                     }
                     _ => {
-                        if is_empty
-                            && let Some(thr_element) = is_thr_tag(full_name.as_ref())
-                            && thr_element == "in-reply-to"
-                        {
-                            // thr:in-reply-to may be self-closing and carry attributes
-                            if let Some(reply) = threading::parse_in_reply_to_from_attrs(
-                                e.attributes().flatten(),
-                                limits.max_attribute_length,
-                            ) {
-                                entry
-                                    .in_reply_to
-                                    .try_push_limited(reply, limits.max_links_per_entry);
-                            }
-                        } else if is_empty {
-                            // other self-closing elements: no content to process
-                        } else if let Some(dc_element) = is_dc_tag(full_name.as_ref(), namespaces) {
-                            let dc_elem = dc_element.to_string();
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            // dublin_core::handle_entry_element already handles dc:date -> published
-                            dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
-                        } else if let Some(content_element) = is_content_tag(full_name.as_ref()) {
-                            let content_elem = content_element.to_string();
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            content::handle_entry_element(
-                                &content_elem,
-                                &text,
-                                &mut entry,
-                                lang,
-                                base_ctx.base(),
-                            );
-                        } else if let Some(georss_element) = is_georss_tag(full_name.as_ref()) {
-                            let georss_elem = georss_element.to_string();
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            georss::handle_entry_element(
-                                georss_elem.as_bytes(),
-                                &text,
-                                &mut entry,
-                                limits,
-                            );
-                        } else if let Some(geo_element) = is_geo_tag(full_name.as_ref()) {
-                            let geo_elem = geo_element.to_string();
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            georss::handle_entry_geo_element(
-                                geo_elem.as_bytes(),
-                                &text,
-                                &mut entry,
-                            );
-                        } else if let Some(thr_element) = is_thr_tag(full_name.as_ref()) {
-                            // Atom Threading Extensions (RFC 4685)
-                            match thr_element {
-                                "in-reply-to" => {
-                                    if let Some(reply) = threading::parse_in_reply_to_from_attrs(
-                                        e.attributes().flatten(),
-                                        limits.max_attribute_length,
-                                    ) {
-                                        // Shares max_links_per_entry limit; split if needed later
-                                        entry
-                                            .in_reply_to
-                                            .try_push_limited(reply, limits.max_links_per_entry);
-                                    }
-                                    skip_element(reader, buf, limits, *depth)?;
-                                }
-                                "total" => {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    threading::handle_total(&text, &mut entry);
-                                }
-                                _ => {
-                                    skip_element(reader, buf, limits, *depth)?;
-                                }
-                            }
-                        } else {
-                            skip_element(reader, buf, limits, *depth)?;
-                        }
+                        parse_rss10_item_namespace(
+                            reader,
+                            buf,
+                            &element,
+                            full_name.as_ref(),
+                            &mut entry,
+                            limits,
+                            *depth,
+                            bozo,
+                            lang,
+                            base_ctx,
+                            namespaces,
+                            is_empty,
+                        )?;
                     }
                 }
                 *depth = depth.saturating_sub(1);
@@ -522,6 +549,189 @@ fn parse_item(
     }
 
     Ok(entry)
+}
+
+/// Parse standard RSS 1.0 item elements: title, link, description.
+#[allow(clippy::too_many_arguments)]
+fn parse_rss10_item_standard(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    name: &[u8],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    bozo: &mut bool,
+    lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_item
+    match name {
+        b"title" => {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            entry.title = Some(text.clone());
+            // See feed-level <title> above: no type attribute, so treated
+            // as potentially unsafe HTML by default (fail-closed, #438).
+            entry.title_detail = Some(TextConstruct {
+                value: text,
+                content_type: TextType::Html,
+                language: lang.filter(|s| !s.is_empty()).map(Into::into),
+                base: base_ctx.base().map(ToString::to_string),
+            });
+        }
+        b"link" => {
+            let link_text = read_text_str(reader, buf, limits)?;
+            entry.set_alternate_link(link_text, limits.max_links_per_entry);
+        }
+        b"description" => {
+            let (desc, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            entry.summary = Some(desc.clone());
+            entry.summary_detail = Some(TextConstruct {
+                value: desc,
+                content_type: TextType::Html,
+                language: lang.filter(|s| !s.is_empty()).map(Into::into),
+                base: base_ctx.base().map(ToString::to_string),
+            });
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse namespaced RSS 1.0 item elements (Dublin Core, Content, `GeoRSS`, Geo,
+/// Threading), plus the self-closing `thr:in-reply-to` special case.
+#[allow(clippy::too_many_arguments)]
+fn parse_rss10_item_namespace(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    full_name: &[u8],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+    bozo: &mut bool,
+    lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
+    namespaces: &HashMap<String, String>,
+    is_empty: bool,
+) -> Result<()> {
+    if is_empty
+        && let Some(thr_element) = is_thr_tag(full_name)
+        && thr_element == "in-reply-to"
+    {
+        // thr:in-reply-to may be self-closing and carry attributes
+        if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+            element.attributes().flatten(),
+            limits.max_attribute_length,
+        ) {
+            entry
+                .in_reply_to
+                .try_push_limited(reply, limits.max_links_per_entry);
+        }
+        return Ok(());
+    } else if is_empty {
+        // other self-closing elements: no content to process
+        return Ok(());
+    }
+
+    if parse_rss10_item_ns_text(
+        reader, buf, full_name, entry, limits, bozo, lang, base_ctx, namespaces,
+    )? {
+        return Ok(());
+    }
+    if parse_rss10_item_ns_geo_thr(reader, buf, element, full_name, entry, limits, depth, bozo)? {
+        return Ok(());
+    }
+    skip_element(reader, buf, limits, depth)
+}
+
+/// Parse Dublin Core and Content namespace tags at RSS 1.0 item level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_rss10_item_ns_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    full_name: &[u8],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    bozo: &mut bool,
+    lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
+    namespaces: &HashMap<String, String>,
+) -> Result<bool> {
+    if let Some(dc_element) = is_dc_tag(full_name, namespaces) {
+        let dc_elem = dc_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        // dublin_core::handle_entry_element already handles dc:date -> published
+        dublin_core::handle_entry_element(&dc_elem, &text, entry);
+        Ok(true)
+    } else if let Some(content_element) = is_content_tag(full_name) {
+        let content_elem = content_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        content::handle_entry_element(&content_elem, &text, entry, lang, base_ctx.base());
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse `GeoRSS`, W3C Geo, and Threading namespace tags at RSS 1.0 item level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_rss10_item_ns_geo_thr(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    full_name: &[u8],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+    bozo: &mut bool,
+) -> Result<bool> {
+    if let Some(georss_element) = is_georss_tag(full_name) {
+        let georss_elem = georss_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        georss::handle_entry_element(georss_elem.as_bytes(), &text, entry, limits);
+        Ok(true)
+    } else if let Some(geo_element) = is_geo_tag(full_name) {
+        let geo_elem = geo_element.to_string();
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        georss::handle_entry_geo_element(geo_elem.as_bytes(), &text, entry);
+        Ok(true)
+    } else if let Some(thr_element) = is_thr_tag(full_name) {
+        // Atom Threading Extensions (RFC 4685)
+        match thr_element {
+            "in-reply-to" => {
+                if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+                    element.attributes().flatten(),
+                    limits.max_attribute_length,
+                ) {
+                    // Shares max_links_per_entry limit; split if needed later
+                    entry
+                        .in_reply_to
+                        .try_push_limited(reply, limits.max_links_per_entry);
+                }
+                skip_element(reader, buf, limits, depth)?;
+            }
+            "total" => {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                threading::handle_total(&text, entry);
+            }
+            _ => {
+                skip_element(reader, buf, limits, depth)?;
+            }
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
 }
 
 /// Parse <image> element
