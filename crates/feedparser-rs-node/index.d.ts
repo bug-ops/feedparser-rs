@@ -475,6 +475,26 @@ export interface ParsedFeed {
 }
 
 /**
+ * Parsing options accepted by `parseWithOptions` and `parseUrlWithOptions`
+ *
+ * All fields are optional; omitted fields use the same defaults as
+ * `core::ParseOptions::default` (HTML sanitization and relative URI
+ * resolution both enabled, 100MB max feed size).
+ */
+export interface ParseOptions {
+  /** Maximum feed size in bytes (default: 100MB) */
+  maxSize?: number
+  /**
+   * Whether to sanitize HTML content in feed entries (default: true)
+   *
+   * Disabling this is **not recommended** unless the feed source is fully trusted.
+   */
+  sanitizeHtml?: boolean
+  /** Whether to resolve relative URLs against the feed's base URL (default: true) */
+  resolveRelativeUris?: boolean
+}
+
+/**
  * Parse feed from HTTP/HTTPS URL with conditional GET support
  *
  * Fetches the feed from the given URL and parses it. Supports conditional GET
@@ -523,9 +543,10 @@ export interface ParsedFeed {
 export declare function parseUrl(url: string, etag?: string | undefined | null, modified?: string | undefined | null, userAgent?: string | undefined | null): ParsedFeed
 
 /**
- * Parse feed from URL with custom resource limits
+ * Parse feed from URL with custom options
  *
- * Like `parseUrl` but allows specifying custom limits for DoS protection.
+ * Like `parseUrl` but allows specifying custom options for DoS protection,
+ * HTML sanitization, and relative URI resolution.
  *
  * # Examples
  *
@@ -537,19 +558,19 @@ export declare function parseUrl(url: string, etag?: string | undefined | null, 
  *   null, // etag
  *   null, // modified
  *   null, // user_agent
- *   10485760 // max_size: 10MB
+ *   { maxSize: 10485760 } // 10MB
  * );
  * ```
  */
-export declare function parseUrlWithOptions(url: string, etag?: string | undefined | null, modified?: string | undefined | null, userAgent?: string | undefined | null, maxSize?: number | undefined | null): ParsedFeed
+export declare function parseUrlWithOptions(url: string, etag?: string | undefined | null, modified?: string | undefined | null, userAgent?: string | undefined | null, options?: ParseOptions | undefined | null): ParsedFeed
 
 /**
- * Parse an RSS/Atom/JSON Feed with custom size limit
+ * Parse an RSS/Atom/JSON Feed with custom options
  *
  * # Arguments
  *
  * * `source` - Feed content as Buffer, string, or Uint8Array
- * * `max_size` - Optional maximum feed size in bytes (default: 100MB)
+ * * `options` - Optional parsing options (max size, HTML sanitization, URI resolution)
  *
  * # Returns
  *
@@ -559,7 +580,7 @@ export declare function parseUrlWithOptions(url: string, etag?: string | undefin
  *
  * Returns error if input exceeds size limit or parsing fails catastrophically
  */
-export declare function parseWithOptions(source: Buffer | string, maxSize?: number | undefined | null): ParsedFeed
+export declare function parseWithOptions(source: Buffer | string, options?: ParseOptions | undefined | null): ParsedFeed
 
 /** Person (author, contributor, etc.) */
 export interface Person {

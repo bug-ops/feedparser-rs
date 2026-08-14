@@ -146,6 +146,28 @@ pub fn init_feed(version: FeedVersion, max_entries: usize) -> ParsedFeed {
     feed
 }
 
+/// Build a `summary_detail`-style `TextConstruct` from a content block.
+///
+/// Used when `entry.summary` is back-filled from `entry.content[0]` (RSS
+/// `content:encoded`, Atom `<content>`) so the derived summary carries the
+/// content block's declared type instead of losing it. Unlabeled or
+/// unrecognized content types map to `Html` (fail-closed) via
+/// `TextType::from_type_attr`.
+#[inline]
+pub fn text_construct_from_content(content: &crate::types::Content) -> crate::types::TextConstruct {
+    use crate::types::TextType;
+
+    crate::types::TextConstruct {
+        value: content.value.clone(),
+        content_type: content
+            .content_type
+            .as_deref()
+            .map_or(TextType::Html, TextType::from_type_attr),
+        language: content.language.clone(),
+        base: content.base.clone(),
+    }
+}
+
 /// Check nesting depth and return error if exceeded
 ///
 /// This is a standalone helper for parsers that don't use `ParseContext`.

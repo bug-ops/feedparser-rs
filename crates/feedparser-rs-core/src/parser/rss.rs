@@ -27,6 +27,7 @@ use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_lang,
     init_feed, is_content_tag, is_dc_tag, is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag,
     is_slash_tag, is_syn_tag, is_thr_tag, is_wfw_tag, read_text, read_text_str, skip_element,
+    text_construct_from_content,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -107,7 +108,19 @@ pub fn parse_rss20(data: &[u8]) -> Result<ParsedFeed> {
 }
 
 /// Parse RSS 2.0 with custom parser limits
+///
+/// Relative URI resolution is always enabled; use [`parse_rss20_with_options`] to
+/// control it.
 pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<ParsedFeed> {
+    parse_rss20_with_options(data, limits, true)
+}
+
+/// Parse RSS 2.0 with custom parser limits and relative URI resolution control
+pub fn parse_rss20_with_options(
+    data: &[u8],
+    limits: ParserLimits,
+    resolve_relative_uris: bool,
+) -> Result<ParsedFeed> {
     limits
         .check_feed_size(data.len())
         .map_err(|e| FeedError::InvalidFormat(e.to_string()))?;
@@ -117,7 +130,7 @@ pub fn parse_rss20_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     let mut feed = init_feed(FeedVersion::Rss20, limits.max_entries);
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
-    let mut base_ctx = BaseUrlContext::new();
+    let mut base_ctx = BaseUrlContext::new().with_resolve(resolve_relative_uris);
     let mut found_channel = false;
 
     loop {
@@ -191,12 +204,12 @@ fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
     if let Some(ref s) = subtitle
         && !s.trim().is_empty()
     {
-        feed.set_subtitle(TextConstruct::text(s));
+        feed.set_subtitle(TextConstruct::html(s));
     }
     if let Some(ref s) = summary
         && !s.trim().is_empty()
     {
-        feed.set_summary(TextConstruct::text(s));
+        feed.set_summary(TextConstruct::html(s));
     }
 
     // itunes:image href always wins over RSS <image> (#287).
@@ -253,12 +266,12 @@ fn apply_itunes_entry_promotions(entry: &mut Entry) {
     if let Some(ref s) = subtitle
         && !s.trim().is_empty()
     {
-        entry.set_subtitle(TextConstruct::text(s));
+        entry.set_subtitle(TextConstruct::html(s));
     }
     if let Some(ref s) = summary
         && !s.trim().is_empty()
     {
-        entry.set_summary(TextConstruct::text(s));
+        entry.set_summary(TextConstruct::html(s));
     }
 }
 
@@ -426,8 +439,11 @@ fn parse_channel_item(
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
             }
-            if entry.summary.is_none() {
-                entry.summary = entry.content.first().map(|c| c.value.clone());
+            if entry.summary.is_none()
+                && let Some(content) = entry.content.first()
+            {
+                entry.summary = Some(content.value.clone());
+                entry.summary_detail = Some(text_construct_from_content(content));
             }
             // Post-process: iTunes subtitle/summary promotion (order-independent).
             // Note: RSS entry.subtitle is iTunes-only — there is no native RSS <subtitle> for
@@ -552,9 +568,12 @@ fn parse_channel_standard(
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in channel title".into());
             }
+            // RSS has no per-element type attribute; real-world feeds routinely embed
+            // HTML in <title>, so it is treated as potentially unsafe (fail-closed),
+            // matching the treatment of <description> below (#438).
             feed.feed.set_title(TextConstruct {
                 value: text,
-                content_type: TextType::Text,
+                content_type: TextType::Html,
                 language: channel_lang.map(std::convert::Into::into),
                 base: base_ctx.base().map(String::from),
             });
@@ -1385,9 +1404,11 @@ fn parse_item_standard(
         b"title" => {
             let (text, had_bozo) = read_text(reader, buf, limits)?;
             *bozo |= had_bozo;
+            // See feed-level <title> above: no type attribute, so treated as
+            // potentially unsafe HTML by default (fail-closed, #438).
             entry.set_title(TextConstruct {
                 value: text,
-                content_type: TextType::Text,
+                content_type: TextType::Html,
                 language: item_lang.map(std::convert::Into::into),
                 base: base_ctx.base().map(String::from),
             });

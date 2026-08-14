@@ -4,7 +4,7 @@
 //! to create Server-Side Request Forgery (SSRF) attacks.
 #![allow(missing_docs, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use feedparser_rs::parse;
+use feedparser_rs::{ParseOptions, parse, parse_with_options};
 
 #[test]
 fn test_ssrf_localhost_blocked() {
@@ -409,4 +409,80 @@ fn test_mixed_case_javascript_scheme_blocked() {
         !icon.to_lowercase().contains("javascript"),
         "Mixed case javascript: scheme should be blocked, got: {icon}"
     );
+}
+
+// #438 audit C3: `resolve_relative_uris: false` must only disable joining a
+// relative `href` against `base`. It must never skip the scheme/SSRF safety
+// checks — otherwise a feed-supplied *absolute* dangerous URL (no xml:base
+// involved at all) passes through completely unvalidated under `strict()`,
+// which sets `resolve_relative_uris: false` and is documented as the preset
+// for untrusted feeds.
+
+#[test]
+fn test_resolve_disabled_still_blocks_absolute_ssrf_link() {
+    let xml = br#"<?xml version="1.0"?>
+<rss version="2.0"><channel><title>F</title>
+<item><title>T</title><link>http://169.254.169.254/latest/meta-data/</link></item>
+</channel></rss>"#;
+
+    let options = ParseOptions {
+        resolve_relative_uris: false,
+        ..ParseOptions::default()
+    };
+    let feed = parse_with_options(xml, &options).unwrap();
+    let link = feed.entries[0].link.as_deref().unwrap_or("");
+    assert!(
+        !link.contains("169.254.169.254"),
+        "SSRF to cloud metadata endpoint must be blocked even with resolve_relative_uris: false, got: {link}"
+    );
+}
+
+#[test]
+fn test_resolve_disabled_still_blocks_ssrf_via_xml_base() {
+    let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:base="http://169.254.169.254/">
+    <icon>latest/meta-data/</icon>
+</feed>"#;
+
+    let options = ParseOptions {
+        resolve_relative_uris: false,
+        ..ParseOptions::default()
+    };
+    let feed = parse_with_options(xml, &options).unwrap();
+    let icon = feed.feed.icon.as_deref().unwrap_or("");
+    // Joining is disabled, so the relative href is returned as-is (never resolved
+    // against the dangerous base in the first place) rather than blanked.
+    assert_eq!(icon, "latest/meta-data/");
+    assert!(!icon.contains("169.254.169.254"));
+}
+
+#[test]
+fn test_resolve_enabled_strict_preset_still_resolves_safely() {
+    // `strict()` sets resolve_relative_uris: false; confirm the default preset
+    // (resolution enabled) still resolves and still blocks SSRF, unaffected by
+    // the strict()-only code path above.
+    let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:base="http://169.254.169.254/">
+    <icon>latest/meta-data/</icon>
+</feed>"#;
+
+    let feed = parse_with_options(xml, &ParseOptions::default()).unwrap();
+    let icon = feed.feed.icon.as_deref().unwrap_or("");
+    assert!(!icon.contains("169.254.169.254"));
+}
+
+#[test]
+fn test_strict_preset_link_ssrf_blocked() {
+    // Full end-to-end check with the actual `ParserLimits::strict()` preset used
+    // via `ParseOptions::strict()`.
+    let xml = br#"<?xml version="1.0"?>
+<rss version="2.0"><channel><title>F</title>
+<item><title>T</title><link>http://169.254.169.254/latest/meta-data/</link></item>
+</channel></rss>"#;
+
+    let feed = parse_with_options(xml, &ParseOptions::strict()).unwrap();
+    let link = feed.entries[0].link.as_deref().unwrap_or("");
+    assert!(!link.contains("169.254.169.254"));
+    // Sanity: strict() really does disable relative-URI resolution.
+    assert!(!ParseOptions::strict().resolve_relative_uris);
 }

@@ -715,6 +715,37 @@ pub enum TextType {
     Xhtml,
 }
 
+impl TextType {
+    /// Determine the text type from an Atom `type` attribute value.
+    ///
+    /// Per RFC 4287 §3.1.1, the recognized values are `text`, `html`, and
+    /// `xhtml`; this also accepts the equivalent MIME spellings (`text/html`,
+    /// `application/xhtml+xml`) some feeds use in practice. Comparison is
+    /// case-insensitive. Any other value maps to `Html` — fail-closed, so a
+    /// bogus or unrecognized type label cannot be used to smuggle content past
+    /// downstream HTML sanitization by masquerading as plain text.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::types::TextType;
+    ///
+    /// assert_eq!(TextType::from_type_attr("text"), TextType::Text);
+    /// assert_eq!(TextType::from_type_attr("HTML"), TextType::Html);
+    /// assert_eq!(TextType::from_type_attr("text/html"), TextType::Html);
+    /// assert_eq!(TextType::from_type_attr("application/xhtml+xml"), TextType::Xhtml);
+    /// assert_eq!(TextType::from_type_attr("bogus"), TextType::Html);
+    /// ```
+    #[must_use]
+    pub fn from_type_attr(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "text" | "text/plain" => Self::Text,
+            "xhtml" | "application/xhtml+xml" => Self::Xhtml,
+            _ => Self::Html,
+        }
+    }
+}
+
 /// Text construct with metadata
 #[derive(Debug, Clone)]
 pub struct TextConstruct {

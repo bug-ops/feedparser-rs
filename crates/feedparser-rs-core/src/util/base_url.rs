@@ -164,17 +164,29 @@ pub fn combine_bases(parent_base: Option<&str>, child_base: Option<&str>) -> Opt
 ///
 /// This struct maintains the current base URL context and provides
 /// methods for URL resolution within a parsing context.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BaseUrlContext {
     /// The current effective base URL
     base: Option<String>,
+    /// Whether `resolve`/`resolve_safe` actually resolve relative URLs against
+    /// `base`, or pass `href` through unchanged (`ParseOptions::resolve_relative_uris`)
+    resolve: bool,
+}
+
+impl Default for BaseUrlContext {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl BaseUrlContext {
     /// Creates a new context with no base URL
     #[must_use]
     pub const fn new() -> Self {
-        Self { base: None }
+        Self {
+            base: None,
+            resolve: true,
+        }
     }
 
     /// Creates a new context with an initial base URL
@@ -182,7 +194,22 @@ impl BaseUrlContext {
     pub fn with_base(base: impl Into<String>) -> Self {
         Self {
             base: Some(base.into()),
+            resolve: true,
         }
+    }
+
+    /// Sets whether relative URL resolution is enabled (builder pattern)
+    ///
+    /// When `false`, [`Self::resolve`] never joins `href` against `base` — it
+    /// always returns `href` unchanged. [`Self::resolve_safe`] is different:
+    /// it still validates whatever `resolve` returns (dangerous schemes,
+    /// SSRF/private-IP checks) even when this is `false`, so it does **not**
+    /// simply return `href` unchanged — see its docs for why. Mirrors
+    /// `ParseOptions::resolve_relative_uris`.
+    #[must_use]
+    pub const fn with_resolve(mut self, resolve: bool) -> Self {
+        self.resolve = resolve;
+        self
     }
 
     /// Gets the current base URL
@@ -200,8 +227,14 @@ impl BaseUrlContext {
     }
 
     /// Resolves a URL against the current base
+    ///
+    /// Returns `href` unchanged when relative URL resolution is disabled
+    /// (see [`Self::with_resolve`]).
     #[must_use]
     pub fn resolve(&self, href: &str) -> String {
+        if !self.resolve {
+            return href.to_string();
+        }
         resolve_url(href, self.base.as_deref())
     }
 
@@ -215,6 +248,14 @@ impl BaseUrlContext {
     /// If the resolved URL fails SSRF safety checks (localhost, private IPs,
     /// dangerous schemes), the original `href` is returned unchanged instead
     /// of the resolved URL.
+    ///
+    /// # Security
+    ///
+    /// These safety checks run **unconditionally**, even when relative URL
+    /// resolution is disabled via [`Self::with_resolve`]. `with_resolve(false)`
+    /// only disables joining `href` against `base`; it never skips scheme/SSRF
+    /// validation, so a feed-supplied `href` that is itself an absolute
+    /// dangerous or private-network URL is still blocked (#438).
     ///
     /// # Arguments
     ///
@@ -236,9 +277,20 @@ impl BaseUrlContext {
     /// // SSRF blocked - returns original href
     /// let dangerous_ctx = BaseUrlContext::with_base("http://localhost/");
     /// assert_eq!(dangerous_ctx.resolve_safe("admin"), "admin");
+    ///
+    /// // Safety checks still run when relative resolution is disabled
+    /// let no_resolve_ctx = BaseUrlContext::new().with_resolve(false);
+    /// assert_eq!(
+    ///     no_resolve_ctx.resolve_safe("http://169.254.169.254/latest/meta-data/"),
+    ///     ""
+    /// );
     /// ```
     #[must_use]
     pub fn resolve_safe(&self, href: &str) -> String {
+        // `self.resolve()` already respects `self.resolve`: it returns `href`
+        // unchanged (no base joining) when relative resolution is disabled. The
+        // scheme/SSRF checks below always run on whatever it returns, so a
+        // feed-supplied absolute `href` is validated regardless of that setting.
         let resolved = self.resolve(href);
 
         // Use lowercase for case-insensitive scheme comparison (RFC 3986)
@@ -286,6 +338,7 @@ impl BaseUrlContext {
     pub fn child(&self) -> Self {
         Self {
             base: self.base.clone(),
+            resolve: self.resolve,
         }
     }
 
@@ -293,7 +346,10 @@ impl BaseUrlContext {
     #[must_use]
     pub fn child_with_base(&self, xml_base: &str) -> Self {
         let new_base = combine_bases(self.base.as_deref(), Some(xml_base));
-        Self { base: new_base }
+        Self {
+            base: new_base,
+            resolve: self.resolve,
+        }
     }
 }
 
@@ -429,6 +485,23 @@ mod tests {
         let parent = BaseUrlContext::with_base("http://example.com/");
         let child = parent.child();
         assert_eq!(child.base(), Some("http://example.com/"));
+    }
+
+    #[test]
+    fn test_context_resolve_disabled() {
+        let ctx = BaseUrlContext::with_base("http://example.com/feed/").with_resolve(false);
+        assert_eq!(ctx.resolve("item.html"), "item.html");
+        assert_eq!(ctx.resolve_safe("item.html"), "item.html");
+    }
+
+    #[test]
+    fn test_context_resolve_disabled_propagates_to_children() {
+        let ctx = BaseUrlContext::with_base("http://example.com/").with_resolve(false);
+        assert_eq!(ctx.child().resolve("page.html"), "page.html");
+        assert_eq!(
+            ctx.child_with_base("sub/").resolve("page.html"),
+            "page.html"
+        );
     }
 
     #[test]

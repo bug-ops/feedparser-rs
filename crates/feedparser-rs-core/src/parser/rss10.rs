@@ -65,7 +65,19 @@ pub fn parse_rss10(data: &[u8]) -> Result<ParsedFeed> {
 }
 
 /// Parse RSS 1.0 with custom parser limits
+///
+/// Relative URI resolution is always enabled; use [`parse_rss10_with_options`] to
+/// control it.
 pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<ParsedFeed> {
+    parse_rss10_with_options(data, limits, true)
+}
+
+/// Parse RSS 1.0 with custom parser limits and relative URI resolution control
+pub fn parse_rss10_with_options(
+    data: &[u8],
+    limits: ParserLimits,
+    resolve_relative_uris: bool,
+) -> Result<ParsedFeed> {
     limits
         .check_feed_size(data.len())
         .map_err(|e| FeedError::InvalidFormat(e.to_string()))?;
@@ -76,7 +88,7 @@ pub fn parse_rss10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Pars
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
     let mut rdf_lang: Option<String> = None;
-    let mut base_ctx = BaseUrlContext::new();
+    let mut base_ctx = BaseUrlContext::new().with_resolve(resolve_relative_uris);
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -263,7 +275,16 @@ fn parse_channel(
 
                 match name.as_ref() {
                     b"title" if !is_empty => {
-                        feed.feed.title = Some(read_text_str(reader, &mut buf, limits)?);
+                        let text = read_text_str(reader, &mut buf, limits)?;
+                        feed.feed.title = Some(text.clone());
+                        // RSS 1.0 has no per-element type attribute; treated as
+                        // potentially unsafe HTML by default (fail-closed, #438).
+                        feed.feed.title_detail = Some(TextConstruct {
+                            value: text,
+                            content_type: TextType::Html,
+                            language: None,
+                            base: None,
+                        });
                     }
                     b"link" if !is_empty => {
                         let link_text = read_text_str(reader, &mut buf, limits)?;
@@ -271,7 +292,14 @@ fn parse_channel(
                             .set_alternate_link(link_text, limits.max_links_per_feed);
                     }
                     b"description" if !is_empty => {
-                        feed.feed.subtitle = Some(read_text_str(reader, &mut buf, limits)?);
+                        let text = read_text_str(reader, &mut buf, limits)?;
+                        feed.feed.subtitle = Some(text.clone());
+                        feed.feed.subtitle_detail = Some(TextConstruct {
+                            value: text,
+                            content_type: TextType::Html,
+                            language: None,
+                            base: None,
+                        });
                     }
                     b"items" => {
                         // RSS 1.0 has an <items> element containing rdf:Seq with rdf:li references
@@ -371,9 +399,11 @@ fn parse_item(
                         let (text, had_bozo) = read_text(reader, buf, limits)?;
                         *bozo |= had_bozo;
                         entry.title = Some(text.clone());
+                        // See feed-level <title> above: no type attribute, so treated
+                        // as potentially unsafe HTML by default (fail-closed, #438).
                         entry.title_detail = Some(TextConstruct {
                             value: text,
-                            content_type: TextType::Text,
+                            content_type: TextType::Html,
                             language: lang.filter(|s| !s.is_empty()).map(Into::into),
                             base: base_ctx.base().map(ToString::to_string),
                         });

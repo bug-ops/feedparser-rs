@@ -60,6 +60,11 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// * `modified` - Optional Last-Modified timestamp (for URLs with conditional GET)
 /// * `user_agent` - Optional custom User-Agent header (for URLs)
 ///
+/// # Arguments (continued)
+///
+/// * `sanitize_html` - Sanitize HTML in feed entries to prevent XSS (default: True)
+/// * `resolve_relative_uris` - Resolve relative URLs against the feed's base URL (default: True)
+///
 /// # Examples
 ///
 /// ```python
@@ -77,17 +82,32 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
 ///     etag=cached_etag,
 ///     modified=cached_modified
 /// )
+///
+/// # Trust the feed source and skip HTML sanitization
+/// feed = feedparser_rs.parse("<rss>...</rss>", sanitize_html=False)
 /// ```
 #[pyfunction]
-#[pyo3(signature = (source, /, etag=None, modified=None, user_agent=None))]
+#[pyo3(signature = (source, /, etag=None, modified=None, user_agent=None, sanitize_html=true, resolve_relative_uris=true))]
+#[allow(clippy::fn_params_excessive_bools)]
 fn parse(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
     etag: Option<&str>,
     modified: Option<&str>,
     user_agent: Option<&str>,
+    sanitize_html: bool,
+    resolve_relative_uris: bool,
 ) -> PyResult<PyParsedFeed> {
-    parse_internal(py, source, etag, modified, user_agent, None)
+    parse_internal(
+        py,
+        source,
+        etag,
+        modified,
+        user_agent,
+        None,
+        sanitize_html,
+        resolve_relative_uris,
+    )
 }
 
 /// Parse with custom resource limits for DoS protection
@@ -101,6 +121,8 @@ fn parse(
 /// * `modified` - Optional Last-Modified timestamp (for URLs)
 /// * `user_agent` - Optional custom User-Agent header (for URLs)
 /// * `limits` - Optional parser limits for DoS protection
+/// * `sanitize_html` - Sanitize HTML in feed entries to prevent XSS (default: True)
+/// * `resolve_relative_uris` - Resolve relative URLs against the feed's base URL (default: True)
 ///
 /// # Examples
 ///
@@ -119,7 +141,8 @@ fn parse(
 /// feed = feedparser_rs.parse_with_limits("<rss>...</rss>", limits=limits)
 /// ```
 #[pyfunction]
-#[pyo3(signature = (source, /, etag=None, modified=None, user_agent=None, limits=None))]
+#[pyo3(signature = (source, /, etag=None, modified=None, user_agent=None, limits=None, sanitize_html=true, resolve_relative_uris=true))]
+#[allow(clippy::fn_params_excessive_bools)]
 fn parse_with_limits(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
@@ -127,11 +150,23 @@ fn parse_with_limits(
     modified: Option<&str>,
     user_agent: Option<&str>,
     limits: Option<&PyParserLimits>,
+    sanitize_html: bool,
+    resolve_relative_uris: bool,
 ) -> PyResult<PyParsedFeed> {
-    parse_internal(py, source, etag, modified, user_agent, limits)
+    parse_internal(
+        py,
+        source,
+        etag,
+        modified,
+        user_agent,
+        limits,
+        sanitize_html,
+        resolve_relative_uris,
+    )
 }
 
 /// Internal parse function that handles both URL and content sources
+#[allow(clippy::too_many_arguments)]
 fn parse_internal(
     py: Python<'_>,
     source: &Bound<'_, PyAny>,
@@ -139,7 +174,16 @@ fn parse_internal(
     modified: Option<&str>,
     user_agent: Option<&str>,
     limits: Option<&PyParserLimits>,
+    sanitize_html: bool,
+    resolve_relative_uris: bool,
 ) -> PyResult<PyParsedFeed> {
+    let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
+    let options = core::ParseOptions {
+        limits: parser_limits,
+        sanitize_html,
+        resolve_relative_uris,
+    };
+
     // Try to extract as string first
     if let Ok(s) = source.extract::<String>() {
         // Check if it's a URL
@@ -147,10 +191,8 @@ fn parse_internal(
             // Handle URL - requires http feature
             #[cfg(feature = "http")]
             {
-                let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
-                let parsed =
-                    core::parse_url_with_limits(&s, etag, modified, user_agent, parser_limits)
-                        .map_err(convert_feed_error)?;
+                let parsed = core::parse_url_with_options(&s, etag, modified, user_agent, &options)
+                    .map_err(convert_feed_error)?;
                 return PyParsedFeed::from_core(py, parsed);
             }
             #[cfg(not(feature = "http"))]
@@ -162,16 +204,14 @@ fn parse_internal(
         }
 
         // Parse as content
-        let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
         let parsed =
-            core::parse_with_limits(s.as_bytes(), parser_limits).map_err(convert_feed_error)?;
+            core::parse_with_options(s.as_bytes(), &options).map_err(convert_feed_error)?;
         return PyParsedFeed::from_core(py, parsed);
     }
 
     // Try to extract as bytes
     if let Ok(b) = source.extract::<Vec<u8>>() {
-        let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
-        let parsed = core::parse_with_limits(&b, parser_limits).map_err(convert_feed_error)?;
+        let parsed = core::parse_with_options(&b, &options).map_err(convert_feed_error)?;
         return PyParsedFeed::from_core(py, parsed);
     }
 
@@ -241,15 +281,24 @@ fn detect_format(source: &Bound<'_, PyAny>) -> PyResult<String> {
 /// ```
 #[cfg(feature = "http")]
 #[pyfunction]
-#[pyo3(signature = (url, etag=None, modified=None, user_agent=None))]
+#[pyo3(signature = (url, etag=None, modified=None, user_agent=None, sanitize_html=true, resolve_relative_uris=true))]
+#[allow(clippy::fn_params_excessive_bools)]
 fn parse_url(
     py: Python<'_>,
     url: &str,
     etag: Option<&str>,
     modified: Option<&str>,
     user_agent: Option<&str>,
+    sanitize_html: bool,
+    resolve_relative_uris: bool,
 ) -> PyResult<PyParsedFeed> {
-    let parsed = core::parse_url(url, etag, modified, user_agent).map_err(convert_feed_error)?;
+    let options = core::ParseOptions {
+        sanitize_html,
+        resolve_relative_uris,
+        ..core::ParseOptions::default()
+    };
+    let parsed = core::parse_url_with_options(url, etag, modified, user_agent, &options)
+        .map_err(convert_feed_error)?;
     PyParsedFeed::from_core(py, parsed)
 }
 
@@ -270,7 +319,8 @@ fn parse_url(
 /// ```
 #[cfg(feature = "http")]
 #[pyfunction]
-#[pyo3(signature = (url, etag=None, modified=None, user_agent=None, limits=None))]
+#[pyo3(signature = (url, etag=None, modified=None, user_agent=None, limits=None, sanitize_html=true, resolve_relative_uris=true))]
+#[allow(clippy::fn_params_excessive_bools)]
 fn parse_url_with_limits(
     py: Python<'_>,
     url: &str,
@@ -278,9 +328,16 @@ fn parse_url_with_limits(
     modified: Option<&str>,
     user_agent: Option<&str>,
     limits: Option<&PyParserLimits>,
+    sanitize_html: bool,
+    resolve_relative_uris: bool,
 ) -> PyResult<PyParsedFeed> {
     let parser_limits = limits.map(|l| l.to_core_limits()).unwrap_or_default();
-    let parsed = core::parse_url_with_limits(url, etag, modified, user_agent, parser_limits)
+    let options = core::ParseOptions {
+        limits: parser_limits,
+        sanitize_html,
+        resolve_relative_uris,
+    };
+    let parsed = core::parse_url_with_options(url, etag, modified, user_agent, &options)
         .map_err(convert_feed_error)?;
     PyParsedFeed::from_core(py, parsed)
 }

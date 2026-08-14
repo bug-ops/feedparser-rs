@@ -313,7 +313,7 @@ describe('feedparser-rs', () => {
       `;
 
       // 1MB limit should be enough
-      const feed = parseWithOptions(xml, 1024 * 1024);
+      const feed = parseWithOptions(xml, { maxSize: 1024 * 1024 });
 
       assert.strictEqual(feed.version, 'rss20');
       assert.strictEqual(feed.feed.title, 'Test Feed');
@@ -331,8 +331,26 @@ describe('feedparser-rs', () => {
 
       // Very small limit (10 bytes)
       assert.throws(() => {
-        parseWithOptions(xml, 10);
+        parseWithOptions(xml, { maxSize: 10 });
       }, /exceeds maximum/);
+    });
+
+    it('should skip HTML sanitization when sanitizeHtml is false', () => {
+      const xml = `
+        <?xml version="1.0"?>
+        <rss version="2.0">
+          <channel>
+            <title>Test Feed</title>
+            <item><title>Item</title><description>&lt;script&gt;alert(1)&lt;/script&gt;Hi</description></item>
+          </channel>
+        </rss>
+      `;
+
+      const sanitized = parseWithOptions(xml, null);
+      assert.ok(!sanitized.entries[0].summary.includes('<script>'));
+
+      const raw = parseWithOptions(xml, { sanitizeHtml: false });
+      assert.ok(raw.entries[0].summary.includes('<script>'));
     });
   });
 

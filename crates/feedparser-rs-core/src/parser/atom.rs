@@ -9,8 +9,8 @@ use crate::{
     types::{
         Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
         ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright,
-        MediaCredit, MediaThumbnail, ParsedFeed, Person, Source, Tag, TextConstruct, TextType,
-        parse_explicit,
+        MediaCredit, MediaThumbnail, MimeType, ParsedFeed, Person, Source, Tag, TextConstruct,
+        TextType, parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
@@ -21,6 +21,7 @@ use super::common::{
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
     is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
     read_text, read_text_str, read_xhtml_content_str, skip_element, skip_to_end,
+    text_construct_from_content,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -58,7 +59,19 @@ pub fn parse_atom10(data: &[u8]) -> Result<ParsedFeed> {
 }
 
 /// Parse Atom with custom limits
+///
+/// Relative URI resolution is always enabled; use [`parse_atom10_with_options`] to
+/// control it.
 pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<ParsedFeed> {
+    parse_atom10_with_options(data, limits, true)
+}
+
+/// Parse Atom with custom limits and relative URI resolution control
+pub fn parse_atom10_with_options(
+    data: &[u8],
+    limits: ParserLimits,
+    resolve_relative_uris: bool,
+) -> Result<ParsedFeed> {
     limits
         .check_feed_size(data.len())
         .map_err(|e| FeedError::InvalidFormat(e.to_string()))?;
@@ -68,7 +81,7 @@ pub fn parse_atom10_with_limits(data: &[u8], limits: ParserLimits) -> Result<Par
     let mut feed = init_feed(FeedVersion::Atom10, limits.max_entries);
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
     let mut depth: usize = 1;
-    let mut base_ctx = BaseUrlContext::new();
+    let mut base_ctx = BaseUrlContext::new().with_resolve(resolve_relative_uris);
     let mut found_feed_element = false;
 
     loop {
@@ -165,14 +178,14 @@ fn apply_itunes_feed_promotions(feed: &mut FeedMeta) {
     if let Some(ref s) = subtitle
         && !s.trim().is_empty()
     {
-        feed.set_subtitle(TextConstruct::text(s));
+        feed.set_subtitle(TextConstruct::html(s));
     }
     if let Some(ref s) = summary
         && !s.trim().is_empty()
     {
-        feed.set_summary(TextConstruct::text(s));
+        feed.set_summary(TextConstruct::html(s));
         if feed.subtitle.is_none() {
-            feed.set_subtitle(TextConstruct::text(s));
+            feed.set_subtitle(TextConstruct::html(s));
         }
     }
 }
@@ -188,12 +201,12 @@ fn apply_itunes_entry_promotions(entry: &mut Entry) {
     if let Some(ref s) = subtitle
         && !s.trim().is_empty()
     {
-        entry.set_subtitle(TextConstruct::text(s));
+        entry.set_subtitle(TextConstruct::html(s));
     }
     if let Some(ref s) = summary
         && !s.trim().is_empty()
     {
-        entry.set_summary(TextConstruct::text(s));
+        entry.set_summary(TextConstruct::html(s));
     }
 }
 
@@ -360,8 +373,12 @@ fn parse_feed_element(
                                     feed.bozo_exception =
                                         Some("Unresolvable entity in entry field".to_string());
                                 }
-                                if entry.summary.is_none() {
-                                    entry.summary = entry.content.first().map(|c| c.value.clone());
+                                if entry.summary.is_none()
+                                    && let Some(content) = entry.content.first()
+                                {
+                                    entry.summary = Some(content.value.clone());
+                                    entry.summary_detail =
+                                        Some(text_construct_from_content(content));
                                 }
                                 // #278: dc:creator fallback for author
                                 if entry.author.is_none()
@@ -1179,7 +1196,13 @@ fn parse_text_construct(
     lang: Option<&str>,
     base_ctx: &BaseUrlContext,
 ) -> Result<TextConstruct> {
-    let mut content_type = TextType::Text;
+    // RFC 4287 §3.1.1 says an absent `type` attribute defaults to "text", but that
+    // default is only meaningful as a *display* hint. For sanitization we do not
+    // extend the same trust to an unlabeled field that we extend to one the feed
+    // author explicitly marked `type="text"`: an absent attribute carries no
+    // assertion at all, so it is treated the same as `html`/`xhtml` (fail-closed,
+    // #438). Explicit `type="text"` below overrides this and is trusted verbatim.
+    let mut content_type = TextType::Html;
     let mut elem_base: Option<String> = None;
     let mut elem_lang: Option<String> = None;
 
@@ -1188,12 +1211,7 @@ fn parse_text_construct(
             continue;
         }
         match attr.key.as_ref() {
-            b"type" => match attr.value.as_ref() {
-                b"text" => content_type = TextType::Text,
-                b"html" => content_type = TextType::Html,
-                b"xhtml" => content_type = TextType::Xhtml,
-                _ => {}
-            },
+            b"type" => content_type = TextType::from_type_attr(&bytes_to_string(&attr.value)),
             b"xml:base" | b"base" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
@@ -1325,15 +1343,8 @@ fn parse_content(
         }
         match attr.key.as_ref() {
             b"type" => {
-                if attr.value.as_ref() == b"xhtml" {
-                    is_xhtml = true;
-                }
-                let normalized = match attr.value.as_ref() {
-                    b"xhtml" => "application/xhtml+xml".to_string(),
-                    b"html" => "text/html".to_string(),
-                    b"text" => "text/plain".to_string(),
-                    _ => bytes_to_string(&attr.value),
-                };
+                let normalized = normalize_atom_content_type(&bytes_to_string(&attr.value));
+                is_xhtml = normalized == "application/xhtml+xml";
                 content_type = Some(normalized.into());
             }
             b"src" => src = Some(bytes_to_string(&attr.value)),
@@ -1352,6 +1363,10 @@ fn parse_content(
             _ => {}
         }
     }
+
+    // RFC 4287 §4.1.3.1: absent `type` defaults to "text"; keep `Content.content_type`
+    // populated so downstream sanitization is never bypassed by a missing type.
+    let content_type = content_type.or_else(|| Some(MimeType::TEXT_PLAIN.into()));
 
     // Element-level xml:lang overrides parent lang; empty string clears it (XML spec)
     let effective_lang = match &elem_lang {
@@ -1386,6 +1401,20 @@ fn parse_content(
         base: effective_base,
         src: None,
     })
+}
+
+/// Normalize an Atom `content`/`text` construct `type` attribute to a MIME string.
+///
+/// Case-insensitively maps the RFC 4287 keywords (`text`, `html`, `xhtml`) to their
+/// MIME equivalents; any other value (including an already-MIME-spelled type like
+/// `text/html`) is lowercased and passed through unchanged.
+fn normalize_atom_content_type(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "text" => MimeType::TEXT_PLAIN.to_string(),
+        "html" => MimeType::TEXT_HTML.to_string(),
+        "xhtml" => "application/xhtml+xml".to_string(),
+        other => other.to_string(),
+    }
 }
 
 /// Parse children of `<media:group>` in an Atom entry.
@@ -1571,13 +1600,8 @@ fn parse_content_empty(
         }
         match attr.key.as_ref() {
             b"type" => {
-                let normalized = match attr.value.as_ref() {
-                    b"xhtml" => "application/xhtml+xml".to_string(),
-                    b"html" => "text/html".to_string(),
-                    b"text" => "text/plain".to_string(),
-                    _ => bytes_to_string(&attr.value),
-                };
-                content_type = Some(normalized.into());
+                content_type =
+                    Some(normalize_atom_content_type(&bytes_to_string(&attr.value)).into());
             }
             b"src" => src = Some(bytes_to_string(&attr.value)),
             b"xml:base" | b"base" => {
@@ -1595,6 +1619,9 @@ fn parse_content_empty(
             _ => {}
         }
     }
+
+    // RFC 4287 §4.1.3.1: absent `type` defaults to "text".
+    let content_type = content_type.or_else(|| Some(MimeType::TEXT_PLAIN.into()));
 
     let effective_lang = match &elem_lang {
         Some(l) if l.is_empty() => None,

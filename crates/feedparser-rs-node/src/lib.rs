@@ -28,6 +28,42 @@ use feedparser_rs::{
 /// Default maximum feed size (100 MB) - prevents DoS attacks
 const DEFAULT_MAX_FEED_SIZE: usize = 100 * 1024 * 1024;
 
+/// Parsing options accepted by `parseWithOptions` and `parseUrlWithOptions`
+///
+/// All fields are optional; omitted fields use the same defaults as
+/// [`core::ParseOptions::default`] (HTML sanitization and relative URI
+/// resolution both enabled, 100MB max feed size).
+#[napi(object)]
+#[derive(Default)]
+pub struct ParseOptions {
+    /// Maximum feed size in bytes (default: 100MB)
+    #[napi(js_name = "maxSize")]
+    pub max_size: Option<u32>,
+    /// Whether to sanitize HTML content in feed entries (default: true)
+    ///
+    /// Disabling this is **not recommended** unless the feed source is fully trusted.
+    #[napi(js_name = "sanitizeHtml")]
+    pub sanitize_html: Option<bool>,
+    /// Whether to resolve relative URLs against the feed's base URL (default: true)
+    #[napi(js_name = "resolveRelativeUris")]
+    pub resolve_relative_uris: Option<bool>,
+}
+
+impl ParseOptions {
+    /// Converts to core `ParserLimits` + `ParseOptions`, applying defaults for unset fields.
+    fn into_core(self) -> core::ParseOptions {
+        let max_feed_size = self.max_size.map_or(DEFAULT_MAX_FEED_SIZE, |s| s as usize);
+        core::ParseOptions {
+            resolve_relative_uris: self.resolve_relative_uris.unwrap_or(true),
+            sanitize_html: self.sanitize_html.unwrap_or(true),
+            limits: ParserLimits {
+                max_feed_size_bytes: max_feed_size,
+                ..ParserLimits::default()
+            },
+        }
+    }
+}
+
 /// Parse an RSS/Atom/JSON Feed from bytes or string
 ///
 /// # Arguments
@@ -46,12 +82,12 @@ pub fn parse(source: Either<Buffer, String>) -> Result<ParsedFeed> {
     parse_with_options(source, None)
 }
 
-/// Parse an RSS/Atom/JSON Feed with custom size limit
+/// Parse an RSS/Atom/JSON Feed with custom options
 ///
 /// # Arguments
 ///
 /// * `source` - Feed content as Buffer, string, or Uint8Array
-/// * `max_size` - Optional maximum feed size in bytes (default: 100MB)
+/// * `options` - Optional parsing options (max size, HTML sanitization, URI resolution)
 ///
 /// # Returns
 ///
@@ -63,9 +99,9 @@ pub fn parse(source: Either<Buffer, String>) -> Result<ParsedFeed> {
 #[napi]
 pub fn parse_with_options(
     source: Either<Buffer, String>,
-    max_size: Option<u32>,
+    options: Option<ParseOptions>,
 ) -> Result<ParsedFeed> {
-    let max_feed_size = max_size.map_or(DEFAULT_MAX_FEED_SIZE, |s| s as usize);
+    let core_options = options.unwrap_or_default().into_core();
 
     // Validate input size BEFORE copying to prevent DoS (CWE-770)
     let input_len = match &source {
@@ -73,12 +109,12 @@ pub fn parse_with_options(
         Either::B(s) => s.len(),
     };
 
-    if input_len > max_feed_size {
+    if input_len > core_options.limits.max_feed_size_bytes {
         return Err(Error::new(
             Status::InvalidArg,
             format!(
                 "Feed size ({} bytes) exceeds maximum allowed ({} bytes)",
-                input_len, max_feed_size
+                input_len, core_options.limits.max_feed_size_bytes
             ),
         ));
     }
@@ -88,12 +124,7 @@ pub fn parse_with_options(
         Either::B(s) => s.as_bytes(),
     };
 
-    let limits = ParserLimits {
-        max_feed_size_bytes: max_feed_size,
-        ..ParserLimits::default()
-    };
-
-    let parsed = core::parse_with_limits(bytes, limits).map_err(convert_feed_error)?;
+    let parsed = core::parse_with_options(bytes, &core_options).map_err(convert_feed_error)?;
 
     Ok(ParsedFeed::from(parsed))
 }
@@ -182,9 +213,10 @@ pub fn parse_url(
     Ok(ParsedFeed::from(parsed))
 }
 
-/// Parse feed from URL with custom resource limits
+/// Parse feed from URL with custom options
 ///
-/// Like `parseUrl` but allows specifying custom limits for DoS protection.
+/// Like `parseUrl` but allows specifying custom options for DoS protection,
+/// HTML sanitization, and relative URI resolution.
 ///
 /// # Examples
 ///
@@ -196,7 +228,7 @@ pub fn parse_url(
 ///   null, // etag
 ///   null, // modified
 ///   null, // user_agent
-///   10485760 // max_size: 10MB
+///   { maxSize: 10485760 } // 10MB
 /// );
 /// ```
 #[cfg(feature = "http")]
@@ -206,21 +238,16 @@ pub fn parse_url_with_options(
     etag: Option<String>,
     modified: Option<String>,
     user_agent: Option<String>,
-    max_size: Option<u32>,
+    options: Option<ParseOptions>,
 ) -> Result<ParsedFeed> {
-    let max_feed_size = max_size.map_or(DEFAULT_MAX_FEED_SIZE, |s| s as usize);
+    let core_options = options.unwrap_or_default().into_core();
 
-    let limits = ParserLimits {
-        max_feed_size_bytes: max_feed_size,
-        ..ParserLimits::default()
-    };
-
-    let parsed = core::parse_url_with_limits(
+    let parsed = core::parse_url_with_options(
         &url,
         etag.as_deref(),
         modified.as_deref(),
         user_agent.as_deref(),
-        limits,
+        &core_options,
     )
     .map_err(convert_feed_error)?;
 
