@@ -135,7 +135,49 @@ fn validate_ipv4(ip: Ipv4Addr) -> Result<()> {
         });
     }
 
-    let octets = ip.octets();
+    if ip.is_multicast() {
+        return Err(FeedError::Http {
+            message: format!("Multicast address not allowed: {ip} (224.0.0.0/4)"),
+        });
+    }
+
+    validate_ipv4_special_purpose(ip, ip.octets())
+}
+
+/// Validates IANA special-purpose IPv4 ranges not covered by `Ipv4Addr`'s
+/// built-in classifiers, plus cloud-metadata/CGN/this-network blocks. Split
+/// out of [`validate_ipv4`] to keep that function close to the project's
+/// function-length target.
+fn validate_ipv4_special_purpose(ip: Ipv4Addr, octets: [u8; 4]) -> Result<()> {
+    // Reserved for future use (RFC 1112), excluding 255.255.255.255 which
+    // is already covered by the broadcast check in `validate_ipv4`.
+    if octets[0] >= 240 {
+        return Err(FeedError::Http {
+            message: format!("Reserved address not allowed: {ip} (240.0.0.0/4)"),
+        });
+    }
+
+    // IETF Protocol Assignments (RFC 6890)
+    if octets[0] == 192 && octets[1] == 0 && octets[2] == 0 {
+        return Err(FeedError::Http {
+            message: format!("IETF protocol assignment address not allowed: {ip} (192.0.0.0/24)"),
+        });
+    }
+
+    // 6to4 relay anycast (RFC 3068); deprecated by RFC 7526 but still seen
+    // in older configurations.
+    if octets[0] == 192 && octets[1] == 88 && octets[2] == 99 {
+        return Err(FeedError::Http {
+            message: format!("6to4 relay anycast address not allowed: {ip} (192.88.99.0/24)"),
+        });
+    }
+
+    // Benchmarking (RFC 2544)
+    if octets[0] == 198 && (octets[1] & 0xFE) == 18 {
+        return Err(FeedError::Http {
+            message: format!("Benchmarking address not allowed: {ip} (198.18.0.0/15)"),
+        });
+    }
 
     // Block cloud metadata endpoints specifically
     if octets[0] == 169 && octets[1] == 254 && octets[2] == 169 && octets[3] == 254 {
@@ -243,6 +285,8 @@ fn validate_ipv6(ip: Ipv6Addr) -> Result<()> {
         });
     }
 
+    validate_ipv6_special_purpose(ip, segments)?;
+
     if ip.is_multicast() {
         return Err(FeedError::Http {
             message: format!("IPv6 multicast address not allowed: {ip} (ff00::/8)"),
@@ -252,25 +296,76 @@ fn validate_ipv6(ip: Ipv6Addr) -> Result<()> {
     Ok(())
 }
 
+/// Validates IANA special-purpose IPv6 ranges not covered by `Ipv6Addr`'s
+/// built-in classifiers (Teredo, `ORCHIDv2`, documentation, discard-only, and
+/// the RFC 8215 NAT64 local-use prefix). Split out of [`validate_ipv6`] to
+/// keep that function under the project's function-length limit.
+fn validate_ipv6_special_purpose(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()> {
+    // Teredo tunneling (RFC 4380)
+    if segments[0] == 0x2001 && segments[1] == 0 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 Teredo address not allowed: {ip} (2001::/32)"),
+        });
+    }
+
+    // ORCHIDv2 (RFC 7343)
+    if segments[0] == 0x2001 && (segments[1] & 0xFFF0) == 0x0020 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 ORCHIDv2 address not allowed: {ip} (2001:20::/28)"),
+        });
+    }
+
+    // Documentation range (RFC 3849)
+    if segments[0] == 0x2001 && segments[1] == 0x0db8 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 documentation address not allowed: {ip} (2001:db8::/32)"),
+        });
+    }
+
+    // Discard-only prefix (RFC 6666)
+    if segments[0] == 0x0100 && segments[1] == 0 && segments[2] == 0 && segments[3] == 0 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 discard-only address not allowed: {ip} (100::/64)"),
+        });
+    }
+
+    // NAT64 local-use prefix (RFC 8215), distinct from the well-known
+    // 64:ff9b::/96 prefix unwrapped to its embedded IPv4 address in
+    // `validate_ipv6`.
+    if segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 0x0001 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 NAT64 local-use address not allowed: {ip} (64:ff9b:1::/48)"),
+        });
+    }
+
+    Ok(())
+}
+
 /// Validates a domain name to prevent SSRF.
 fn validate_domain(domain: &str) -> Result<()> {
     let domain_lower = domain.to_lowercase();
+    // One or more trailing root-label dots (RFC 1035 §3.1, e.g. `localhost.`,
+    // `localhost..`) resolve identically to the un-dotted form via every
+    // standard stub resolver, so they must be stripped before the blocklist
+    // checks below or they silently break the exact-match and `ends_with`
+    // comparisons.
+    let normalized = domain_lower.trim_end_matches('.');
 
-    if LOCALHOST_VARIANTS.contains(&domain_lower.as_str()) {
+    if LOCALHOST_VARIANTS.contains(&normalized) {
         return Err(FeedError::Http {
             message: format!("Localhost domain not allowed: {domain}"),
         });
     }
 
     for tld in INTERNAL_TLDS {
-        if domain_lower.ends_with(tld) {
+        if normalized.ends_with(tld) {
             return Err(FeedError::Http {
                 message: format!("Internal domain TLD not allowed: {domain}"),
             });
         }
     }
 
-    if METADATA_DOMAINS.contains(&domain_lower.as_str()) {
+    if METADATA_DOMAINS.contains(&normalized) {
         return Err(FeedError::Http {
             message: format!("Cloud metadata domain not allowed: {domain}"),
         });
@@ -368,5 +463,184 @@ mod tests {
     fn test_validate_url_allows_nat64_public() {
         // 64:ff9b::808:808 encodes 8.8.8.8.
         assert!(validate_url("http://[64:ff9b::808:808]/").is_ok());
+    }
+
+    // --- #452: trailing-dot FQDN normalization ---
+
+    #[test]
+    fn test_validate_domain_rejects_trailing_dot_metadata_google() {
+        assert!(validate_domain("metadata.google.internal.").is_err());
+    }
+
+    #[test]
+    fn test_validate_domain_rejects_trailing_dot_localhost() {
+        assert!(validate_domain("localhost.").is_err());
+    }
+
+    #[test]
+    fn test_validate_domain_rejects_trailing_dot_metadata() {
+        assert!(validate_domain("metadata.").is_err());
+    }
+
+    #[test]
+    fn test_validate_domain_rejects_trailing_dot_internal_tld() {
+        assert!(validate_domain("server.local.").is_err());
+        assert!(validate_domain("server.internal.").is_err());
+    }
+
+    #[test]
+    fn test_validate_domain_allows_trailing_dot_public() {
+        assert!(validate_domain("example.com.").is_ok());
+    }
+
+    #[test]
+    fn test_validate_domain_rejects_multiple_trailing_dots() {
+        assert!(validate_domain("localhost..").is_err());
+        assert!(validate_domain("metadata.google.internal..").is_err());
+        assert!(validate_domain("server.internal..").is_err());
+    }
+
+    #[test]
+    fn test_validate_url_rejects_trailing_dot_metadata_google() {
+        assert!(validate_url("http://metadata.google.internal./").is_err());
+    }
+
+    // --- #453: additional IANA special-purpose IPv4 ranges ---
+
+    #[test]
+    fn test_validate_ipv4_rejects_multicast_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(224, 0, 0, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(239, 255, 255, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(223, 255, 255, 255)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv4_rejects_reserved_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(240, 0, 0, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(255, 255, 255, 254)).is_err());
+    }
+
+    #[test]
+    fn test_validate_ipv4_rejects_ietf_protocol_assignment_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(192, 0, 0, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 0, 0, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(191, 255, 255, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 0, 1, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv4_rejects_6to4_relay_anycast_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 99, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 99, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 98, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 100, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv4_rejects_benchmarking_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(198, 18, 0, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(198, 19, 255, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(198, 17, 255, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::new(198, 20, 0, 0)).is_ok());
+    }
+
+    // --- #453: additional IANA special-purpose IPv6 ranges ---
+
+    #[test]
+    fn test_validate_ipv6_rejects_teredo_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_ok()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_orchidv2_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0020, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 0x002f, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 0x001f, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_ok()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0030, 0, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_documentation_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 0x0db8, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 0x0db7, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_ok()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0db9, 0, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_discard_only_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x0100, 0, 0, 0, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x00ff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_ok()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 1, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_nat64_local_use_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x0064, 0xff9b, 1, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x0064, 0xff9b, 1, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x0064, 0xff9b, 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_ok()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x0064, 0xff9b, 2, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_allows_6to4_deliberately_out_of_scope() {
+        // 2002::/16 (RFC 3056) is deliberately not blocked; see the comment
+        // in `validate_ipv6`. Pinned here as a regression guard.
+        assert!(validate_ipv6(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2002, 0x0a00, 0x0001, 0, 0, 0, 0, 0)).is_ok());
     }
 }
