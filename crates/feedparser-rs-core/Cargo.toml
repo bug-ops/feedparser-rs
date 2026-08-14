@@ -29,11 +29,12 @@ reqwest = { workspace = true, features = [
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
 thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"], optional = true }
 url.workspace = true
 
 [features]
 default = ["http"]
-http = ["dep:reqwest"]
+http = ["dep:reqwest", "dep:tokio"]
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["html_reports"] }

@@ -6,6 +6,8 @@ pub mod base_url;
 pub mod date;
 pub mod encoding;
 pub mod sanitize;
+/// Shared SSRF validation logic, reused by `http::validation` and `base_url`
+pub(crate) mod ssrf;
 /// Text processing utilities
 pub mod text;
 

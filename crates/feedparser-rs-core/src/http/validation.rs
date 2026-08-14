@@ -1,38 +1,14 @@
-use crate::error::{FeedError, Result};
-use std::net::{Ipv4Addr, Ipv6Addr};
+use crate::error::Result;
+use crate::util::ssrf;
 use url::Url;
-
-// Localhost variations that should be blocked
-const LOCALHOST_VARIANTS: &[&str] = &[
-    "localhost",
-    "localhost.localdomain",
-    "127.0.0.1",
-    "::1",
-    "[::1]",
-];
-
-// Internal TLDs that should be blocked
-const INTERNAL_TLDS: &[&str] = &[
-    ".local",
-    ".localhost",
-    ".internal",
-    ".intranet",
-    ".corp",
-    ".home",
-    ".lan",
-];
-
-// Cloud metadata endpoints that should be blocked
-const METADATA_DOMAINS: &[&str] = &[
-    "metadata.google.internal",
-    "169.254.169.254",
-    "metadata",
-    "metadata.azure.com",
-];
 
 /// Validates a URL to prevent Server-Side Request Forgery (SSRF) attacks
 ///
 /// This function ensures that URLs only point to public, safe destinations.
+/// It is the single validation entry point used both before sending the
+/// initial request and to re-validate every redirect hop
+/// (see [`crate::http::FeedHttpClient`]), and shares its rule set with
+/// `xml:base` resolution via [`crate::util::base_url::is_safe_url`].
 ///
 /// # Security Checks
 ///
@@ -67,161 +43,7 @@ const METADATA_DOMAINS: &[&str] = &[
 /// assert!(validate_url("file:///etc/passwd").is_err());
 /// ```
 pub fn validate_url(url_str: &str) -> Result<Url> {
-    // Parse URL
-    let url = Url::parse(url_str).map_err(|e| FeedError::Http {
-        message: format!("Invalid URL: {e}"),
-    })?;
-
-    // Check 1: Only allow HTTP/HTTPS schemes
-    match url.scheme() {
-        "http" | "https" => {}
-        scheme => {
-            return Err(FeedError::Http {
-                message: format!(
-                    "Unsupported URL scheme '{scheme}': only 'http' and 'https' are allowed"
-                ),
-            });
-        }
-    }
-
-    // Check 2: URL must have a host
-    let host = url.host().ok_or_else(|| FeedError::Http {
-        message: "URL must have a host".to_string(),
-    })?;
-
-    // Check 3: Validate host based on type
-    match host {
-        url::Host::Ipv4(ip) => {
-            validate_ipv4(ip)?;
-        }
-        url::Host::Ipv6(ip) => {
-            validate_ipv6(ip)?;
-        }
-        url::Host::Domain(domain) => {
-            validate_domain(domain)?;
-        }
-    }
-
-    Ok(url)
-}
-
-/// Validates an IPv4 address to prevent SSRF
-fn validate_ipv4(ip: Ipv4Addr) -> Result<()> {
-    if ip.is_private() {
-        return Err(FeedError::Http {
-            message: format!("Private IP address not allowed: {ip} (RFC 1918)"),
-        });
-    }
-
-    if ip.is_loopback() {
-        return Err(FeedError::Http {
-            message: format!("Loopback address not allowed: {ip}"),
-        });
-    }
-
-    if ip.is_link_local() {
-        return Err(FeedError::Http {
-            message: format!("Link-local address not allowed: {ip} (169.254.0.0/16)"),
-        });
-    }
-
-    if ip.is_broadcast() {
-        return Err(FeedError::Http {
-            message: format!("Broadcast address not allowed: {ip}"),
-        });
-    }
-
-    if ip.is_documentation() {
-        return Err(FeedError::Http {
-            message: format!("Documentation IP not allowed: {ip} (RFC 5737)"),
-        });
-    }
-
-    // Block cloud metadata endpoints specifically
-    let octets = ip.octets();
-    if octets[0] == 169 && octets[1] == 254 && octets[2] == 169 && octets[3] == 254 {
-        return Err(FeedError::Http {
-            message: "AWS metadata endpoint blocked: 169.254.169.254".to_string(),
-        });
-    }
-
-    // Block carrier-grade NAT (100.64.0.0/10)
-    if octets[0] == 100 && (octets[1] & 0xC0) == 64 {
-        return Err(FeedError::Http {
-            message: format!("Carrier-grade NAT address not allowed: {ip} (100.64.0.0/10)"),
-        });
-    }
-
-    // Block 0.0.0.0/8
-    if octets[0] == 0 {
-        return Err(FeedError::Http {
-            message: format!("0.0.0.0/8 range not allowed: {ip}"),
-        });
-    }
-
-    Ok(())
-}
-
-/// Validates an IPv6 address to prevent SSRF
-fn validate_ipv6(ip: Ipv6Addr) -> Result<()> {
-    if ip.is_loopback() {
-        return Err(FeedError::Http {
-            message: format!("IPv6 loopback address not allowed: {ip}"),
-        });
-    }
-
-    if ip.is_unicast_link_local() {
-        return Err(FeedError::Http {
-            message: format!("IPv6 link-local address not allowed: {ip} (fe80::/10)"),
-        });
-    }
-
-    // Check for Unique Local Addresses (ULA) - fc00::/7
-    let segments = ip.segments();
-    if (segments[0] & 0xFE00) == 0xFC00 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 unique local address not allowed: {ip} (fc00::/7)"),
-        });
-    }
-
-    // Block multicast addresses
-    if ip.is_multicast() {
-        return Err(FeedError::Http {
-            message: format!("IPv6 multicast address not allowed: {ip} (ff00::/8)"),
-        });
-    }
-
-    Ok(())
-}
-
-/// Validates a domain name to prevent SSRF
-fn validate_domain(domain: &str) -> Result<()> {
-    let domain_lower = domain.to_lowercase();
-
-    // Block localhost variations
-    if LOCALHOST_VARIANTS.contains(&domain_lower.as_str()) {
-        return Err(FeedError::Http {
-            message: format!("Localhost domain not allowed: {domain}"),
-        });
-    }
-
-    // Block internal TLDs
-    for tld in INTERNAL_TLDS {
-        if domain_lower.ends_with(tld) {
-            return Err(FeedError::Http {
-                message: format!("Internal domain TLD not allowed: {domain}"),
-            });
-        }
-    }
-
-    // Block cloud metadata endpoints
-    if METADATA_DOMAINS.contains(&domain_lower.as_str()) {
-        return Err(FeedError::Http {
-            message: format!("Cloud metadata domain not allowed: {domain}"),
-        });
-    }
-
-    Ok(())
+    ssrf::validate_url(url_str)
 }
 
 #[cfg(test)]

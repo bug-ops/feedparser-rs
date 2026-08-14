@@ -24,6 +24,8 @@
 /// }
 /// ```
 mod client;
+/// SSRF-safe DNS resolver, closing the DNS-rebinding gap for `FeedHttpClient`
+mod resolver;
 mod response;
 
 /// URL validation module for SSRF protection

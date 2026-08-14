@@ -3,7 +3,7 @@
 //! This module provides URL resolution following RFC 3986, supporting
 //! the `xml:base` attribute used in Atom and some RSS feeds.
 
-use std::net::IpAddr;
+use super::ssrf;
 use url::Url;
 
 /// Validates that a URL is safe for external use (no SSRF risks)
@@ -13,6 +13,10 @@ use url::Url;
 /// - Localhost addresses (127.0.0.1, `::1`, localhost)
 /// - Private IP ranges (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
 /// - Cloud metadata endpoints (169.254.169.254)
+///
+/// Delegates to the same [`crate::http::validation::validate_url`] rule set used
+/// by the HTTP fetcher, so `xml:base`-derived links and fetched feed URLs are
+/// held to identical SSRF protections.
 ///
 /// # Arguments
 ///
@@ -39,70 +43,7 @@ use url::Url;
 /// ```
 #[must_use]
 pub fn is_safe_url(url: &str) -> bool {
-    let Ok(parsed) = Url::parse(url) else {
-        return false;
-    };
-
-    // Only allow http and https schemes
-    match parsed.scheme() {
-        "http" | "https" => {}
-        _ => return false,
-    }
-
-    // Check the host using url::Host enum which properly handles IP addresses
-    if let Some(host) = parsed.host() {
-        match host {
-            url::Host::Domain(domain) => {
-                // Reject localhost domain
-                if domain == "localhost" {
-                    return false;
-                }
-
-                // Reject cloud metadata endpoints
-                if domain == "metadata.google.internal" {
-                    return false;
-                }
-            }
-            url::Host::Ipv4(ipv4) => {
-                let ip = IpAddr::V4(ipv4);
-                // Reject localhost and private IPs
-                if ip.is_loopback() || is_private_ip(&ip) {
-                    return false;
-                }
-
-                // Reject cloud metadata IP
-                let octets = ipv4.octets();
-                if octets == [169, 254, 169, 254] {
-                    return false;
-                }
-            }
-            url::Host::Ipv6(ipv6) => {
-                let ip = IpAddr::V6(ipv6);
-                // Reject localhost and private IPs
-                if ip.is_loopback() || is_private_ip(&ip) {
-                    return false;
-                }
-            }
-        }
-    }
-
-    true
-}
-
-/// Checks if an IP address is in a private range
-fn is_private_ip(ip: &IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ipv4) => {
-            let octets = ipv4.octets();
-            octets[0] == 10
-                || (octets[0] == 172 && (16..=31).contains(&octets[1]))
-                || (octets[0] == 192 && octets[1] == 168)
-                || octets[0] == 127
-        }
-        IpAddr::V6(ipv6) => {
-            ipv6.is_loopback() || ipv6.is_unspecified() || (ipv6.segments()[0] & 0xfe00) == 0xfc00
-        }
-    }
+    ssrf::validate_url(url).is_ok()
 }
 
 /// Resolves a potentially relative URL against a base URL
@@ -594,6 +535,16 @@ mod tests {
 
         // Public IPv6 should be allowed
         assert!(is_safe_url("http://[2001:4860:4860::8888]/"));
+    }
+
+    #[test]
+    fn test_is_safe_url_ipv4_mapped_ipv6_loopback_blocked() {
+        // Regression pin: before consolidating onto `util::ssrf`, this
+        // module's own is_private_ip()/is_loopback() checks did not unwrap
+        // IPv4-mapped IPv6 addresses, so `::ffff:127.0.0.1` (which reaches
+        // 127.0.0.1 on the wire) passed as "safe" through xml:base
+        // resolution.
+        assert!(!is_safe_url("http://[::ffff:127.0.0.1]/"));
     }
 
     #[test]
