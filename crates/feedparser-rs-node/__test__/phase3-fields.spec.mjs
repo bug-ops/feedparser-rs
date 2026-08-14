@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import { parse } from '../index.js';
 
 describe('Field Bindings', () => {
-  describe('FeedMeta.geo', () => {
+  describe('FeedMeta.where', () => {
     it('should parse GeoRSS point location in feed', () => {
       const xml = `<?xml version="1.0"?>
         <rss version="2.0" xmlns:georss="http://www.georss.org/georss">
@@ -15,11 +15,11 @@ describe('Field Bindings', () => {
         </rss>`;
 
       const feed = parse(xml);
-      assert.ok(feed.feed.geo);
-      assert.strictEqual(feed.feed.geo.geoType, 'point');
-      assert.strictEqual(feed.feed.geo.coordinates.length, 1);
-      assert.strictEqual(feed.feed.geo.coordinates[0][0], 45.256);
-      assert.strictEqual(feed.feed.geo.coordinates[0][1], -71.92);
+      assert.ok(feed.feed.where);
+      assert.strictEqual(feed.feed.where.geoType, 'point');
+      assert.strictEqual(feed.feed.where.coordinates.length, 1);
+      assert.strictEqual(feed.feed.where.coordinates[0][0], 45.256);
+      assert.strictEqual(feed.feed.where.coordinates[0][1], -71.92);
     });
 
     it('should parse GeoRSS line in feed', () => {
@@ -33,13 +33,13 @@ describe('Field Bindings', () => {
         </rss>`;
 
       const feed = parse(xml);
-      assert.ok(feed.feed.geo);
-      assert.strictEqual(feed.feed.geo.geoType, 'line');
-      assert.strictEqual(feed.feed.geo.coordinates.length, 2);
-      assert.strictEqual(feed.feed.geo.coordinates[0][0], 45.0);
-      assert.strictEqual(feed.feed.geo.coordinates[0][1], -71.0);
-      assert.strictEqual(feed.feed.geo.coordinates[1][0], 46.0);
-      assert.strictEqual(feed.feed.geo.coordinates[1][1], -72.0);
+      assert.ok(feed.feed.where);
+      assert.strictEqual(feed.feed.where.geoType, 'line');
+      assert.strictEqual(feed.feed.where.coordinates.length, 2);
+      assert.strictEqual(feed.feed.where.coordinates[0][0], 45.0);
+      assert.strictEqual(feed.feed.where.coordinates[0][1], -71.0);
+      assert.strictEqual(feed.feed.where.coordinates[1][0], 46.0);
+      assert.strictEqual(feed.feed.where.coordinates[1][1], -72.0);
     });
 
     it('should return undefined when no GeoRSS data', () => {
@@ -52,7 +52,7 @@ describe('Field Bindings', () => {
         </rss>`;
 
       const feed = parse(xml);
-      assert.strictEqual(feed.feed.geo, undefined);
+      assert.strictEqual(feed.feed.where, undefined);
     });
   });
 
@@ -73,9 +73,25 @@ describe('Field Bindings', () => {
       const feed = parse(xml);
       assert.ok(feed.feed.itunes);
       assert.strictEqual(feed.feed.itunes.author, 'John Doe');
-      assert.strictEqual(feed.feed.itunes.explicit, false);
+      // "false" is not a truthy itunes:explicit value (only "yes"/"true"/"explicit" map to Some(true))
+      assert.strictEqual(feed.feed.itunes.explicit, undefined);
       assert.strictEqual(feed.feed.itunes.image, 'https://example.com/image.jpg');
       assert.strictEqual(feed.feed.itunes.podcastType, 'episodic');
+    });
+
+    it('should parse itunes:explicit truthy value as true', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+          <channel>
+            <title>Test Podcast</title>
+            <link>https://example.com</link>
+            <itunes:explicit>yes</itunes:explicit>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      assert.ok(feed.feed.itunes);
+      assert.strictEqual(feed.feed.itunes.explicit, true);
     });
 
     it('should parse iTunes owner information', () => {
@@ -164,7 +180,7 @@ describe('Field Bindings', () => {
     });
   });
 
-  describe('Entry.geo', () => {
+  describe('Entry.where', () => {
     it('should parse GeoRSS point in entry', () => {
       const xml = `<?xml version="1.0"?>
         <rss version="2.0" xmlns:georss="http://www.georss.org/georss">
@@ -180,10 +196,10 @@ describe('Field Bindings', () => {
 
       const feed = parse(xml);
       assert.strictEqual(feed.entries.length, 1);
-      assert.ok(feed.entries[0].geo);
-      assert.strictEqual(feed.entries[0].geo.geoType, 'point');
-      assert.strictEqual(feed.entries[0].geo.coordinates[0][0], 40.7128);
-      assert.strictEqual(feed.entries[0].geo.coordinates[0][1], -74.006);
+      assert.ok(feed.entries[0].where);
+      assert.strictEqual(feed.entries[0].where.geoType, 'point');
+      assert.strictEqual(feed.entries[0].where.coordinates[0][0], 40.7128);
+      assert.strictEqual(feed.entries[0].where.coordinates[0][1], -74.006);
     });
 
     it('should parse GeoRSS polygon in entry', () => {
@@ -201,9 +217,9 @@ describe('Field Bindings', () => {
 
       const feed = parse(xml);
       assert.strictEqual(feed.entries.length, 1);
-      assert.ok(feed.entries[0].geo);
-      assert.strictEqual(feed.entries[0].geo.geoType, 'polygon');
-      assert.strictEqual(feed.entries[0].geo.coordinates.length, 4);
+      assert.ok(feed.entries[0].where);
+      assert.strictEqual(feed.entries[0].where.geoType, 'polygon');
+      assert.strictEqual(feed.entries[0].where.coordinates.length, 4);
     });
   });
 
@@ -247,10 +263,11 @@ describe('Field Bindings', () => {
 
       const feed = parse(xml);
       assert.strictEqual(feed.entries.length, 1);
-      assert.ok(feed.entries[0].dcDate);
-      assert.strictEqual(typeof feed.entries[0].dcDate, 'number');
+      assert.strictEqual(typeof feed.entries[0].dcDate, 'string');
+      assert.ok(feed.entries[0].dcDateParsed);
+      assert.strictEqual(typeof feed.entries[0].dcDateParsed, 'number');
       // Check it's a valid timestamp (milliseconds since epoch)
-      const date = new Date(feed.entries[0].dcDate);
+      const date = new Date(feed.entries[0].dcDateParsed);
       assert.strictEqual(date.getUTCFullYear(), 2024);
       assert.strictEqual(date.getUTCMonth(), 0); // January = 0
       assert.strictEqual(date.getUTCDate(), 15);
@@ -340,8 +357,8 @@ describe('Field Bindings', () => {
       assert.ok(Array.isArray(feed.entries[0].mediaThumbnails));
       assert.strictEqual(feed.entries[0].mediaThumbnails.length, 1);
       assert.strictEqual(feed.entries[0].mediaThumbnails[0].url, 'https://example.com/thumb.jpg');
-      assert.strictEqual(feed.entries[0].mediaThumbnails[0].width, 120);
-      assert.strictEqual(feed.entries[0].mediaThumbnails[0].height, 90);
+      assert.strictEqual(feed.entries[0].mediaThumbnails[0].width, '120');
+      assert.strictEqual(feed.entries[0].mediaThumbnails[0].height, '90');
     });
 
     it('should parse multiple media:thumbnails', () => {
@@ -384,10 +401,10 @@ describe('Field Bindings', () => {
       assert.strictEqual(feed.entries[0].mediaContent.length, 1);
       assert.strictEqual(feed.entries[0].mediaContent[0].url, 'https://example.com/video.mp4');
       assert.strictEqual(feed.entries[0].mediaContent[0].type, 'video/mp4');
-      assert.strictEqual(feed.entries[0].mediaContent[0].filesize, 1024000);
-      assert.strictEqual(feed.entries[0].mediaContent[0].duration, 120);
-      assert.strictEqual(feed.entries[0].mediaContent[0].width, 1920);
-      assert.strictEqual(feed.entries[0].mediaContent[0].height, 1080);
+      assert.strictEqual(feed.entries[0].mediaContent[0].filesize, '1024000');
+      assert.strictEqual(feed.entries[0].mediaContent[0].duration, '120');
+      assert.strictEqual(feed.entries[0].mediaContent[0].width, '1920');
+      assert.strictEqual(feed.entries[0].mediaContent[0].height, '1080');
     });
 
     it('should have empty arrays when no media fields', () => {
@@ -469,8 +486,8 @@ describe('Field Bindings', () => {
         </rss>`;
 
       const feed = parse(xml);
-      assert.ok(feed.feed.geo);
-      assert.strictEqual(feed.feed.geo.geoType, 'point');
+      assert.ok(feed.feed.where);
+      assert.strictEqual(feed.feed.where.geoType, 'point');
       assert.ok(feed.feed.itunes);
       assert.strictEqual(feed.feed.itunes.author, 'San Francisco Podcasts');
       assert.ok(feed.feed.podcast);
@@ -502,8 +519,8 @@ describe('Field Bindings', () => {
       assert.strictEqual(entry.dcCreator, 'Bob Smith');
       assert.strictEqual(entry.dcSubject.length, 1);
       assert.strictEqual(entry.dcSubject[0], 'Travel');
-      assert.ok(entry.geo);
-      assert.strictEqual(entry.geo.geoType, 'point');
+      assert.ok(entry.where);
+      assert.strictEqual(entry.where.geoType, 'point');
       // Media thumbnails field exists (empty array when no media)
       assert.ok(Array.isArray(entry.mediaThumbnails));
     });
