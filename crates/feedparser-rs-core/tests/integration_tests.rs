@@ -395,14 +395,16 @@ fn test_atom_entry_subtitle_html() {
     // summary is independent from subtitle
     assert_eq!(entry.summary.as_deref(), Some("Plain text summary"));
 
-    // Second entry: subtitle without type attr defaults to "text"
+    // Second entry: subtitle without a type attr displays as RFC 4287 "text",
+    // but carries no explicit safety assertion, so it is sanitize-typed as Html
+    // (fail-closed, #438); harmless plain text is unaffected by sanitization.
     let entry2 = &feed.entries[1];
     assert_eq!(
         entry2.subtitle.as_deref(),
         Some("Plain text subtitle without type attribute")
     );
     let detail2 = entry2.subtitle_detail.as_ref().unwrap();
-    assert_eq!(detail2.content_type, TextType::Text);
+    assert_eq!(detail2.content_type, TextType::Html);
 
     // Third entry: no subtitle
     let entry3 = &feed.entries[2];
@@ -609,14 +611,15 @@ fn test_text_construct_value_populated() {
         "subtitle_detail.value must equal subtitle"
     );
 
-    // subtitle_detail.value must equal subtitle string for plain text type
+    // subtitle_detail.value must equal subtitle string for an untyped (fail-closed
+    // Html, #438) subtitle too
     let entry2 = &feed.entries[1];
     let detail2 = entry2.subtitle_detail.as_ref().unwrap();
-    assert_eq!(detail2.content_type, TextType::Text);
+    assert_eq!(detail2.content_type, TextType::Html);
     assert_eq!(
         detail2.value,
         entry2.subtitle.as_deref().unwrap_or(""),
-        "subtitle_detail.value must equal subtitle for text type"
+        "subtitle_detail.value must equal subtitle for untyped subtitle"
     );
 }
 
@@ -687,7 +690,11 @@ fn test_rss20_entity_whitespace_preserved() {
     );
 
     // &amp; entity with adjacent spaces
-    assert_eq!(feed.entries[4].summary.as_deref(), Some("foo & bar"));
+    //
+    // The parser resolves the &amp; entity to a literal "&" (common.rs::resolve_entity);
+    // HTML sanitization then re-escapes it since entry.summary carries TextType::Html
+    // (matches Python feedparser's sanitizer behavior for bare ampersands, see #438).
+    assert_eq!(feed.entries[4].summary.as_deref(), Some("foo &amp; bar"));
 }
 
 #[test]

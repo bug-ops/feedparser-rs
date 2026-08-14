@@ -87,6 +87,27 @@ pub struct ParserLimits {
     /// Default: 100 levels
     pub max_nesting_depth: usize,
 
+    /// Maximum HTML tag nesting depth accepted by HTML sanitization
+    ///
+    /// `sanitize_html`'s underlying HTML5 tree builder exhibits quadratic-time
+    /// behavior on pathologically deep tag nesting within a single text field
+    /// (verified: multi-second slowdown from a single deeply nested `<div>`
+    /// chain). Content nested deeper than this is escaped as plain text
+    /// (`&lt;`/`&gt;`) instead of being run through the sanitizer, bounding
+    /// worst-case CPU cost to linear regardless of input shape.
+    ///
+    /// This is a safety bound, not a compatibility ceiling to be tuned up to
+    /// match "typical" content: exceeding it degrades gracefully (the field's
+    /// HTML formatting is lost, but its text content is fully preserved and
+    /// still safely escaped) rather than dropping data or erroring, so it is
+    /// safe to keep conservative. Legitimate feed content — even unusually
+    /// deep block-quoted reply chains or nested tables — rarely exceeds a few
+    /// dozen levels; 100 (50 under [`ParserLimits::strict`]) leaves headroom
+    /// above that without leaving much headroom for abuse.
+    ///
+    /// Default: 100 levels
+    pub max_html_nesting_depth: usize,
+
     /// Maximum text field length in bytes
     ///
     /// Prevents excessive memory from huge title/description fields.
@@ -192,6 +213,7 @@ impl Default for ParserLimits {
             max_enclosures: 20,
             max_namespaces: 100,
             max_nesting_depth: 100,
+            max_html_nesting_depth: 100,
             max_text_length: 10 * 1024 * 1024,      // 10 MB
             max_feed_size_bytes: 100 * 1024 * 1024, // 100 MB
             max_attribute_length: 64 * 1024,        // 64 KB
@@ -237,6 +259,7 @@ impl ParserLimits {
             max_enclosures: 5,
             max_namespaces: 20,
             max_nesting_depth: 50,
+            max_html_nesting_depth: 50,
             max_text_length: 1024 * 1024,          // 1 MB
             max_feed_size_bytes: 10 * 1024 * 1024, // 10 MB
             max_attribute_length: 8 * 1024,        // 8 KB
@@ -280,6 +303,7 @@ impl ParserLimits {
             max_enclosures: 100,
             max_namespaces: 500,
             max_nesting_depth: 200,
+            max_html_nesting_depth: 200,
             max_text_length: 50 * 1024 * 1024,      // 50 MB
             max_feed_size_bytes: 500 * 1024 * 1024, // 500 MB
             max_attribute_length: 256 * 1024,       // 256 KB

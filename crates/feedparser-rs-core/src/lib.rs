@@ -186,7 +186,7 @@ pub mod util;
 pub use error::{FeedError, Result};
 pub use limits::{LimitError, ParserLimits};
 pub use options::ParseOptions;
-pub use parser::{detect_format, parse, parse_with_limits};
+pub use parser::{detect_format, parse, parse_with_limits, parse_with_options};
 pub use types::{
     Cloud, Content, Email, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, InReplyTo,
     ItunesCategory, ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link,
@@ -260,62 +260,15 @@ pub fn parse_url(
     modified: Option<&str>,
     user_agent: Option<&str>,
 ) -> Result<ParsedFeed> {
-    use http::FeedHttpClient;
-
-    // Create HTTP client
-    let mut client = FeedHttpClient::new()?;
-    if let Some(agent) = user_agent {
-        client = client.with_user_agent(agent.to_string());
-    }
-
-    // Fetch feed
-    let response = client.get(url, etag, modified, None)?;
-
-    // Handle 304 Not Modified
-    if response.status == 304 {
-        return Ok(ParsedFeed {
-            status: Some(304),
-            href: Some(response.url),
-            etag: etag.map(String::from),
-            modified: modified.map(String::from),
-            #[cfg(feature = "http")]
-            headers: Some(response.headers),
-            encoding: String::from("utf-8"),
-            ..Default::default()
-        });
-    }
-
-    // Handle error status codes
-    if response.status >= 400 {
-        return Err(FeedError::Http {
-            message: format!("HTTP {} for URL: {}", response.status, response.url),
-        });
-    }
-
-    // Parse feed from response body
-    let mut feed = parse(&response.body)?;
-
-    // Add HTTP metadata
-    feed.status = Some(response.status);
-    feed.href = Some(response.url);
-    feed.etag = response.etag;
-    feed.modified = response.last_modified;
-    #[cfg(feature = "http")]
-    {
-        feed.headers = Some(response.headers);
-    }
-
-    // Override encoding if HTTP header specifies
-    if let Some(http_encoding) = response.encoding {
-        feed.encoding = http_encoding;
-    }
-
-    Ok(feed)
+    parse_url_with_options(url, etag, modified, user_agent, &ParseOptions::default())
 }
 
 /// Parse feed from URL with custom parser limits
 ///
 /// Like `parse_url` but allows specifying custom limits for resource control.
+/// HTML sanitization and relative URI resolution use their
+/// [`ParseOptions::default`] settings (both enabled); use
+/// [`parse_url_with_options`] to control them directly.
 ///
 /// # Errors
 ///
@@ -342,6 +295,52 @@ pub fn parse_url_with_limits(
     modified: Option<&str>,
     user_agent: Option<&str>,
     limits: ParserLimits,
+) -> Result<ParsedFeed> {
+    parse_url_with_options(
+        url,
+        etag,
+        modified,
+        user_agent,
+        &ParseOptions {
+            limits,
+            ..ParseOptions::default()
+        },
+    )
+}
+
+/// Parse feed from URL with full control over parser behavior
+///
+/// Like `parse_url` but allows specifying HTML sanitization, relative URI
+/// resolution, and resource limits via [`ParseOptions`].
+///
+/// # Errors
+///
+/// Returns `FeedError::Http` if the request fails or `FeedError::Parse` if parsing fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// use feedparser_rs::{parse_url_with_options, ParseOptions};
+///
+/// let options = ParseOptions {
+///     sanitize_html: false, // Trust this feed source
+///     ..ParseOptions::default()
+/// };
+/// let feed = parse_url_with_options(
+///     "https://example.com/feed.xml",
+///     None,
+///     None,
+///     None,
+///     &options,
+/// ).unwrap();
+/// ```
+#[cfg(feature = "http")]
+pub fn parse_url_with_options(
+    url: &str,
+    etag: Option<&str>,
+    modified: Option<&str>,
+    user_agent: Option<&str>,
+    options: &ParseOptions,
 ) -> Result<ParsedFeed> {
     use http::FeedHttpClient;
 
@@ -371,7 +370,7 @@ pub fn parse_url_with_limits(
         });
     }
 
-    let mut feed = parse_with_limits(&response.body, limits)?;
+    let mut feed = parse_with_options(&response.body, options)?;
 
     feed.status = Some(response.status);
     feed.href = Some(response.url);

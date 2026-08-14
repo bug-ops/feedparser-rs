@@ -14,7 +14,9 @@ pub use detect::detect_format;
 /// Parse feed from raw bytes
 ///
 /// This is the main entry point for parsing feeds. It automatically detects
-/// the feed format (RSS, Atom, JSON) and parses accordingly.
+/// the feed format (RSS, Atom, JSON) and parses accordingly. Uses
+/// [`crate::ParseOptions::default`], which sanitizes HTML content and resolves
+/// relative URIs.
 ///
 /// # Errors
 ///
@@ -40,12 +42,14 @@ pub use detect::detect_format;
 /// assert_eq!(feed.feed.title.as_deref(), Some("Example Feed"));
 /// ```
 pub fn parse(data: &[u8]) -> Result<ParsedFeed> {
-    parse_with_limits(data, crate::ParserLimits::default())
+    parse_with_options(data, &crate::ParseOptions::default())
 }
 
 /// Parse feed with custom parser limits
 ///
-/// This allows controlling resource usage when parsing untrusted feeds.
+/// This allows controlling resource usage when parsing untrusted feeds. HTML
+/// sanitization and relative URI resolution use their [`crate::ParseOptions::default`]
+/// settings (both enabled); use [`parse_with_options`] to control them directly.
 ///
 /// # Examples
 ///
@@ -64,8 +68,47 @@ pub fn parse(data: &[u8]) -> Result<ParsedFeed> {
 /// - Format is unknown or unsupported
 /// - Fatal parsing error occurs
 pub fn parse_with_limits(data: &[u8], limits: crate::ParserLimits) -> Result<ParsedFeed> {
+    parse_with_options(
+        data,
+        &crate::ParseOptions {
+            limits,
+            ..crate::ParseOptions::default()
+        },
+    )
+}
+
+/// Parse feed from raw bytes with full control over parser behavior
+///
+/// This is the most flexible entry point: [`parse`] and [`parse_with_limits`] are
+/// thin wrappers around it. Controls HTML sanitization, relative URI resolution,
+/// and resource limits via [`crate::ParseOptions`].
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::{parse_with_options, ParseOptions};
+///
+/// // Trust the feed source and skip sanitization
+/// let options = ParseOptions {
+///     sanitize_html: false,
+///     ..ParseOptions::default()
+/// };
+/// let xml = b"<rss version=\"2.0\"><channel><title>Test</title></channel></rss>";
+/// let feed = parse_with_options(xml, &options).unwrap();
+/// ```
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Feed size exceeds limits
+/// - Format is unknown or unsupported
+/// - Fatal parsing error occurs
+pub fn parse_with_options(data: &[u8], options: &crate::ParseOptions) -> Result<ParsedFeed> {
     use crate::types::FeedVersion;
     use crate::util::encoding::detect_and_convert;
+
+    let limits = options.limits;
+    let resolve_relative_uris = options.resolve_relative_uris;
 
     // Detect encoding and convert to UTF-8 before parsing.
     // This handles ISO-8859-1, Windows-1252, UTF-16, and BOM-prefixed feeds.
@@ -86,20 +129,26 @@ pub fn parse_with_limits(data: &[u8], limits: crate::ParserLimits) -> Result<Par
         | FeedVersion::Rss091Netscape
         | FeedVersion::Rss091Userland
         | FeedVersion::Rss090 => {
-            let mut parsed = rss::parse_rss20_with_limits(utf8_bytes, limits)?;
+            let mut parsed =
+                rss::parse_rss20_with_options(utf8_bytes, limits, resolve_relative_uris)?;
             parsed.version = version;
             Ok(parsed)
         }
 
         // Atom variants
         FeedVersion::Atom10 | FeedVersion::Atom03 => {
-            atom::parse_atom10_with_limits(utf8_bytes, limits)
+            atom::parse_atom10_with_options(utf8_bytes, limits, resolve_relative_uris)
         }
 
         // RSS 1.0 (RDF)
-        FeedVersion::Rss10 => rss10::parse_rss10_with_limits(utf8_bytes, limits),
+        FeedVersion::Rss10 => {
+            rss10::parse_rss10_with_options(utf8_bytes, limits, resolve_relative_uris)
+        }
 
-        // JSON Feed
+        // JSON Feed: `resolve_relative_uris` is intentionally not threaded through
+        // here — the JSON Feed parser does not resolve relative URIs against a
+        // base URL at all (JSON Feed has no `xml:base`-equivalent concept), so
+        // there is nothing for the option to gate.
         FeedVersion::JsonFeed10 | FeedVersion::JsonFeed11 => {
             json::parse_json_feed_with_limits(utf8_bytes, limits)
         }
@@ -117,6 +166,11 @@ pub fn parse_with_limits(data: &[u8], limits: crate::ParserLimits) -> Result<Par
     }?;
 
     feed.encoding = encoding_label;
+
+    if options.sanitize_html {
+        crate::util::sanitize::sanitize_feed(&mut feed, &limits);
+    }
+
     Ok(feed)
 }
 

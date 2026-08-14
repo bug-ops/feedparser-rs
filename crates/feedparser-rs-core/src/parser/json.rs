@@ -84,7 +84,10 @@ pub fn parse_json_feed_with_limits(data: &[u8], limits: ParserLimits) -> Result<
 fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits) {
     if let Some(title) = json.get("title").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(title, limits.max_text_length);
-        feed.set_title(TextConstruct::text(&truncated));
+        // JSON Feed spec mandates plain text here, but consumers historically render
+        // title raw regardless of spec; treated as potentially unsafe HTML by default
+        // so it goes through sanitization rather than being trusted (fail-closed, #438).
+        feed.set_title(TextConstruct::html(&truncated));
     }
 
     if let Some(url) = json.get("home_page_url").and_then(|v| v.as_str())
@@ -102,7 +105,8 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
 
     if let Some(description) = json.get("description").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(description, limits.max_text_length);
-        feed.subtitle_detail = Some(TextConstruct::text(&truncated));
+        // See feed title above: treated as potentially unsafe HTML by default (#438).
+        feed.subtitle_detail = Some(TextConstruct::html(&truncated));
         feed.subtitle = Some(truncated);
     }
 
@@ -207,9 +211,11 @@ fn parse_item(
 
     if let Some(title) = json.get("title").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(title, limits.max_text_length);
+        // See feed title in parse_feed_metadata: treated as potentially unsafe
+        // HTML by default regardless of the JSON Feed "plain text" spec (#438).
         entry.set_title(TextConstruct {
             value: truncated,
-            content_type: crate::types::TextType::Text,
+            content_type: crate::types::TextType::Html,
             language: effective_lang.map(Into::into),
             base: None,
         });
@@ -245,9 +251,10 @@ fn parse_item(
 
     if let Some(summary) = json.get("summary").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(summary, limits.max_text_length);
+        // See entry title above: treated as potentially unsafe HTML by default (#438).
         entry.set_summary(TextConstruct {
             value: truncated,
-            content_type: crate::types::TextType::Text,
+            content_type: crate::types::TextType::Html,
             language: effective_lang.map(Into::into),
             base: None,
         });
