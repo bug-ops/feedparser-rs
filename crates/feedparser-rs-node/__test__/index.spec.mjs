@@ -506,7 +506,11 @@ describe('feedparser-rs', () => {
 
       const feed = parse(xml);
 
-      assert(feed.feed.title.includes('<HTML>'));
+      // CDATA content is extracted correctly, but titles are HTML-sanitized by
+      // default (#438), so the unrecognized <HTML> tag is stripped rather than
+      // preserved verbatim.
+      assert(feed.feed.title.includes('Title with'));
+      assert(!feed.feed.title.includes('<HTML>'));
     });
 
     it('should handle very long titles', () => {
