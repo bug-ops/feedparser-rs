@@ -237,8 +237,16 @@ export interface GeoLocation {
    * - "polygon": Three or more pairs forming a closed shape [[lat1, lng1], ..., [lat1, lng1]]
    */
   coordinates: Array<Array<number>>
-  /** Coordinate Reference System (e.g., "EPSG:4326" for WGS84 latitude/longitude) */
-  crs?: string
+  /** Coordinate Reference System (from GeoRSS/GML `srsName`, e.g. "EPSG:4326" for WGS84 latitude/longitude) */
+  srsName?: string
+  /** Elevation in meters (from `georss:elev`) */
+  elev?: number
+  /** Feature type classification (from `georss:featuretypetag`) */
+  featureTypeTag?: string
+  /** Human-readable place name (from `georss:featurename`) */
+  featureName?: string
+  /** Relationship type (from `georss:relationshiptag`) */
+  relationshipTag?: string
 }
 
 /** Image metadata */

@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING**: `GeoLocation.crs` renamed to `srsName` in the Node.js binding to match the `srs_name` field used by core and the Python binding (#441)
+
 ### Fixed
 
+- Node.js binding: added a structured `FeedError`-to-`napi::Error` conversion layer (`error.rs`), mirroring the Python binding's `convert_feed_error`, so format/encoding/URL errors map to `Status::InvalidArg` and I/O/unknown errors map to `Status::GenericFailure` instead of every call site inlining its own generic error message (#439)
 - CI: bump Node.js to 22 in the `npm: Publish` release job; `npm install -g npm@latest` now requires Node `^22.22.2 || ^24.15.0 || >=26.0.0` and failed with `EBADENGINE` under Node 20
 - `feedparser-rs-py` now inherits `edition`/`rust-version` from the workspace instead of hardcoding stale values (#434)
 

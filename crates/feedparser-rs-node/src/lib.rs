@@ -1,5 +1,8 @@
 #![deny(clippy::all)]
 
+mod error;
+
+use error::convert_feed_error;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::collections::HashMap;
@@ -71,10 +74,13 @@ pub fn parse_with_options(
     };
 
     if input_len > max_feed_size {
-        return Err(Error::from_reason(format!(
-            "Feed size ({} bytes) exceeds maximum allowed ({} bytes)",
-            input_len, max_feed_size
-        )));
+        return Err(Error::new(
+            Status::InvalidArg,
+            format!(
+                "Feed size ({} bytes) exceeds maximum allowed ({} bytes)",
+                input_len, max_feed_size
+            ),
+        ));
     }
 
     let bytes: &[u8] = match &source {
@@ -87,8 +93,7 @@ pub fn parse_with_options(
         ..ParserLimits::default()
     };
 
-    let parsed = core::parse_with_limits(bytes, limits)
-        .map_err(|e| Error::from_reason(format!("Parse error: {}", e)))?;
+    let parsed = core::parse_with_limits(bytes, limits).map_err(convert_feed_error)?;
 
     Ok(ParsedFeed::from(parsed))
 }
@@ -172,7 +177,7 @@ pub fn parse_url(
         modified.as_deref(),
         user_agent.as_deref(),
     )
-    .map_err(|e| Error::from_reason(format!("HTTP error: {}", e)))?;
+    .map_err(convert_feed_error)?;
 
     Ok(ParsedFeed::from(parsed))
 }
@@ -217,7 +222,7 @@ pub fn parse_url_with_options(
         user_agent.as_deref(),
         limits,
     )
-    .map_err(|e| Error::from_reason(format!("HTTP error: {}", e)))?;
+    .map_err(convert_feed_error)?;
 
     Ok(ParsedFeed::from(parsed))
 }
@@ -1112,8 +1117,9 @@ pub struct GeoLocation {
     /// - "box": Two pairs [[lower-left-lat, lower-left-lng], [upper-right-lat, upper-right-lng]]
     /// - "polygon": Three or more pairs forming a closed shape [[lat1, lng1], ..., [lat1, lng1]]
     pub coordinates: Vec<Vec<f64>>,
-    /// Coordinate Reference System (e.g., "EPSG:4326" for WGS84 latitude/longitude)
-    pub crs: Option<String>,
+    /// Coordinate Reference System (from GeoRSS/GML `srsName`, e.g. "EPSG:4326" for WGS84 latitude/longitude)
+    #[napi(js_name = "srsName")]
+    pub srs_name: Option<String>,
     /// Elevation in meters (from `georss:elev`)
     pub elev: Option<f64>,
     /// Feature type classification (from `georss:featuretypetag`)
@@ -1143,7 +1149,7 @@ impl From<feedparser_rs::namespace::georss::GeoLocation> for GeoLocation {
                 .into_iter()
                 .map(|(lat, lng)| vec![lat, lng])
                 .collect(),
-            crs: core.srs_name,
+            srs_name: core.srs_name,
             elev: core.elev,
             feature_type_tag: core.feature_type_tag,
             feature_name: core.feature_name,
