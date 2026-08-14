@@ -34,7 +34,7 @@ describe('syndication', () => {
 
     const feed = parse(xml);
     assert.ok(feed.feed.syndication);
-    assert.strictEqual(feed.feed.syndication.updateFrequency, 2);
+    assert.strictEqual(feed.feed.syndication.updateFrequency, '2');
   });
 
   it('should parse complete syndication metadata', () => {
@@ -55,7 +55,7 @@ describe('syndication', () => {
     const syn = feed.feed.syndication;
     assert.ok(syn);
     assert.strictEqual(syn.updatePeriod, 'hourly');
-    assert.strictEqual(syn.updateFrequency, 1);
+    assert.strictEqual(syn.updateFrequency, '1');
     assert.strictEqual(syn.updateBase, '2024-01-01T00:00:00Z');
   });
 

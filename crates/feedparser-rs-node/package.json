@@ -39,8 +39,8 @@
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "test": "node --test __test__/index.spec.mjs",
-    "test:coverage": "c8 --reporter=lcov --reporter=text --reports-dir=coverage node --test __test__/index.spec.mjs",
+    "test": "node --test __test__/index.spec.mjs __test__/phase3-fields.spec.mjs __test__/syndication.spec.mjs",
+    "test:coverage": "c8 --reporter=lcov --reporter=text --reports-dir=coverage node --test __test__/index.spec.mjs __test__/phase3-fields.spec.mjs __test__/syndication.spec.mjs",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
