@@ -191,6 +191,21 @@ fn parse_item(
         .filter(|s| !s.is_empty() && s.len() <= limits.max_text_length);
     let effective_lang = item_lang.or(feed_lang);
 
+    // Order is mandatory: group 1's and group 3's links share a `max_entries` cap,
+    // so swapping them would change which links survive truncation on a capped
+    // feed. Group 4's author-inheritance block reads `entry.authors.is_empty()`,
+    // so it must run immediately after its own `parse_authors` call.
+    parse_item_identity(json, &mut entry, limits);
+    parse_item_text(json, &mut entry, limits, effective_lang);
+    parse_item_media_and_dates(json, &mut entry, limits);
+    parse_item_authors(json, &mut entry, limits, feed_authors);
+    parse_item_tags_and_lang(json, &mut entry, limits, effective_lang);
+
+    entry
+}
+
+/// Parse item identity fields: id, url, `external_url`.
+fn parse_item_identity(json: &Value, entry: &mut Entry, limits: &ParserLimits) {
     if let Some(id) = json.get("id").and_then(|v| v.as_str()) {
         entry.id = Some(id.into());
     }
@@ -208,7 +223,15 @@ fn parse_item(
             .try_push_limited(Link::related(external_url), limits.max_entries);
         entry.external_url = Some(external_url.to_string());
     }
+}
 
+/// Parse item text fields: title, `content_html`, `content_text`, summary.
+fn parse_item_text(
+    json: &Value,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    effective_lang: Option<&str>,
+) {
     if let Some(title) = json.get("title").and_then(|v| v.as_str()) {
         let truncated = truncate_to_length(title, limits.max_text_length);
         // See feed title in parse_feed_metadata: treated as potentially unsafe
@@ -259,7 +282,11 @@ fn parse_item(
             base: None,
         });
     }
+}
 
+/// Parse item media and date fields: image, `banner_image`, `date_published`,
+/// `date_modified`, attachments.
+fn parse_item_media_and_dates(json: &Value, entry: &mut Entry, limits: &ParserLimits) {
     if let Some(image) = json.get("image").and_then(|v| v.as_str()) {
         let _ = entry.links.try_push_limited(
             Link::enclosure(image, Some("image/*".into())),
@@ -285,6 +312,24 @@ fn parse_item(
         entry.updated_str = Some(date_str.to_string());
     }
 
+    if let Some(attachments) = json.get("attachments").and_then(|v| v.as_array()) {
+        for attachment in attachments {
+            if let Some(enclosure) = Enclosure::parse_from(attachment) {
+                let _ = entry
+                    .enclosures
+                    .try_push_limited(enclosure, limits.max_entries);
+            }
+        }
+    }
+}
+
+/// Parse item authors, including feed-level inheritance when the entry has none.
+fn parse_item_authors(
+    json: &Value,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    feed_authors: &[Person],
+) {
     parse_authors(
         json,
         &mut entry.author,
@@ -303,7 +348,15 @@ fn parse_item(
             entry.author_detail = Some(first.clone());
         }
     }
+}
 
+/// Parse item tags and set the entry-level language.
+fn parse_item_tags_and_lang(
+    json: &Value,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    effective_lang: Option<&str>,
+) {
     if let Some(tags) = json.get("tags").and_then(|v| v.as_array()) {
         for tag_val in tags {
             if let Some(tag_str) = tag_val.as_str() {
@@ -318,18 +371,6 @@ fn parse_item(
     if let Some(lang) = effective_lang {
         entry.language = Some(lang.into());
     }
-
-    if let Some(attachments) = json.get("attachments").and_then(|v| v.as_array()) {
-        for attachment in attachments {
-            if let Some(enclosure) = Enclosure::parse_from(attachment) {
-                let _ = entry
-                    .enclosures
-                    .try_push_limited(enclosure, limits.max_entries);
-            }
-        }
-    }
-
-    entry
 }
 
 /// Unified author parsing for both feed and entry levels

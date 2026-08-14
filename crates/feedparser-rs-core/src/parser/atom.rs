@@ -2,26 +2,31 @@
 
 use std::collections::HashMap;
 
+use chrono::{DateTime, Utc};
+
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
     namespace::{content, dublin_core, georss, media_rss, slash, threading},
     types::{
         Content, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, ItunesCategory,
-        ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright,
-        MediaCredit, MediaThumbnail, MimeType, ParsedFeed, Person, Source, Tag, TextConstruct,
-        TextType, parse_explicit,
+        ItunesFeedMeta, ItunesOwner, Link, MediaContent, MediaCopyright, MediaCredit,
+        MediaThumbnail, MimeType, ParsedFeed, Person, Source, Tag, TextConstruct, TextType,
+        parse_explicit,
     },
     util::{base_url::BaseUrlContext, parse_date, text::truncate_to_length},
 };
-use quick_xml::{Reader, events::Event};
+use quick_xml::{
+    Reader,
+    events::{BytesStart, Event},
+};
 
 use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
     is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
-    read_text, read_text_str, read_xhtml_content_str, skip_element, skip_to_end,
-    text_construct_from_content,
+    itunes_entry_meta, itunes_feed_meta, read_text, read_text_str, read_xhtml_content_str,
+    skip_element, skip_to_end, text_construct_from_content,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -211,7 +216,6 @@ fn apply_itunes_entry_promotions(entry: &mut Entry) {
 }
 
 /// Parse <feed> element
-#[allow(clippy::too_many_lines)]
 fn parse_feed_element(
     reader: &mut Reader<&[u8]>,
     feed: &mut ParsedFeed,
@@ -235,403 +239,41 @@ fn parse_feed_element(
 
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
+                //
+                // NOTE: the tag lists below must stay in sync with the inner `match` in
+                // each handler (parse_feed_core_text, parse_feed_link_or_category,
+                // parse_feed_person) — a tag routed here that the handler doesn't also
+                // match falls through the handler's silent `_ => {}` and consumes no
+                // events, desyncing the event stream.
                 match element.name().as_ref() {
-                    b"title" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, &mut buf, &element, limits, feed_lang, base_ctx,
+                    b"title" | b"subtitle" | b"tagline" | b"id" | b"updated" | b"modified"
+                    | b"published" | b"issued" | b"rights" | b"copyright" | b"generator"
+                    | b"icon" | b"logo"
+                        if !is_empty =>
+                    {
+                        parse_feed_core_text(
+                            reader, &mut buf, &element, feed, limits, base_ctx, feed_lang,
                         )?;
-                        feed.feed.set_title(text);
                     }
-                    b"link" => {
-                        if let Some(mut link) = Link::from_attributes(
-                            element.attributes().flatten(),
-                            limits.max_attribute_length,
-                        ) {
-                            link.href = base_ctx.resolve_safe(&link.href).into();
-
-                            if feed.feed.link.is_none() && link.rel.as_deref() == Some("alternate")
-                            {
-                                feed.feed.link = Some(link.href.to_string());
-                            }
-                            if feed.feed.license.is_none() && link.rel.as_deref() == Some("license")
-                            {
-                                feed.feed.license = Some(link.href.to_string());
-                            }
-                            if feed.feed.next_url.is_none() && link.rel.as_deref() == Some("next") {
-                                feed.feed.next_url = Some(link.href.to_string());
-                            }
-                            feed.feed
-                                .links
-                                .try_push_limited(link, limits.max_links_per_feed);
-                        }
-                        if !is_empty {
-                            skip_to_end(reader, &mut buf, b"link")?;
-                        }
-                    }
-                    b"subtitle" | b"tagline" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, &mut buf, &element, limits, feed_lang, base_ctx,
+                    b"link" | b"category" => {
+                        parse_feed_link_or_category(
+                            reader, &mut buf, &element, feed, limits, base_ctx, is_empty,
                         )?;
-                        feed.feed.set_subtitle(text);
                     }
-                    b"id" if !is_empty => {
-                        let (text, bozo) = read_text(reader, &mut buf, limits)?;
-                        if bozo {
-                            feed.bozo = true;
-                            feed.bozo_exception =
-                                Some("Unresolvable entity in feed id".to_string());
-                        }
-                        feed.feed.id = Some(text);
-                    }
-                    b"updated" | b"modified" if !is_empty => {
-                        let text = read_text_str(reader, &mut buf, limits)?;
-                        feed.feed.updated = parse_date(&text);
-                        feed.feed.updated_str = Some(text);
-                    }
-                    b"published" | b"issued" if !is_empty => {
-                        let text = read_text_str(reader, &mut buf, limits)?;
-                        feed.feed.published = parse_date(&text);
-                        feed.feed.published_str = Some(text);
-                    }
-                    b"author" if !is_empty => {
-                        if let Ok(person) = parse_person(reader, &mut buf, limits, depth) {
-                            if feed.feed.author.is_none() {
-                                feed.feed.set_author(person.clone());
-                            }
-                            feed.feed
-                                .authors
-                                .try_push_limited(person, limits.max_authors);
-                        }
-                    }
-                    b"contributor" if !is_empty => {
-                        if let Ok(person) = parse_person(reader, &mut buf, limits, depth) {
-                            feed.feed
-                                .contributors
-                                .try_push_limited(person, limits.max_contributors);
-                        }
-                    }
-                    b"category" => {
-                        if let Some(tag) = Tag::from_attributes(
-                            element.attributes().flatten(),
-                            limits.max_attribute_length,
-                        ) {
-                            feed.feed.tags.try_push_limited(tag, limits.max_tags);
-                        }
-                        if !is_empty {
-                            skip_to_end(reader, &mut buf, b"category")?;
-                        }
-                    }
-                    b"generator" if !is_empty => {
-                        let generator = parse_generator(reader, &mut buf, &element, limits)?;
-                        feed.feed.set_generator(generator);
-                    }
-                    b"icon" if !is_empty => {
-                        let url = read_text_str(reader, &mut buf, limits)?;
-                        feed.feed.icon = Some(base_ctx.resolve_safe(&url));
-                    }
-                    b"logo" if !is_empty => {
-                        let url = read_text_str(reader, &mut buf, limits)?;
-                        feed.feed.logo = Some(base_ctx.resolve_safe(&url));
-                    }
-                    b"rights" | b"copyright" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, &mut buf, &element, limits, feed_lang, base_ctx,
-                        )?;
-                        feed.feed.set_rights(text);
+                    b"author" | b"contributor" if !is_empty => {
+                        parse_feed_person(reader, &mut buf, &element, feed, limits, depth)?;
                     }
                     b"entry" if !is_empty => {
-                        if !feed.check_entry_limit(reader, &mut buf, limits, depth)? {
+                        if !parse_feed_entry(
+                            reader, &mut buf, &element, feed, limits, depth, base_ctx, feed_lang,
+                        )? {
                             continue;
-                        }
-
-                        let mut entry_ctx = base_ctx.child();
-                        if let Some(xml_base) =
-                            extract_xml_base(&element, limits.max_attribute_length)
-                        {
-                            entry_ctx.update_base(&xml_base);
-                        }
-
-                        // Entry-level xml:lang overrides feed-level; fall back to feed_lang.
-                        let entry_lang_owned =
-                            extract_xml_lang(&element, limits.max_attribute_length);
-                        let effective_lang = entry_lang_owned.as_deref().or(feed_lang);
-
-                        let mut entry_bozo = false;
-                        match parse_entry(
-                            reader,
-                            &mut buf,
-                            limits,
-                            depth,
-                            &entry_ctx,
-                            &mut entry_bozo,
-                            effective_lang,
-                            &feed.namespaces,
-                        ) {
-                            Ok(mut entry) => {
-                                if entry_bozo && !feed.bozo {
-                                    feed.bozo = true;
-                                    feed.bozo_exception =
-                                        Some("Unresolvable entity in entry field".to_string());
-                                }
-                                if entry.summary.is_none()
-                                    && let Some(content) = entry.content.first()
-                                {
-                                    entry.summary = Some(content.value.clone());
-                                    entry.summary_detail =
-                                        Some(text_construct_from_content(content));
-                                }
-                                // #278: dc:creator fallback for author
-                                if entry.author.is_none()
-                                    && let Some(dc) = &entry.dc_creator
-                                {
-                                    entry.author = Some(dc.clone());
-                                }
-                                // #273: promote entry.id → entry.link when no explicit link
-                                promote_entry_id_to_link(&mut entry);
-                                // #275: fallback entry.updated from entry.published
-                                promote_entry_published_to_updated(&mut entry);
-                                // Post-process: iTunes subtitle/summary promotion (order-independent)
-                                apply_itunes_entry_promotions(&mut entry);
-                                feed.entries.push(entry);
-                            }
-                            Err(e) => {
-                                feed.bozo = true;
-                                feed.bozo_exception = Some(e.to_string());
-                            }
                         }
                     }
                     tag => {
-                        // Check for namespace elements
-                        let handled = if let Some(dc_element) = is_dc_tag(tag, &feed.namespaces) {
-                            let dc_elem = dc_element.to_string();
-                            if !is_empty {
-                                let text = read_text_str(reader, &mut buf, limits)?;
-                                dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
-                            }
-                            true
-                        } else if let Some(_content_element) = is_content_tag(tag) {
-                            // Content namespace - typically entry-level
-                            if !is_empty {
-                                skip_element(reader, &mut buf, limits, *depth)?;
-                            }
-                            true
-                        } else if let Some(media_element) = is_media_tag(tag, &feed.namespaces) {
-                            match media_element {
-                                "thumbnail" => {
-                                    if let Some(thumb) = MediaThumbnail::from_attributes(
-                                        element.attributes().flatten(),
-                                        limits.max_attribute_length,
-                                    ) {
-                                        feed.feed
-                                            .media_thumbnail
-                                            .try_push_limited(thumb, limits.max_enclosures);
-                                    }
-                                    if !is_empty {
-                                        skip_element(reader, &mut buf, limits, *depth)?;
-                                    }
-                                }
-                                "content" => {
-                                    if let Some(content) = MediaContent::from_attributes(
-                                        element.attributes().flatten(),
-                                        limits.max_attribute_length,
-                                    ) {
-                                        feed.feed
-                                            .media_content
-                                            .try_push_limited(content, limits.max_enclosures);
-                                    }
-                                    if !is_empty {
-                                        skip_element(reader, &mut buf, limits, *depth)?;
-                                    }
-                                }
-                                "rating" | "keywords" => {
-                                    if !is_empty {
-                                        let scheme = element
-                                            .attributes()
-                                            .flatten()
-                                            .find(|a| a.key.as_ref() == b"scheme")
-                                            .and_then(|a| {
-                                                a.normalized_value(
-                                                    quick_xml::XmlVersion::Implicit1_0,
-                                                )
-                                                .ok()
-                                                .map(|v| {
-                                                    truncate_to_length(
-                                                        &v,
-                                                        limits.max_attribute_length,
-                                                    )
-                                                })
-                                            });
-                                        let text = read_text_str(reader, &mut buf, limits)?;
-                                        media_rss::handle_feed_element(
-                                            media_element,
-                                            scheme.as_deref(),
-                                            &text,
-                                            &mut feed.feed,
-                                        );
-                                    }
-                                }
-                                _ => {
-                                    if !is_empty {
-                                        skip_element(reader, &mut buf, limits, *depth)?;
-                                    }
-                                }
-                            }
-                            true
-                        } else if is_thr_tag(tag).is_some() {
-                            // Atom Threading Extensions - feed-level thr: elements are unusual; skip
-                            if !is_empty {
-                                skip_element(reader, &mut buf, limits, *depth)?;
-                            }
-                            true
-                        } else if is_itunes_tag(tag, b"image", &feed.namespaces) {
-                            if let Some(url) = extract_href_attr(&element, limits) {
-                                let itunes = feed
-                                    .feed
-                                    .itunes
-                                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                                itunes.image = Some(url.clone().into());
-                                if feed.feed.image.is_none() {
-                                    feed.feed.image = Some(Image {
-                                        url: url.into(),
-                                        title: None,
-                                        link: None,
-                                        width: None,
-                                        height: None,
-                                        description: None,
-                                    });
-                                }
-                            }
-                            if !is_empty {
-                                skip_element(reader, &mut buf, limits, *depth)?;
-                            }
-                            true
-                        } else if is_itunes_tag(tag, b"category", &feed.namespaces) {
-                            parse_atom_itunes_category(
-                                reader, &mut buf, &element, feed, limits, is_empty,
-                            )?;
-                            true
-                        } else if is_itunes_tag(tag, b"owner", &feed.namespaces) && !is_empty {
-                            if let Ok(owner) =
-                                parse_atom_itunes_owner(reader, &mut buf, limits, depth)
-                            {
-                                let itunes = feed
-                                    .feed
-                                    .itunes
-                                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                                itunes.owner = Some(owner);
-                            }
-                            true
-                        } else if is_itunes_tag(tag, b"author", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            if feed.feed.author.is_none() {
-                                feed.feed.set_author(Person::from_name(&text));
-                                feed.feed
-                                    .authors
-                                    .try_push_limited(Person::from_name(&text), limits.max_authors);
-                            }
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.author = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"subtitle", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.subtitle = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"summary", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.summary = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"explicit", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.explicit = parse_explicit(&text);
-                            true
-                        } else if is_itunes_tag(tag, b"keywords", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.keywords = text
-                                .split(',')
-                                .map(|s| s.trim().to_string())
-                                .filter(|s| !s.is_empty())
-                                .collect();
-                            true
-                        } else if is_itunes_tag(tag, b"type", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.podcast_type = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"complete", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.complete = Some(text.trim().to_string());
-                            true
-                        } else if is_itunes_tag(tag, b"new-feed-url", &feed.namespaces) && !is_empty
-                        {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            if !text.is_empty() {
-                                let itunes = feed
-                                    .feed
-                                    .itunes
-                                    .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                                itunes.new_feed_url = Some(text.trim().to_string().into());
-                            }
-                            true
-                        } else if is_itunes_tag(tag, b"block", &feed.namespaces) && !is_empty {
-                            let text = read_text_str(reader, &mut buf, limits)?;
-                            let itunes = feed
-                                .feed
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()));
-                            itunes.block = Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
-                            true
-                        } else if let Some(georss_element) = is_georss_tag(tag) {
-                            let georss_elem = georss_element.as_bytes().to_vec();
-                            if !is_empty {
-                                let text = read_text_str(reader, &mut buf, limits)?;
-                                georss::handle_feed_element(
-                                    &georss_elem,
-                                    &text,
-                                    &mut feed.feed,
-                                    limits,
-                                );
-                            }
-                            true
-                        } else if let Some(geo_element) = is_geo_tag(tag) {
-                            let geo_elem = geo_element.as_bytes().to_vec();
-                            if !is_empty {
-                                let text = read_text_str(reader, &mut buf, limits)?;
-                                georss::handle_feed_geo_element(&geo_elem, &text, &mut feed.feed);
-                            }
-                            true
-                        } else {
-                            false
-                        };
-
-                        if !handled && !is_empty {
-                            skip_element(reader, &mut buf, limits, *depth)?;
-                        }
+                        parse_feed_namespace(
+                            reader, &mut buf, tag, &element, feed, limits, depth, is_empty,
+                        )?;
                     }
                 }
                 *depth = depth.saturating_sub(1);
@@ -652,8 +294,528 @@ fn parse_feed_element(
     Ok(())
 }
 
+/// Parse extension namespace tags at feed level (Dublin Core, Content, Media RSS,
+/// Threading, iTunes, `GeoRSS`/Geo), in order.
+#[allow(clippy::too_many_arguments)]
+fn parse_feed_namespace(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    is_empty: bool,
+) -> Result<()> {
+    // Check for namespace elements, in order
+    let mut handled = parse_feed_ns_text(reader, buf, tag, feed, limits, *depth, is_empty)?;
+    if !handled {
+        handled = parse_feed_media(reader, buf, tag, element, feed, limits, *depth, is_empty)?;
+    }
+    if !handled {
+        handled = parse_feed_ns_threading(reader, buf, tag, limits, *depth, is_empty)?;
+    }
+    if !handled {
+        handled =
+            parse_feed_itunes_structured(reader, buf, tag, element, feed, limits, depth, is_empty)?;
+    }
+    if !handled {
+        handled = parse_feed_itunes_text(reader, buf, tag, feed, limits, is_empty)?;
+    }
+    if !handled {
+        handled = parse_feed_geo(reader, buf, tag, feed, limits, is_empty)?;
+    }
+
+    if !handled && !is_empty {
+        skip_element(reader, buf, limits, *depth)?;
+    }
+    Ok(())
+}
+
+/// Parse core text-valued feed elements: title, subtitle/tagline, id, updated/modified,
+/// published/issued, rights/copyright, generator, icon, logo.
+#[allow(clippy::too_many_arguments)]
+fn parse_feed_core_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    base_ctx: &BaseUrlContext,
+    feed_lang: Option<&str>,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_feed_element
+    match element.name().as_ref() {
+        b"title" => {
+            let text = parse_text_construct(reader, buf, element, limits, feed_lang, base_ctx)?;
+            feed.feed.set_title(text);
+        }
+        b"subtitle" | b"tagline" => {
+            let text = parse_text_construct(reader, buf, element, limits, feed_lang, base_ctx)?;
+            feed.feed.set_subtitle(text);
+        }
+        b"id" => {
+            let (text, bozo) = read_text(reader, buf, limits)?;
+            if bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Unresolvable entity in feed id".to_string());
+            }
+            feed.feed.id = Some(text);
+        }
+        b"updated" | b"modified" => {
+            let text = read_text_str(reader, buf, limits)?;
+            feed.feed.updated = parse_date(&text);
+            feed.feed.updated_str = Some(text);
+        }
+        b"published" | b"issued" => {
+            let text = read_text_str(reader, buf, limits)?;
+            feed.feed.published = parse_date(&text);
+            feed.feed.published_str = Some(text);
+        }
+        b"generator" => {
+            let generator = parse_generator(reader, buf, element, limits)?;
+            feed.feed.set_generator(generator);
+        }
+        b"icon" => {
+            let url = read_text_str(reader, buf, limits)?;
+            feed.feed.icon = Some(base_ctx.resolve_safe(&url));
+        }
+        b"logo" => {
+            let url = read_text_str(reader, buf, limits)?;
+            feed.feed.logo = Some(base_ctx.resolve_safe(&url));
+        }
+        b"rights" | b"copyright" => {
+            let text = parse_text_construct(reader, buf, element, limits, feed_lang, base_ctx)?;
+            feed.feed.set_rights(text);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse feed-level `<link>` and `<category>` elements.
+fn parse_feed_link_or_category(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    base_ctx: &BaseUrlContext,
+    is_empty: bool,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_feed_element
+    match element.name().as_ref() {
+        b"link" => {
+            if let Some(mut link) =
+                Link::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
+            {
+                link.href = base_ctx.resolve_safe(&link.href).into();
+
+                if feed.feed.link.is_none() && link.rel.as_deref() == Some("alternate") {
+                    feed.feed.link = Some(link.href.to_string());
+                }
+                if feed.feed.license.is_none() && link.rel.as_deref() == Some("license") {
+                    feed.feed.license = Some(link.href.to_string());
+                }
+                if feed.feed.next_url.is_none() && link.rel.as_deref() == Some("next") {
+                    feed.feed.next_url = Some(link.href.to_string());
+                }
+                feed.feed
+                    .links
+                    .try_push_limited(link, limits.max_links_per_feed);
+            }
+            if !is_empty {
+                skip_to_end(reader, buf, b"link")?;
+            }
+        }
+        b"category" => {
+            if let Some(tag) =
+                Tag::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
+            {
+                feed.feed.tags.try_push_limited(tag, limits.max_tags);
+            }
+            if !is_empty {
+                skip_to_end(reader, buf, b"category")?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse feed-level `<author>` and `<contributor>` elements.
+#[allow(clippy::unnecessary_wraps)]
+fn parse_feed_person(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_feed_element
+    match element.name().as_ref() {
+        b"author" => {
+            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+                if feed.feed.author.is_none() {
+                    feed.feed.set_author(person.clone());
+                }
+                feed.feed
+                    .authors
+                    .try_push_limited(person, limits.max_authors);
+            }
+        }
+        b"contributor" => {
+            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+                feed.feed
+                    .contributors
+                    .try_push_limited(person, limits.max_contributors);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse a feed-level `<entry>` element and push it onto `feed.entries`.
+///
+/// Returns `Ok(false)` when the caller must `continue` the event loop WITHOUT
+/// decrementing depth and WITHOUT `buf.clear()` (entry-limit path) — the
+/// `check_entry_limit` call already decremented depth internally on that path.
+#[allow(clippy::too_many_arguments)]
+fn parse_feed_entry(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    base_ctx: &BaseUrlContext,
+    feed_lang: Option<&str>,
+) -> Result<bool> {
+    if !feed.check_entry_limit(reader, buf, limits, depth)? {
+        return Ok(false);
+    }
+
+    let mut entry_ctx = base_ctx.child();
+    if let Some(xml_base) = extract_xml_base(element, limits.max_attribute_length) {
+        entry_ctx.update_base(&xml_base);
+    }
+
+    // Entry-level xml:lang overrides feed-level; fall back to feed_lang.
+    let entry_lang_owned = extract_xml_lang(element, limits.max_attribute_length);
+    let effective_lang = entry_lang_owned.as_deref().or(feed_lang);
+
+    let mut entry_bozo = false;
+    match parse_entry(
+        reader,
+        buf,
+        limits,
+        depth,
+        &entry_ctx,
+        &mut entry_bozo,
+        effective_lang,
+        &feed.namespaces,
+    ) {
+        Ok(mut entry) => {
+            if entry_bozo && !feed.bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+            }
+            if entry.summary.is_none()
+                && let Some(content) = entry.content.first()
+            {
+                entry.summary = Some(content.value.clone());
+                entry.summary_detail = Some(text_construct_from_content(content));
+            }
+            // #278: dc:creator fallback for author
+            if entry.author.is_none()
+                && let Some(dc) = &entry.dc_creator
+            {
+                entry.author = Some(dc.clone());
+            }
+            // #273: promote entry.id → entry.link when no explicit link
+            promote_entry_id_to_link(&mut entry);
+            // #275: fallback entry.updated from entry.published
+            promote_entry_published_to_updated(&mut entry);
+            // Post-process: iTunes subtitle/summary promotion (order-independent)
+            apply_itunes_entry_promotions(&mut entry);
+            feed.entries.push(entry);
+        }
+        Err(e) => {
+            feed.bozo = true;
+            feed.bozo_exception = Some(e.to_string());
+        }
+    }
+    Ok(true)
+}
+
+/// Parse Dublin Core and Content namespace tags at feed level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+fn parse_feed_ns_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: usize,
+    is_empty: bool,
+) -> Result<bool> {
+    if let Some(dc_element) = is_dc_tag(tag, &feed.namespaces) {
+        let dc_elem = dc_element.to_string();
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
+        }
+        Ok(true)
+    } else if is_content_tag(tag).is_some() {
+        // Content namespace - typically entry-level
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse Media RSS namespace tags at feed level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_feed_media(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: usize,
+    is_empty: bool,
+) -> Result<bool> {
+    let Some(media_element) = is_media_tag(tag, &feed.namespaces) else {
+        return Ok(false);
+    };
+    match media_element {
+        "thumbnail" => {
+            if let Some(thumb) = MediaThumbnail::from_attributes(
+                element.attributes().flatten(),
+                limits.max_attribute_length,
+            ) {
+                feed.feed
+                    .media_thumbnail
+                    .try_push_limited(thumb, limits.max_enclosures);
+            }
+            if !is_empty {
+                skip_element(reader, buf, limits, depth)?;
+            }
+        }
+        "content" => {
+            if let Some(content) = MediaContent::from_attributes(
+                element.attributes().flatten(),
+                limits.max_attribute_length,
+            ) {
+                feed.feed
+                    .media_content
+                    .try_push_limited(content, limits.max_enclosures);
+            }
+            if !is_empty {
+                skip_element(reader, buf, limits, depth)?;
+            }
+        }
+        "rating" | "keywords" => {
+            if !is_empty {
+                let scheme = element
+                    .attributes()
+                    .flatten()
+                    .find(|a| a.key.as_ref() == b"scheme")
+                    .and_then(|a| {
+                        a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                            .ok()
+                            .map(|v| truncate_to_length(&v, limits.max_attribute_length))
+                    });
+                let text = read_text_str(reader, buf, limits)?;
+                media_rss::handle_feed_element(
+                    media_element,
+                    scheme.as_deref(),
+                    &text,
+                    &mut feed.feed,
+                );
+            }
+        }
+        _ => {
+            if !is_empty {
+                skip_element(reader, buf, limits, depth)?;
+            }
+        }
+    }
+    Ok(true)
+}
+
+/// Parse Atom Threading Extensions at feed level (unusual; recognized and skipped).
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+fn parse_feed_ns_threading(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    limits: &ParserLimits,
+    depth: usize,
+    is_empty: bool,
+) -> Result<bool> {
+    if is_thr_tag(tag).is_some() {
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse structured iTunes namespace tags at feed level: image, category, owner.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_feed_itunes_structured(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    is_empty: bool,
+) -> Result<bool> {
+    if is_itunes_tag(tag, b"image", &feed.namespaces) {
+        if let Some(url) = extract_href_attr(element, limits) {
+            itunes_feed_meta(&mut feed.feed).image = Some(url.clone().into());
+            if feed.feed.image.is_none() {
+                feed.feed.image = Some(Image {
+                    url: url.into(),
+                    title: None,
+                    link: None,
+                    width: None,
+                    height: None,
+                    description: None,
+                });
+            }
+        }
+        if !is_empty {
+            skip_element(reader, buf, limits, *depth)?;
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"category", &feed.namespaces) {
+        parse_atom_itunes_category(reader, buf, element, feed, limits, is_empty)?;
+        Ok(true)
+    } else if is_itunes_tag(tag, b"owner", &feed.namespaces) && !is_empty {
+        if let Ok(owner) = parse_atom_itunes_owner(reader, buf, limits, depth) {
+            itunes_feed_meta(&mut feed.feed).owner = Some(owner);
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse text-valued iTunes namespace tags at feed level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+fn parse_feed_itunes_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<bool> {
+    if is_itunes_tag(tag, b"author", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        if feed.feed.author.is_none() {
+            feed.feed.set_author(Person::from_name(&text));
+            feed.feed
+                .authors
+                .try_push_limited(Person::from_name(&text), limits.max_authors);
+        }
+        itunes_feed_meta(&mut feed.feed).author = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"subtitle", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).subtitle = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"summary", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).summary = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"explicit", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).explicit = parse_explicit(&text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"keywords", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).keywords = text
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        Ok(true)
+    } else if is_itunes_tag(tag, b"type", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).podcast_type = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"complete", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).complete = Some(text.trim().to_string());
+        Ok(true)
+    } else if is_itunes_tag(tag, b"new-feed-url", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        if !text.is_empty() {
+            itunes_feed_meta(&mut feed.feed).new_feed_url = Some(text.trim().to_string().into());
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"block", &feed.namespaces) && !is_empty {
+        let text = read_text_str(reader, buf, limits)?;
+        itunes_feed_meta(&mut feed.feed).block =
+            Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse `GeoRSS` and W3C Geo namespace tags at feed level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+fn parse_feed_geo(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    is_empty: bool,
+) -> Result<bool> {
+    if let Some(georss_element) = is_georss_tag(tag) {
+        let georss_elem = georss_element.as_bytes().to_vec();
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            georss::handle_feed_element(&georss_elem, &text, &mut feed.feed, limits);
+        }
+        Ok(true)
+    } else if let Some(geo_element) = is_geo_tag(tag) {
+        let geo_elem = geo_element.as_bytes().to_vec();
+        if !is_empty {
+            let text = read_text_str(reader, buf, limits)?;
+            georss::handle_feed_geo_element(&geo_elem, &text, &mut feed.feed);
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
 /// Parse <entry> element
-#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments)]
 fn parse_entry(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -679,128 +841,35 @@ fn parse_entry(
 
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
+                //
+                // NOTE: the tag lists below must stay in sync with the inner `match` in
+                // each handler (parse_entry_core_text, parse_entry_link_or_category,
+                // parse_entry_person) — a tag routed here that the handler doesn't also
+                // match falls through the handler's silent `_ => {}` and consumes no
+                // events, desyncing the event stream.
                 match element.name().as_ref() {
-                    b"title" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, buf, &element, limits, entry_lang, base_ctx,
+                    b"title" | b"id" | b"updated" | b"modified" | b"published" | b"issued"
+                    | b"created" | b"subtitle" | b"tagline" | b"rights" | b"copyright"
+                    | b"summary"
+                        if !is_empty =>
+                    {
+                        parse_entry_core_text(
+                            reader, buf, &element, &mut entry, limits, base_ctx, entry_lang, bozo,
                         )?;
-                        entry.set_title(text);
-                    }
-                    b"link" => {
-                        if let Some(mut link) = Link::from_attributes(
-                            element.attributes().flatten(),
-                            limits.max_attribute_length,
-                        ) {
-                            link.href = base_ctx.resolve_safe(&link.href).into();
-
-                            if entry.link.is_none() && link.rel.as_deref() == Some("alternate") {
-                                entry.link = Some(link.href.to_string());
-                            }
-                            if entry.license.is_none() && link.rel.as_deref() == Some("license") {
-                                entry.license = Some(link.href.to_string());
-                            }
-                            if link.rel.as_deref() == Some("enclosure") {
-                                entry.enclosures.try_push_limited(
-                                    Enclosure {
-                                        url: link.href.clone(),
-                                        length: link.length.clone(),
-                                        enclosure_type: link.link_type.clone(),
-                                        title: None,
-                                        duration: None,
-                                    },
-                                    limits.max_enclosures,
-                                );
-                            }
-                            entry
-                                .links
-                                .try_push_limited(link, limits.max_links_per_entry);
-                        }
-                        if !is_empty {
-                            skip_to_end(reader, buf, b"link")?;
-                        }
-                    }
-                    b"id" if !is_empty => {
-                        let (text, had_bozo) = read_text(reader, buf, limits)?;
-                        *bozo |= had_bozo;
-                        entry.id = Some(text.into());
-                    }
-                    b"updated" | b"modified" if !is_empty => {
-                        let text = read_text_str(reader, buf, limits)?;
-                        entry.updated = parse_date(&text);
-                        entry.updated_str = Some(text);
-                    }
-                    b"published" | b"issued" if !is_empty => {
-                        let text = read_text_str(reader, buf, limits)?;
-                        entry.published = parse_date(&text);
-                        entry.published_str = Some(text);
-                    }
-                    b"created" if !is_empty => {
-                        let text = read_text_str(reader, buf, limits)?;
-                        entry.created = parse_date(&text);
-                        entry.created_str = Some(text);
-                    }
-                    b"subtitle" | b"tagline" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, buf, &element, limits, entry_lang, base_ctx,
-                        )?;
-                        entry.set_subtitle(text);
-                    }
-                    b"rights" | b"copyright" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, buf, &element, limits, entry_lang, base_ctx,
-                        )?;
-                        entry.set_rights(text);
-                    }
-                    b"summary" if !is_empty => {
-                        let text = parse_text_construct(
-                            reader, buf, &element, limits, entry_lang, base_ctx,
-                        )?;
-                        entry.set_summary(text);
                     }
                     b"content" => {
-                        // Handle both inline content (<content>...</content>) and
-                        // out-of-line content (<content src="..." />, RFC 4287 §4.1.3.2).
-                        if is_empty {
-                            if let Some(content) =
-                                parse_content_empty(&element, limits, entry_lang, base_ctx)
-                            {
-                                entry
-                                    .content
-                                    .try_push_limited(content, limits.max_content_blocks);
-                            }
-                        } else {
-                            let content =
-                                parse_content(reader, buf, &element, limits, entry_lang, base_ctx)?;
-                            entry
-                                .content
-                                .try_push_limited(content, limits.max_content_blocks);
-                        }
+                        parse_entry_content(
+                            reader, buf, &element, &mut entry, limits, base_ctx, entry_lang,
+                            is_empty,
+                        )?;
                     }
-                    b"author" if !is_empty => {
-                        if let Ok(person) = parse_person(reader, buf, limits, depth) {
-                            if entry.author.is_none() {
-                                entry.set_author(person.clone());
-                            }
-                            entry.authors.try_push_limited(person, limits.max_authors);
-                        }
+                    b"link" | b"category" => {
+                        parse_entry_link_or_category(
+                            reader, buf, &element, &mut entry, limits, base_ctx, is_empty,
+                        )?;
                     }
-                    b"contributor" if !is_empty => {
-                        if let Ok(person) = parse_person(reader, buf, limits, depth) {
-                            entry
-                                .contributors
-                                .try_push_limited(person, limits.max_contributors);
-                        }
-                    }
-                    b"category" => {
-                        if let Some(tag) = Tag::from_attributes(
-                            element.attributes().flatten(),
-                            limits.max_attribute_length,
-                        ) {
-                            entry.tags.try_push_limited(tag, limits.max_tags);
-                        }
-                        if !is_empty {
-                            skip_to_end(reader, buf, b"category")?;
-                        }
+                    b"author" | b"contributor" if !is_empty => {
+                        parse_entry_person(reader, buf, &element, &mut entry, limits, depth)?;
                     }
                     b"source" if !is_empty => {
                         if let Ok(source) = parse_atom_source(reader, buf, limits, depth) {
@@ -808,345 +877,10 @@ fn parse_entry(
                         }
                     }
                     tag => {
-                        // Check for namespace elements
-                        let handled = if let Some(dc_element) = is_dc_tag(tag, namespaces) {
-                            let dc_elem = dc_element.to_string();
-                            if !is_empty {
-                                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                *bozo |= had_bozo;
-                                dublin_core::handle_entry_element(&dc_elem, &text, &mut entry);
-                            }
-                            true
-                        } else if let Some(content_element) = is_content_tag(tag) {
-                            let content_elem = content_element.to_string();
-                            if !is_empty {
-                                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                *bozo |= had_bozo;
-                                content::handle_entry_element(
-                                    &content_elem,
-                                    &text,
-                                    &mut entry,
-                                    entry_lang,
-                                    base_ctx.base(),
-                                );
-                            }
-                            true
-                        } else if let Some(media_element) = is_media_tag(tag, namespaces) {
-                            // Media RSS namespace
-                            if media_element == "thumbnail" {
-                                if let Some(thumbnail) = MediaThumbnail::from_attributes(
-                                    element.attributes().flatten(),
-                                    limits.max_attribute_length,
-                                ) {
-                                    entry
-                                        .media_thumbnail
-                                        .try_push_limited(thumbnail, limits.max_enclosures);
-                                }
-                                if !is_empty {
-                                    skip_element(reader, buf, limits, *depth)?;
-                                }
-                            } else if media_element == "content" {
-                                if let Some(media) = MediaContent::from_attributes(
-                                    element.attributes().flatten(),
-                                    limits.max_attribute_length,
-                                ) {
-                                    entry
-                                        .media_content
-                                        .try_push_limited(media, limits.max_enclosures);
-                                }
-                                if !is_empty {
-                                    parse_atom_media_content_children(
-                                        reader, buf, &mut entry, limits, depth, bozo, namespaces,
-                                    )?;
-                                }
-                            } else if media_element == "group" && !is_empty {
-                                // media:group is a transparent container; promote children to entry
-                                parse_atom_media_group(
-                                    reader, buf, &mut entry, limits, depth, bozo, namespaces,
-                                )?;
-                            } else if media_element == "credit" {
-                                let role = element
-                                    .attributes()
-                                    .flatten()
-                                    .find(|a| a.key.as_ref() == b"role")
-                                    .and_then(|a| {
-                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
-                                    });
-                                let scheme = element
-                                    .attributes()
-                                    .flatten()
-                                    .find(|a| a.key.as_ref() == b"scheme")
-                                    .and_then(|a| {
-                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
-                                    });
-                                if !is_empty {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    if !text.is_empty() {
-                                        entry.media_credit.try_push_limited(
-                                            MediaCredit {
-                                                role,
-                                                scheme,
-                                                content: text,
-                                            },
-                                            limits.max_links_per_entry,
-                                        );
-                                    }
-                                }
-                            } else if media_element == "copyright" {
-                                let url = element
-                                    .attributes()
-                                    .flatten()
-                                    .find(|a| a.key.as_ref() == b"url")
-                                    .and_then(|a| {
-                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
-                                    });
-                                if !is_empty {
-                                    skip_element(reader, buf, limits, *depth)?;
-                                }
-                                entry.media_copyright = Some(MediaCopyright { url });
-                            } else if media_element == "rating" {
-                                if !is_empty {
-                                    let scheme = element
-                                        .attributes()
-                                        .flatten()
-                                        .find(|a| a.key.as_ref() == b"scheme")
-                                        .and_then(|a| {
-                                            a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
-                                                .ok()
-                                                .map(|v| {
-                                                    truncate_to_length(
-                                                        &v,
-                                                        limits.max_attribute_length,
-                                                    )
-                                                })
-                                        });
-                                    let text = read_text_str(reader, buf, limits)?;
-                                    media_rss::handle_entry_rating(
-                                        scheme.as_deref(),
-                                        &text,
-                                        &mut entry,
-                                    );
-                                }
-                            } else if media_element == "description" {
-                                let type_attr = element
-                                    .attributes()
-                                    .flatten()
-                                    .find(|a| a.key.as_ref() == b"type")
-                                    .and_then(|a| {
-                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
-                                    });
-                                if !is_empty {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    let is_plain =
-                                        type_attr.as_deref().is_none_or(|t| t == "plain");
-                                    if is_plain && !text.is_empty() {
-                                        entry.media_description = Some(text.clone());
-                                    }
-                                    if entry.summary.is_none() && !text.is_empty() {
-                                        entry.summary = Some(text);
-                                    }
-                                }
-                            } else if media_element == "title" {
-                                let type_attr = element
-                                    .attributes()
-                                    .flatten()
-                                    .find(|a| a.key.as_ref() == b"type")
-                                    .and_then(|a| {
-                                        std::str::from_utf8(&a.value).ok().map(str::to_owned)
-                                    });
-                                if !is_empty {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    let is_plain =
-                                        type_attr.as_deref().is_none_or(|t| t == "plain");
-                                    if is_plain && !text.is_empty() {
-                                        entry.media_title = Some(text.clone());
-                                    }
-                                    if entry.title.is_none() && !text.is_empty() {
-                                        entry.title = Some(text);
-                                    }
-                                }
-                            } else if media_element == "keywords" {
-                                if !is_empty {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    media_rss::handle_entry_element("keywords", &text, &mut entry);
-                                }
-                            } else {
-                                let media_elem = media_element.to_string();
-                                if !is_empty {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    media_rss::handle_entry_element(&media_elem, &text, &mut entry);
-                                }
-                            }
-                            true
-                        } else if let Some(thr_element) = is_thr_tag(tag) {
-                            // Atom Threading Extensions (RFC 4685)
-                            match thr_element {
-                                "in-reply-to" => {
-                                    if let Some(reply) = threading::parse_in_reply_to_from_attrs(
-                                        element.attributes().flatten(),
-                                        limits.max_attribute_length,
-                                    ) {
-                                        // Shares max_links_per_entry limit; split if needed later
-                                        entry
-                                            .in_reply_to
-                                            .try_push_limited(reply, limits.max_links_per_entry);
-                                    }
-                                    if !is_empty {
-                                        skip_element(reader, buf, limits, *depth)?;
-                                    }
-                                }
-                                "total" if !is_empty => {
-                                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                    *bozo |= had_bozo;
-                                    threading::handle_total(&text, &mut entry);
-                                }
-                                _ => {
-                                    if !is_empty {
-                                        skip_element(reader, buf, limits, *depth)?;
-                                    }
-                                }
-                            }
-                            true
-                        } else if let Some(slash_element) = is_slash_tag(tag) {
-                            let slash_elem = slash_element.to_string();
-                            if !is_empty {
-                                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                *bozo |= had_bozo;
-                                slash::handle_slash_entry_element(&slash_elem, &text, &mut entry);
-                            }
-                            true
-                        } else if let Some(wfw_element) = is_wfw_tag(tag) {
-                            let wfw_elem = wfw_element.to_string();
-                            if !is_empty {
-                                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                *bozo |= had_bozo;
-                                slash::handle_wfw_entry_element(&wfw_elem, &text, &mut entry);
-                            }
-                            true
-                        } else if is_itunes_tag(tag, b"image", namespaces) {
-                            if let Some(url) = extract_href_attr(&element, limits) {
-                                let itunes = entry
-                                    .itunes
-                                    .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                                itunes.image = Some(
-                                    truncate_to_length(&url, limits.max_attribute_length).into(),
-                                );
-                            }
-                            if !is_empty {
-                                skip_element(reader, buf, limits, *depth)?;
-                            }
-                            true
-                        } else if is_itunes_tag(tag, b"title", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.title = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"author", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            if entry.author.is_none() {
-                                entry.set_author(Person::from_name(&text));
-                                entry
-                                    .authors
-                                    .try_push_limited(Person::from_name(&text), limits.max_authors);
-                            }
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.author = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"subtitle", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.subtitle = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"summary", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.summary = Some(text);
-                            true
-                        } else if is_itunes_tag(tag, b"duration", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.duration = if text.is_empty() { None } else { Some(text) };
-                            true
-                        } else if is_itunes_tag(tag, b"explicit", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.explicit = parse_explicit(&text);
-                            true
-                        } else if is_itunes_tag(tag, b"episode", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.episode = text.trim().parse().ok();
-                            true
-                        } else if is_itunes_tag(tag, b"season", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.season = text.trim().parse().ok();
-                            true
-                        } else if is_itunes_tag(tag, b"episodeType", namespaces) && !is_empty {
-                            let (text, had_bozo) = read_text(reader, buf, limits)?;
-                            *bozo |= had_bozo;
-                            let itunes = entry
-                                .itunes
-                                .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()));
-                            itunes.episode_type = Some(text);
-                            true
-                        } else if let Some(georss_element) = is_georss_tag(tag) {
-                            let georss_elem = georss_element.as_bytes().to_vec();
-                            if !is_empty {
-                                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                *bozo |= had_bozo;
-                                georss::handle_entry_element(
-                                    &georss_elem,
-                                    &text,
-                                    &mut entry,
-                                    limits,
-                                );
-                            }
-                            true
-                        } else if let Some(geo_element) = is_geo_tag(tag) {
-                            let geo_elem = geo_element.as_bytes().to_vec();
-                            if !is_empty {
-                                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                                *bozo |= had_bozo;
-                                georss::handle_entry_geo_element(&geo_elem, &text, &mut entry);
-                            }
-                            true
-                        } else {
-                            false
-                        };
-
-                        if !handled && !is_empty {
-                            skip_element(reader, buf, limits, *depth)?;
-                        }
+                        parse_entry_namespace(
+                            reader, buf, tag, &element, &mut entry, limits, depth, bozo,
+                            entry_lang, base_ctx, namespaces, is_empty,
+                        )?;
                     }
                 }
                 *depth = depth.saturating_sub(1);
@@ -1160,6 +894,696 @@ fn parse_entry(
     }
 
     Ok(entry)
+}
+
+/// Parse extension namespace tags at entry level (Dublin Core, Content, Media RSS,
+/// Threading, iTunes, `GeoRSS`/Geo), in order.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_namespace(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    bozo: &mut bool,
+    entry_lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
+    namespaces: &HashMap<String, String>,
+    is_empty: bool,
+) -> Result<()> {
+    let mut handled = parse_entry_ns_text(
+        reader, buf, tag, entry, limits, bozo, entry_lang, base_ctx, namespaces, is_empty,
+    )?;
+    if !handled {
+        handled = parse_entry_media(
+            reader, buf, tag, element, entry, limits, depth, bozo, namespaces, is_empty,
+        )?;
+    }
+    if !handled {
+        handled = parse_entry_ns_threading(
+            reader, buf, tag, element, entry, limits, *depth, bozo, is_empty,
+        )?;
+    }
+    if !handled {
+        handled = parse_entry_itunes(
+            reader, buf, tag, element, entry, limits, *depth, bozo, namespaces, is_empty,
+        )?;
+    }
+    if !handled {
+        handled = parse_entry_geo(reader, buf, tag, entry, limits, bozo, is_empty)?;
+    }
+
+    if !handled && !is_empty {
+        skip_element(reader, buf, limits, *depth)?;
+    }
+    Ok(())
+}
+
+/// Parse core text-valued entry elements: title, id, updated/modified,
+/// published/issued, created, subtitle/tagline, rights/copyright, summary.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_core_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    base_ctx: &BaseUrlContext,
+    entry_lang: Option<&str>,
+    bozo: &mut bool,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_entry
+    match element.name().as_ref() {
+        b"title" => {
+            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            entry.set_title(text);
+        }
+        b"id" => {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            entry.id = Some(text.into());
+        }
+        b"updated" | b"modified" => {
+            let text = read_text_str(reader, buf, limits)?;
+            entry.updated = parse_date(&text);
+            entry.updated_str = Some(text);
+        }
+        b"published" | b"issued" => {
+            let text = read_text_str(reader, buf, limits)?;
+            entry.published = parse_date(&text);
+            entry.published_str = Some(text);
+        }
+        b"created" => {
+            let text = read_text_str(reader, buf, limits)?;
+            entry.created = parse_date(&text);
+            entry.created_str = Some(text);
+        }
+        b"subtitle" | b"tagline" => {
+            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            entry.set_subtitle(text);
+        }
+        b"rights" | b"copyright" => {
+            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            entry.set_rights(text);
+        }
+        b"summary" => {
+            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            entry.set_summary(text);
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse an entry-level `<content>` element (inline or out-of-line, RFC 4287 §4.1.3.2).
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_content(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    base_ctx: &BaseUrlContext,
+    entry_lang: Option<&str>,
+    is_empty: bool,
+) -> Result<()> {
+    if is_empty {
+        if let Some(content) = parse_content_empty(element, limits, entry_lang, base_ctx) {
+            entry
+                .content
+                .try_push_limited(content, limits.max_content_blocks);
+        }
+    } else {
+        let content = parse_content(reader, buf, element, limits, entry_lang, base_ctx)?;
+        entry
+            .content
+            .try_push_limited(content, limits.max_content_blocks);
+    }
+    Ok(())
+}
+
+/// Parse entry-level `<link>` and `<category>` elements.
+fn parse_entry_link_or_category(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    base_ctx: &BaseUrlContext,
+    is_empty: bool,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_entry
+    match element.name().as_ref() {
+        b"link" => {
+            if let Some(mut link) =
+                Link::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
+            {
+                link.href = base_ctx.resolve_safe(&link.href).into();
+
+                if entry.link.is_none() && link.rel.as_deref() == Some("alternate") {
+                    entry.link = Some(link.href.to_string());
+                }
+                if entry.license.is_none() && link.rel.as_deref() == Some("license") {
+                    entry.license = Some(link.href.to_string());
+                }
+                if link.rel.as_deref() == Some("enclosure") {
+                    entry.enclosures.try_push_limited(
+                        Enclosure {
+                            url: link.href.clone(),
+                            length: link.length.clone(),
+                            enclosure_type: link.link_type.clone(),
+                            title: None,
+                            duration: None,
+                        },
+                        limits.max_enclosures,
+                    );
+                }
+                entry
+                    .links
+                    .try_push_limited(link, limits.max_links_per_entry);
+            }
+            if !is_empty {
+                skip_to_end(reader, buf, b"link")?;
+            }
+        }
+        b"category" => {
+            if let Some(tag) =
+                Tag::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
+            {
+                entry.tags.try_push_limited(tag, limits.max_tags);
+            }
+            if !is_empty {
+                skip_to_end(reader, buf, b"category")?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse entry-level `<author>` and `<contributor>` elements.
+#[allow(clippy::unnecessary_wraps)]
+fn parse_entry_person(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: &mut usize,
+) -> Result<()> {
+    // keep tag list in sync with the dispatcher arm in parse_entry
+    match element.name().as_ref() {
+        b"author" => {
+            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+                if entry.author.is_none() {
+                    entry.set_author(person.clone());
+                }
+                entry.authors.try_push_limited(person, limits.max_authors);
+            }
+        }
+        b"contributor" => {
+            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+                entry
+                    .contributors
+                    .try_push_limited(person, limits.max_contributors);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Parse Dublin Core and Content namespace tags at entry level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_ns_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    bozo: &mut bool,
+    entry_lang: Option<&str>,
+    base_ctx: &BaseUrlContext,
+    namespaces: &HashMap<String, String>,
+    is_empty: bool,
+) -> Result<bool> {
+    if let Some(dc_element) = is_dc_tag(tag, namespaces) {
+        let dc_elem = dc_element.to_string();
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            dublin_core::handle_entry_element(&dc_elem, &text, entry);
+        }
+        Ok(true)
+    } else if let Some(content_element) = is_content_tag(tag) {
+        let content_elem = content_element.to_string();
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            content::handle_entry_element(&content_elem, &text, entry, entry_lang, base_ctx.base());
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse Media RSS namespace tags at entry level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_media(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    bozo: &mut bool,
+    namespaces: &HashMap<String, String>,
+    is_empty: bool,
+) -> Result<bool> {
+    let Some(media_element) = is_media_tag(tag, namespaces) else {
+        return Ok(false);
+    };
+    if parse_entry_media_object(
+        reader,
+        buf,
+        media_element,
+        element,
+        entry,
+        limits,
+        depth,
+        bozo,
+        namespaces,
+        is_empty,
+    )? {
+        return Ok(true);
+    }
+    if parse_entry_media_meta(
+        reader,
+        buf,
+        media_element,
+        element,
+        entry,
+        limits,
+        *depth,
+        bozo,
+        is_empty,
+    )? {
+        return Ok(true);
+    }
+    parse_entry_media_text(
+        reader,
+        buf,
+        media_element,
+        element,
+        entry,
+        limits,
+        bozo,
+        is_empty,
+    )?;
+    Ok(true)
+}
+
+/// Parse structured `media:*` elements that contain their own child content:
+/// thumbnail, content, group.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_media_object(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    media_element: &str,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    bozo: &mut bool,
+    namespaces: &HashMap<String, String>,
+    is_empty: bool,
+) -> Result<bool> {
+    match media_element {
+        "thumbnail" => {
+            if let Some(thumbnail) = MediaThumbnail::from_attributes(
+                element.attributes().flatten(),
+                limits.max_attribute_length,
+            ) {
+                entry
+                    .media_thumbnail
+                    .try_push_limited(thumbnail, limits.max_enclosures);
+            }
+            if !is_empty {
+                skip_element(reader, buf, limits, *depth)?;
+            }
+            Ok(true)
+        }
+        "content" => {
+            if let Some(media) = MediaContent::from_attributes(
+                element.attributes().flatten(),
+                limits.max_attribute_length,
+            ) {
+                entry
+                    .media_content
+                    .try_push_limited(media, limits.max_enclosures);
+            }
+            if !is_empty {
+                parse_atom_media_content_children(
+                    reader, buf, entry, limits, depth, bozo, namespaces,
+                )?;
+            }
+            Ok(true)
+        }
+        "group" => {
+            if !is_empty {
+                // media:group is a transparent container; promote children to entry
+                parse_atom_media_group(reader, buf, entry, limits, depth, bozo, namespaces)?;
+            }
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Parse `media:*` metadata elements: credit, copyright, rating.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_media_meta(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    media_element: &str,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+    bozo: &mut bool,
+    is_empty: bool,
+) -> Result<bool> {
+    match media_element {
+        "credit" => {
+            let role = attr_raw(element, b"role");
+            let scheme = attr_raw(element, b"scheme");
+            if !is_empty {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                if !text.is_empty() {
+                    entry.media_credit.try_push_limited(
+                        MediaCredit {
+                            role,
+                            scheme,
+                            content: text,
+                        },
+                        limits.max_links_per_entry,
+                    );
+                }
+            }
+            Ok(true)
+        }
+        "copyright" => {
+            let url = attr_raw(element, b"url");
+            if !is_empty {
+                skip_element(reader, buf, limits, depth)?;
+            }
+            entry.media_copyright = Some(MediaCopyright { url });
+            Ok(true)
+        }
+        "rating" => {
+            if !is_empty {
+                let scheme = attr_normalized(element, b"scheme", limits.max_attribute_length);
+                let text = read_text_str(reader, buf, limits)?;
+                media_rss::handle_entry_rating(scheme.as_deref(), &text, entry);
+            }
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// Parse `media:*` text elements: description, title, keywords; falls back to the
+/// generic Media RSS element handler for anything else.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_media_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    media_element: &str,
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    bozo: &mut bool,
+    is_empty: bool,
+) -> Result<()> {
+    match media_element {
+        "description" => {
+            let type_attr = attr_raw(element, b"type");
+            if !is_empty {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
+                if is_plain && !text.is_empty() {
+                    entry.media_description = Some(text.clone());
+                }
+                if entry.summary.is_none() && !text.is_empty() {
+                    entry.summary = Some(text);
+                }
+            }
+        }
+        "title" => {
+            let type_attr = attr_raw(element, b"type");
+            if !is_empty {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
+                if is_plain && !text.is_empty() {
+                    entry.media_title = Some(text.clone());
+                }
+                if entry.title.is_none() && !text.is_empty() {
+                    entry.title = Some(text);
+                }
+            }
+        }
+        "keywords" => {
+            if !is_empty {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                media_rss::handle_entry_element("keywords", &text, entry);
+            }
+        }
+        _ => {
+            let media_elem = media_element.to_string();
+            if !is_empty {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                media_rss::handle_entry_element(&media_elem, &text, entry);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Parse Atom Threading Extensions (RFC 4685) at entry level: thr, plus Slash/WFW.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_ns_threading(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+    bozo: &mut bool,
+    is_empty: bool,
+) -> Result<bool> {
+    if let Some(thr_element) = is_thr_tag(tag) {
+        match thr_element {
+            "in-reply-to" => {
+                if let Some(reply) = threading::parse_in_reply_to_from_attrs(
+                    element.attributes().flatten(),
+                    limits.max_attribute_length,
+                ) {
+                    // Shares max_links_per_entry limit; split if needed later
+                    entry
+                        .in_reply_to
+                        .try_push_limited(reply, limits.max_links_per_entry);
+                }
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
+            "total" if !is_empty => {
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                threading::handle_total(&text, entry);
+            }
+            _ => {
+                if !is_empty {
+                    skip_element(reader, buf, limits, depth)?;
+                }
+            }
+        }
+        Ok(true)
+    } else if let Some(slash_element) = is_slash_tag(tag) {
+        let slash_elem = slash_element.to_string();
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            slash::handle_slash_entry_element(&slash_elem, &text, entry);
+        }
+        Ok(true)
+    } else if let Some(wfw_element) = is_wfw_tag(tag) {
+        let wfw_elem = wfw_element.to_string();
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            slash::handle_wfw_entry_element(&wfw_elem, &text, entry);
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse iTunes namespace tags at entry level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
+fn parse_entry_itunes(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    element: &BytesStart<'_>,
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    depth: usize,
+    bozo: &mut bool,
+    namespaces: &HashMap<String, String>,
+    is_empty: bool,
+) -> Result<bool> {
+    if is_itunes_tag(tag, b"image", namespaces) {
+        if let Some(url) = extract_href_attr(element, limits) {
+            itunes_entry_meta(entry).image =
+                Some(truncate_to_length(&url, limits.max_attribute_length).into());
+        }
+        if !is_empty {
+            skip_element(reader, buf, limits, depth)?;
+        }
+        Ok(true)
+    } else if is_itunes_tag(tag, b"title", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).title = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"author", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        if entry.author.is_none() {
+            entry.set_author(Person::from_name(&text));
+            entry
+                .authors
+                .try_push_limited(Person::from_name(&text), limits.max_authors);
+        }
+        itunes_entry_meta(entry).author = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"subtitle", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).subtitle = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"summary", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).summary = Some(text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"duration", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).duration = if text.is_empty() { None } else { Some(text) };
+        Ok(true)
+    } else if is_itunes_tag(tag, b"explicit", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).explicit = parse_explicit(&text);
+        Ok(true)
+    } else if is_itunes_tag(tag, b"episode", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).episode = text.trim().parse().ok();
+        Ok(true)
+    } else if is_itunes_tag(tag, b"season", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).season = text.trim().parse().ok();
+        Ok(true)
+    } else if is_itunes_tag(tag, b"episodeType", namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(reader, buf, limits)?;
+        *bozo |= had_bozo;
+        itunes_entry_meta(entry).episode_type = Some(text);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Parse `GeoRSS` and W3C Geo namespace tags at entry level.
+///
+/// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+fn parse_entry_geo(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    entry: &mut Entry,
+    limits: &ParserLimits,
+    bozo: &mut bool,
+    is_empty: bool,
+) -> Result<bool> {
+    if let Some(georss_element) = is_georss_tag(tag) {
+        let georss_elem = georss_element.as_bytes().to_vec();
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            georss::handle_entry_element(&georss_elem, &text, entry, limits);
+        }
+        Ok(true)
+    } else if let Some(geo_element) = is_geo_tag(tag) {
+        let geo_elem = geo_element.as_bytes().to_vec();
+        if !is_empty {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            georss::handle_entry_geo_element(&geo_elem, &text, entry);
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Read an attribute value as raw UTF-8 text, with no entity normalization or
+/// truncation. Used where the original code did a plain `str::from_utf8` read.
+fn attr_raw(element: &BytesStart<'_>, key: &[u8]) -> Option<String> {
+    element
+        .attributes()
+        .flatten()
+        .find(|a| a.key.as_ref() == key)
+        .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned))
+}
+
+/// Read an attribute value with entity normalization and truncation to `max` bytes.
+/// Not interchangeable with [`attr_raw`] — used only where the original code applied
+/// `normalized_value` + `truncate_to_length`.
+fn attr_normalized(element: &BytesStart<'_>, key: &[u8], max: usize) -> Option<String> {
+    element
+        .attributes()
+        .flatten()
+        .find(|a| a.key.as_ref() == key)
+        .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok())
+        .map(|v| truncate_to_length(&v, max))
 }
 
 /// Promote entry.id → entry.link when no explicit `<link>` is present (#273).
@@ -1639,6 +2063,82 @@ fn parse_content_empty(
     })
 }
 
+/// Accumulated loop-local state for [`parse_atom_source`], moved into a struct to
+/// keep the parse loop itself under the function-length budget.
+#[derive(Default)]
+struct SourceFields {
+    title: Option<String>,
+    link: Option<String>,
+    first_link_href: Option<String>,
+    id: Option<String>,
+    links: Vec<Link>,
+    updated: Option<DateTime<Utc>>,
+    updated_str: Option<String>,
+    rights: Option<String>,
+    has_explicit_link: bool,
+    author: Option<String>,
+}
+
+impl SourceFields {
+    /// Handle a `<link>` child element: parse its attributes and record it.
+    ///
+    /// `has_explicit_link` is only set inside the `Some(lnk)` branch — a `<link>`
+    /// whose attributes fail to parse must not set it, since it feeds `guidislink`
+    /// in [`SourceFields::finish`].
+    fn push_link(&mut self, element: &BytesStart<'_>, limits: &ParserLimits) {
+        if let Some(lnk) =
+            Link::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
+        {
+            // Track first alternate rel for link; fall back to first link seen.
+            if lnk.rel.as_deref() == Some("alternate") && self.link.is_none() {
+                self.link = Some(lnk.href.to_string());
+            }
+            if self.first_link_href.is_none() {
+                self.first_link_href = Some(lnk.href.to_string());
+            }
+            self.has_explicit_link = true;
+            self.links.push(lnk);
+        }
+    }
+
+    /// Resolve the link fallback and `guidislink`, then build the final [`Source`].
+    fn finish(mut self) -> Source {
+        // Fall back to first link of any rel if no alternate was found
+        if self.link.is_none() {
+            self.link = self.first_link_href;
+        }
+
+        // Compute guidislink per Python feedparser semantics:
+        // - None when no <id> present
+        // - Some(true) when <id> looks like a URL and no explicit <link> present
+        // - Some(false) otherwise
+        let guidislink = self.id.as_deref().map(|id_val| {
+            let id_is_url = id_val.starts_with("http://")
+                || id_val.starts_with("https://")
+                || id_val.starts_with("ftp://");
+            id_is_url && !self.has_explicit_link
+        });
+
+        // When guidislink is true, populate link from the id value (matching Python feedparser)
+        if guidislink == Some(true) {
+            self.link.clone_from(&self.id);
+        }
+
+        Source {
+            title: self.title,
+            href: None,
+            link: self.link,
+            author: self.author,
+            id: self.id,
+            links: self.links,
+            updated: self.updated,
+            updated_str: self.updated_str,
+            rights: self.rights,
+            guidislink,
+        }
+    }
+}
+
 /// Parse <source> element (renamed to avoid confusion with RSS source)
 fn parse_atom_source(
     reader: &mut Reader<&[u8]>,
@@ -1646,16 +2146,7 @@ fn parse_atom_source(
     limits: &ParserLimits,
     depth: &mut usize,
 ) -> Result<Source> {
-    let mut title = None;
-    let mut link = None;
-    let mut first_link_href: Option<String> = None;
-    let mut id = None;
-    let mut links = Vec::new();
-    let mut updated = None;
-    let mut updated_str = None;
-    let mut rights = None;
-    let mut has_explicit_link = false;
-    let mut author = None;
+    let mut fields = SourceFields::default();
 
     loop {
         match reader.read_event_into(buf) {
@@ -1671,38 +2162,27 @@ fn parse_atom_source(
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
                 match element.name().as_ref() {
-                    b"title" if !is_empty => title = Some(read_text_str(reader, buf, limits)?),
+                    b"title" if !is_empty => {
+                        fields.title = Some(read_text_str(reader, buf, limits)?);
+                    }
                     b"link" => {
-                        if let Some(lnk) = Link::from_attributes(
-                            element.attributes().flatten(),
-                            limits.max_attribute_length,
-                        ) {
-                            // Track first alternate rel for link; fall back to first link seen.
-                            if lnk.rel.as_deref() == Some("alternate") && link.is_none() {
-                                link = Some(lnk.href.to_string());
-                            }
-                            if first_link_href.is_none() {
-                                first_link_href = Some(lnk.href.to_string());
-                            }
-                            has_explicit_link = true;
-                            links.push(lnk);
-                        }
+                        fields.push_link(&element, limits);
                         if !is_empty {
                             skip_to_end(reader, buf, b"link")?;
                         }
                     }
-                    b"id" if !is_empty => id = Some(read_text_str(reader, buf, limits)?),
+                    b"id" if !is_empty => fields.id = Some(read_text_str(reader, buf, limits)?),
                     b"updated" | b"modified" if !is_empty => {
                         let text = read_text_str(reader, buf, limits)?;
-                        updated = parse_date(&text);
-                        updated_str = Some(text);
+                        fields.updated = parse_date(&text);
+                        fields.updated_str = Some(text);
                     }
                     b"rights" if !is_empty => {
-                        rights = Some(read_text_str(reader, buf, limits)?);
+                        fields.rights = Some(read_text_str(reader, buf, limits)?);
                     }
                     b"author" if !is_empty => {
                         if let Ok(person) = parse_person(reader, buf, limits, depth) {
-                            author = person.flat_string().map(|s| s.to_string());
+                            fields.author = person.flat_string().map(|s| s.to_string());
                         }
                     }
                     _ if !is_empty => skip_element(reader, buf, limits, *depth)?,
@@ -1718,39 +2198,7 @@ fn parse_atom_source(
         buf.clear();
     }
 
-    // Fall back to first link of any rel if no alternate was found
-    if link.is_none() {
-        link = first_link_href;
-    }
-
-    // Compute guidislink per Python feedparser semantics:
-    // - None when no <id> present
-    // - Some(true) when <id> looks like a URL and no explicit <link> present
-    // - Some(false) otherwise
-    let guidislink = id.as_deref().map(|id_val| {
-        let id_is_url = id_val.starts_with("http://")
-            || id_val.starts_with("https://")
-            || id_val.starts_with("ftp://");
-        id_is_url && !has_explicit_link
-    });
-
-    // When guidislink is true, populate link from the id value (matching Python feedparser)
-    if guidislink == Some(true) {
-        link.clone_from(&id);
-    }
-
-    Ok(Source {
-        title,
-        href: None,
-        link,
-        author,
-        id,
-        links,
-        updated,
-        updated_str,
-        rights,
-        guidislink,
-    })
+    Ok(fields.finish())
 }
 
 /// Extract the `href` attribute value from an XML element, truncated to limit.

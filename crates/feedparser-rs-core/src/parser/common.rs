@@ -7,7 +7,11 @@ use crate::{
     ParserLimits,
     error::{FeedError, Result},
     namespace::namespaces as ns_uris,
-    types::{FeedVersion, ParsedFeed},
+    types::{
+        Entry, FeedMeta, FeedVersion, ItunesEntryMeta, ItunesFeedMeta, MediaContent,
+        MediaThumbnail, ParsedFeed, PodcastMeta,
+    },
+    util::text::truncate_to_length,
 };
 use quick_xml::{
     Reader,
@@ -829,6 +833,95 @@ pub fn read_text_str(
     limits: &ParserLimits,
 ) -> Result<String> {
     read_text(reader, buf, limits).map(|(t, _)| t)
+}
+
+/// Get or create the feed-level iTunes metadata block.
+#[inline]
+pub fn itunes_feed_meta(feed: &mut FeedMeta) -> &mut ItunesFeedMeta {
+    feed.itunes
+        .get_or_insert_with(|| Box::new(ItunesFeedMeta::default()))
+}
+
+/// Get or create the entry-level iTunes metadata block.
+#[inline]
+pub fn itunes_entry_meta(entry: &mut Entry) -> &mut ItunesEntryMeta {
+    entry
+        .itunes
+        .get_or_insert_with(|| Box::new(ItunesEntryMeta::default()))
+}
+
+/// Get or create the feed-level Podcast 2.0 metadata block.
+#[inline]
+pub fn podcast_feed_meta(feed: &mut FeedMeta) -> &mut PodcastMeta {
+    feed.podcast
+        .get_or_insert_with(|| Box::new(PodcastMeta::default()))
+}
+
+/// Find an attribute value by key in a collected `(key, value)` attribute slice.
+#[inline]
+pub fn find_attribute<'a>(attrs: &'a [(Vec<u8>, String)], key: &[u8]) -> Option<&'a str> {
+    attrs
+        .iter()
+        .find(|(k, _)| k.as_slice() == key)
+        .map(|(_, v)| v.as_str())
+}
+
+/// Build a `media:thumbnail` value from its collected attributes.
+///
+/// Returns `None` when the `url` attribute is missing or empty, matching the
+/// `if !url.is_empty()` guard used at every call site.
+pub fn build_media_thumbnail(
+    attrs: &[(Vec<u8>, String)],
+    limits: &ParserLimits,
+) -> Option<MediaThumbnail> {
+    let url = find_attribute(attrs, b"url")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    if url.is_empty() {
+        return None;
+    }
+    Some(MediaThumbnail {
+        url: url.into(),
+        width: find_attribute(attrs, b"width").map(str::to_owned),
+        height: find_attribute(attrs, b"height").map(str::to_owned),
+        time: find_attribute(attrs, b"time").map(str::to_owned),
+    })
+}
+
+/// Build a `media:content` value from its collected attributes.
+///
+/// Returns `None` when the `url` attribute is missing or empty, matching the
+/// `if !url.is_empty()` guard used at every call site.
+pub fn build_media_content(
+    attrs: &[(Vec<u8>, String)],
+    limits: &ParserLimits,
+) -> Option<MediaContent> {
+    let url = find_attribute(attrs, b"url")
+        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .unwrap_or_default();
+    if url.is_empty() {
+        return None;
+    }
+    Some(MediaContent {
+        url: url.into(),
+        content_type: find_attribute(attrs, b"type")
+            .map(|v| truncate_to_length(v, limits.max_attribute_length))
+            .map(Into::into),
+        medium: find_attribute(attrs, b"medium")
+            .map(|v| truncate_to_length(v, limits.max_attribute_length)),
+        filesize: find_attribute(attrs, b"fileSize").map(str::to_owned),
+        duration: find_attribute(attrs, b"duration").map(str::to_owned),
+        width: find_attribute(attrs, b"width").map(str::to_owned),
+        height: find_attribute(attrs, b"height").map(str::to_owned),
+        bitrate: find_attribute(attrs, b"bitrate").map(str::to_owned),
+        lang: find_attribute(attrs, b"lang").map(str::to_owned),
+        channels: find_attribute(attrs, b"channels").map(str::to_owned),
+        codec: find_attribute(attrs, b"codec").map(str::to_owned),
+        expression: find_attribute(attrs, b"expression").map(str::to_owned),
+        isdefault: find_attribute(attrs, b"isDefault").map(str::to_owned),
+        samplingrate: find_attribute(attrs, b"samplingrate").map(str::to_owned),
+        framerate: find_attribute(attrs, b"framerate").map(str::to_owned),
+    })
 }
 
 /// Skip to end of specified element (for attribute-only elements like `<link>`)

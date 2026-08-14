@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: `GeoLocation.crs` renamed to `srsName` in the Node.js binding to match the `srs_name` field used by core and the Python binding (#441)
 - **Breaking (Node.js)**: `parseWithOptions`/`parseUrlWithOptions` now take a `ParseOptions` object (`{ maxSize?, sanitizeHtml?, resolveRelativeUris? }`) instead of a positional `maxSize` number — update call sites from `parseWithOptions(source, 1024)` to `parseWithOptions(source, { maxSize: 1024 })`
 - Python `parse()`/`parse_with_limits()`/`parse_url()`/`parse_url_with_limits()` gained `sanitize_html: bool = True` and `resolve_relative_uris: bool = True` keyword arguments
+- Internal: split the parser functions that exceeded the project's 100-line function-length limit (`atom.rs::parse_entry`/`parse_feed_element`, `rss.rs`'s channel/item family, `rss10.rs::parse_rss10_with_options`/`parse_item`/`parse_channel`, `json.rs::parse_item`) into smaller per-namespace helpers, following the decomposition pattern already used elsewhere in `rss.rs` (#433). Output is byte-identical (verified via differential testing against the pre-refactor baseline across the full fixture corpus plus truncation/self-closing-tag mutations); RSS 1.0 (RDF) parsing has a measured ~2-4% throughput cost from three new per-element allocations required by the split's handler-function signature convention.
 
 ### Fixed
 
