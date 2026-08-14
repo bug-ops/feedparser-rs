@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Close an SSRF protection bypass in `FeedHttpClient` (CWE-918, #436): HTTP redirects (`Location` headers) are now re-validated against the same SSRF checks as the initial request, and DNS resolution results are re-checked at connect time via a custom resolver, closing a DNS-rebinding gap where a domain resolving to a public IP at validation time could be repointed to a private/loopback/link-local/metadata address before the connection was made. Also consolidated `util::base_url::is_safe_url` to reuse the same validation rules as `http::validation::validate_url` instead of a separate, weaker, duplicated implementation.
+- `FeedHttpClient` no longer honors the system/environment HTTP proxy (`HTTP_PROXY`/`HTTPS_PROXY`/`ALL_PROXY`): a proxy resolves its own target hostname, which silently bypassed the DNS-rebinding-safe resolver above.
+- Close an IPv6 embedded-IPv4 SSRF bypass in `validate_ipv6`: IPv4-mapped (`::ffff:127.0.0.1`), deprecated IPv4-compatible (`::127.0.0.1`), and NAT64 (`64:ff9b::/96`, RFC 6052) address forms are now unwrapped to their embedded IPv4 address and validated against the same IPv4 rules, instead of silently passing every native IPv6 check. 6to4 (`2002::/16`, RFC 3056) is a known, deliberately deferred follow-up: relay infrastructure for it has been widely decommissioned and it is not standard on any current cloud network, unlike the three forms fixed here.
+- SSRF rejection reasons (from redirect re-validation or DNS-rebinding checks) are no longer swallowed by `reqwest::Error`'s `Display`, which only prints the outer error kind and URL — `FeedHttpClient::get` now walks the full error source chain so callers see the actual reason a request was blocked.
+
 ### Changed
 
 - **BREAKING**: `GeoLocation.crs` renamed to `srsName` in the Node.js binding to match the `srs_name` field used by core and the Python binding (#441)
