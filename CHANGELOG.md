@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - CI: bump Node.js to 22 in the `npm: Publish` release job; `npm install -g npm@latest` now requires Node `^22.22.2 || ^24.15.0 || >=26.0.0` and failed with `EBADENGINE` under Node 20
+- `feedparser-rs-py` now inherits `edition`/`rust-version` from the workspace instead of hardcoding stale values (#434)
 
 ## [0.5.6] - 2026-07-27
 
