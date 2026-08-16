@@ -51,4 +51,6 @@ def test_json_extensions_in_keys():
 
     result = feedparser_rs.parse(json)
 
-    assert "json_extensions" in result.feed.keys()
+    feed_keys = result.feed.keys()
+
+    assert "json_extensions" in feed_keys
