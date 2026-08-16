@@ -811,6 +811,8 @@ export interface PodcastEntryMeta {
   txt: Array<PodcastTxt>
   /** Follow links (podcast:follow) */
   follow: Array<PodcastFollow>
+  /** Value-for-value payment information (podcast:value) */
+  value?: PodcastValue
 }
 
 /** Podcast 2.0 follow link (podcast:follow) */
