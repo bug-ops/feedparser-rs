@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `parse_with_options(data, &ParseOptions)` and `parse_url_with_options(url, etag, modified, user_agent, &ParseOptions)` — full control over HTML sanitization, relative URI resolution, and parser limits in a single call. `parse`/`parse_with_limits` and `parse_url`/`parse_url_with_limits` are now thin wrappers over these
+- CI: `test-node` job now fails if `pnpm run build` regenerates `crates/feedparser-rs-node/index.d.ts`/`index.js` with content differing from the committed files, closing the gap that let those generated files drift from the actual napi-exported API without CI catching it (#450). The check runs once per CI run (on the `ubuntu-latest` / Node 22 matrix leg) via a new `test-node-verify-generated` `cargo-make` task
+- Node binding: documented error `.code` property (`'InvalidArg'` | `'GenericFailure'`) with usage example and tests covering both paths (#444)
 
 ### Changed
 
@@ -43,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Node.js binding: `crates/feedparser-rs-node/package.json`'s `test`/`test:coverage` scripts used an unquoted `__test__/*.spec.mjs` glob, which `node --test` does not expand itself — relying on shell glob expansion silently breaks on `cmd.exe` (Windows CI, `release.yml` pins Node 18/20). Replaced with an explicit file list that works identically across shells and Node versions
 - Node.js binding tests: `phase3-fields.spec.mjs` and `syndication.spec.mjs` were never wired into the `test` npm script and were silently skipped in CI; both are now included, and the assertions that only surfaced once the files actually ran have been corrected to match the real binding output (GeoRSS location exposed as `where`, not `geo`; `itunes:explicit` only maps to `true` for "yes"/"true"/"explicit" values, never `false`; `dcDate` is an RFC 3339 string, with the millisecond timestamp on `dcDateParsed`; Media RSS `width`/`height`/`filesize`/`duration`/`updateFrequency` are raw strings, not numbers) (#445)
 - Node.js binding: added a structured `FeedError`-to-`napi::Error` conversion layer (`error.rs`), mirroring the Python binding's `convert_feed_error`, so format/encoding/URL errors map to `Status::InvalidArg` and I/O/unknown errors map to `Status::GenericFailure` instead of every call site inlining its own generic error message (#439)
+- Node.js binding: regenerated `index.d.ts` via `napi build` to pick up an intra-doc-link fix already present in `src/lib.rs` (`` `core::ParseOptions::default` `` → `` [`core::ParseOptions::default`] ``) — this drift reproduced immediately after #449 merged and is exactly what the new CI guard (#450, above) now prevents from recurring silently
 - CI: bump Node.js to 22 in the `npm: Publish` release job; `npm install -g npm@latest` now requires Node `^22.22.2 || ^24.15.0 || >=26.0.0` and failed with `EBADENGINE` under Node 20
 - `feedparser-rs-py` now inherits `edition`/`rust-version` from the workspace instead of hardcoding stale values (#434)
 
