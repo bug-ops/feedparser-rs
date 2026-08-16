@@ -586,7 +586,7 @@ export interface ParsedFeed {
  * Parsing options accepted by `parseWithOptions` and `parseUrlWithOptions`
  *
  * All fields are optional; omitted fields use the same defaults as
- * `core::ParseOptions::default` (HTML sanitization and relative URI
+ * [`core::ParseOptions::default`] (HTML sanitization and relative URI
  * resolution both enabled, 100MB max feed size).
  */
 export interface ParseOptions {

@@ -200,6 +200,20 @@ cwd = "./crates/feedparser-rs-node"
 script_runner = "@shell"
 script = "pnpm test"
 
+[tasks.test-node-verify-generated]
+description = "CI: fail if the napi build regenerated index.d.ts/index.js differently from the committed files"
+cwd = "./crates/feedparser-rs-node"
+script_runner = "@shell"
+script = '''
+#!/bin/bash
+set -e
+if ! git diff --exit-code -- index.d.ts index.js; then
+  echo "::error::crates/feedparser-rs-node/index.d.ts and/or index.js are out of sync with the napi build output." >&2
+  echo "Run 'pnpm run build' in crates/feedparser-rs-node locally and commit the resulting diff." >&2
+  exit 1
+fi
+'''
+
 # ============================================================================
 # Coverage Tasks
 # ============================================================================

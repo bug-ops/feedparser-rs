@@ -394,6 +394,12 @@ jobs:
       - name: Run Node.js tests
         run: cargo make ci-test-node
 
+      # Generated bindings are platform/Node-version independent, so this
+      # only needs to run once per CI run, not once per matrix leg.
+      - name: Verify generated Node.js bindings are up to date
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        run: cargo make test-node-verify-generated
+
   # Rust code coverage
   coverage-rust:
     name: Rust Code Coverage

@@ -232,6 +232,27 @@ if (feed.bozo) {
 console.log(feed.feed.title);  // "Broken"
 ```
 
+### Thrown Errors
+
+Some operations throw errors for catastrophic failures (e.g., input exceeding size limits, network errors):
+
+```javascript
+try {
+  const feed = parseWithOptions(largeXml, { maxSize: 10 });
+} catch (err) {
+  // err.code indicates the error category:
+  // 'InvalidArg' = bad input (XML/JSON parse error, invalid URL, encoding error)
+  // 'GenericFailure' = I/O or network error (file/socket error, HTTP failure)
+  if (err.code === 'InvalidArg') {
+    console.error('Invalid input:', err.message);
+  } else if (err.code === 'GenericFailure') {
+    console.error('I/O or network error:', err.message);
+  }
+}
+```
+
+**Note:** The thrown `Error` object's `.code` property is a string (`'InvalidArg'` | `'GenericFailure'`). Use it to distinguish input validation errors from transient I/O failures when deciding whether to retry.
+
 ## Dates
 
 Each date field is exposed twice: the raw string as it appeared in the feed (timezone
