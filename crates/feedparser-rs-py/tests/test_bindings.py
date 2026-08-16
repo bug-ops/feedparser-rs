@@ -535,6 +535,37 @@ def test_podcast_podroll_location_txt_update_frequency_follow_feed_level_absent(
     assert podcast.follow == []
 
 
+def test_podcast_item_value_with_time_split():
+    """Test item-level podcast:value with a nested valueTimeSplit"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <item>
+                <title>Episode</title>
+                <podcast:value type="lightning" method="keysend">
+                    <podcast:valueRecipient type="node" address="addr1" split="100"/>
+                    <podcast:valueTimeSplit startTime="60" duration="30" remoteStartTime="0" remotePercentage="100">
+                        <podcast:valueRecipient type="node" address="addr2" split="100"/>
+                    </podcast:valueTimeSplit>
+                </podcast:value>
+            </item>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    value = result.entries[0].podcast.value
+
+    assert value is not None
+    assert value.type == "lightning"
+    assert len(value.recipients) == 1
+    assert len(value.time_splits) == 1
+    split = value.time_splits[0]
+    assert split.start_time == 60.0
+    assert split.duration == 30.0
+    assert split.recipients[0].address == "addr2"
+
+
 def test_podcast_alternate_enclosure_location_social_interact_txt_follow_entry_level():
     """Test Podcast 2.0 alternateEnclosure/location/socialInteract/txt/follow at entry level"""
     xml = b"""<?xml version="1.0"?>
@@ -592,8 +623,51 @@ def test_podcast_alternate_enclosure_location_social_interact_txt_follow_entry_l
     assert podcast.follow[0].platform == "twitter"
 
 
+def test_podcast_alternate_enclosure_with_sources_and_integrity():
+    """Test podcast:alternateEnclosure with multiple sources and integrity"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <item>
+                <title>Episode</title>
+                <podcast:alternateEnclosure type="audio/mpeg" length="123456" bitrate="128000" height="720" lang="en" title="High quality" rel="default" codecs="mp4a.40.2" default="true">
+                    <podcast:source uri="https://example.com/ep1.mp3" contentType="audio/mpeg"/>
+                    <podcast:source uri="https://example.com/ep1-mirror.mp3"/>
+                    <podcast:integrity type="sri">sha256-abc</podcast:integrity>
+                </podcast:alternateEnclosure>
+            </item>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    enclosures = result.entries[0].podcast.alternate_enclosures
+
+    assert len(enclosures) == 1
+    enc = enclosures[0]
+    assert enc.type == "audio/mpeg"
+    assert enc.length == 123456
+    assert isinstance(enc.length, int)
+    assert enc.bitrate == 128000.0
+    assert enc.height == 720
+    assert enc.lang == "en"
+    assert enc.title == "High quality"
+    assert enc.rel == "default"
+    assert enc.codecs == "mp4a.40.2"
+    assert enc.default is True
+    assert len(enc.sources) == 2
+    assert enc.sources[0].uri == "https://example.com/ep1.mp3"
+    assert enc.sources[0].content_type == "audio/mpeg"
+    assert enc.sources[1].uri == "https://example.com/ep1-mirror.mp3"
+    assert enc.sources[1].content_type is None
+    assert enc.integrity is not None
+    assert enc.integrity.type == "sri"
+    assert enc.integrity.value == "sha256-abc"
+
+
 def test_podcast_alternate_enclosure_location_social_interact_txt_follow_entry_level_absent():
-    """Test alternate_enclosures/location/social_interact/txt/follow default when absent at entry level"""
+    """Test alternate_enclosures/location/social_interact/txt/follow/value default when absent at entry level"""
     xml = b"""<?xml version="1.0"?>
     <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
         <channel>
@@ -608,6 +682,7 @@ def test_podcast_alternate_enclosure_location_social_interact_txt_follow_entry_l
     result = feedparser_rs.parse(xml)
     podcast = result.entries[0].podcast
 
+    assert podcast.value is None
     assert podcast.alternate_enclosures == []
     assert podcast.location is None
     assert podcast.social_interact == []

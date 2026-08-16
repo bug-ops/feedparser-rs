@@ -670,6 +670,34 @@ describe('Field Bindings', () => {
       assert.strictEqual(podcast.follow.length, 0);
     });
 
+    it('should parse item-level podcast:value with valueTimeSplit', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <item>
+              <title>Episode</title>
+              <podcast:value type="lightning" method="keysend">
+                <podcast:valueRecipient type="node" address="addr1" split="100"/>
+                <podcast:valueTimeSplit startTime="60" duration="30" remoteStartTime="0" remotePercentage="100">
+                  <podcast:valueRecipient type="node" address="addr2" split="100"/>
+                </podcast:valueTimeSplit>
+              </podcast:value>
+            </item>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const entry = feed.entries[0];
+      assert.ok(entry.podcast.value);
+      assert.strictEqual(entry.podcast.value.type, 'lightning');
+      assert.strictEqual(entry.podcast.value.recipients.length, 1);
+      assert.strictEqual(entry.podcast.value.timeSplits.length, 1);
+      const [split] = entry.podcast.value.timeSplits;
+      assert.strictEqual(split.startTime, 60);
+      assert.strictEqual(split.duration, 30);
+      assert.strictEqual(split.recipients[0].address, 'addr2');
+    });
+
     it('should parse podcast:alternateEnclosure/location/socialInteract/txt/follow at entry level', () => {
       const xml = `<?xml version="1.0"?>
         <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
@@ -727,7 +755,47 @@ describe('Field Bindings', () => {
       assert.strictEqual(podcast.follow[0].platform, 'twitter');
     });
 
-    it('should default alternateEnclosures/location/socialInteract/txt/follow at entry level when absent', () => {
+    it('should parse podcast:alternateEnclosure with multiple sources and integrity', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <item>
+              <title>Episode</title>
+              <podcast:alternateEnclosure type="audio/mpeg" length="123456" bitrate="128000" height="720" lang="en" title="High quality" rel="default" codecs="mp4a.40.2" default="true">
+                <podcast:source uri="https://example.com/ep1.mp3" contentType="audio/mpeg"/>
+                <podcast:source uri="https://example.com/ep1-mirror.mp3"/>
+                <podcast:integrity type="sri">sha256-abc</podcast:integrity>
+              </podcast:alternateEnclosure>
+            </item>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const entry = feed.entries[0];
+      assert.strictEqual(entry.podcast.alternateEnclosures.length, 1);
+      const [enc] = entry.podcast.alternateEnclosures;
+      assert.strictEqual(enc.type, 'audio/mpeg');
+      assert.strictEqual(enc.length, 123456);
+      assert.strictEqual(typeof enc.length, 'number');
+      assert.strictEqual(enc.bitrate, 128000);
+      assert.strictEqual(enc.height, 720);
+      assert.strictEqual(enc.lang, 'en');
+      assert.strictEqual(enc.title, 'High quality');
+      assert.strictEqual(enc.rel, 'default');
+      assert.strictEqual(enc.codecs, 'mp4a.40.2');
+      assert.strictEqual(enc.default, true);
+      assert.strictEqual(enc.sources.length, 2);
+      assert.strictEqual(enc.sources[0].uri, 'https://example.com/ep1.mp3');
+      assert.strictEqual(enc.sources[0].contentType, 'audio/mpeg');
+      assert.strictEqual(enc.sources[1].uri, 'https://example.com/ep1-mirror.mp3');
+      assert.strictEqual(enc.sources[1].contentType, undefined);
+      assert.ok(enc.integrity);
+      assert.strictEqual(enc.integrity.type, 'sri');
+      assert.strictEqual(enc.integrity.value, 'sha256-abc');
+    });
+
+    it('should default value/alternateEnclosures/location/socialInteract/txt/follow at entry level when absent', () => {
       const xml = `<?xml version="1.0"?>
         <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
           <channel>
@@ -741,6 +809,7 @@ describe('Field Bindings', () => {
       const feed = parse(xml);
       const podcast = feed.entries[0].podcast;
 
+      assert.strictEqual(podcast.value, undefined);
       assert.strictEqual(podcast.alternateEnclosures.length, 0);
       assert.strictEqual(podcast.location, undefined);
       assert.strictEqual(podcast.socialInteract.length, 0);

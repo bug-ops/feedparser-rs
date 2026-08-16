@@ -902,6 +902,14 @@ impl PyPodcastEntryMeta {
             .collect()
     }
 
+    #[getter]
+    fn value(&self) -> Option<PyPodcastValue> {
+        self.inner
+            .value
+            .as_ref()
+            .map(|v| PyPodcastValue::from_core(v.clone()))
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastEntryMeta(transcripts={}, chapters={}, soundbites={}, persons={}, season={}, episode={})",

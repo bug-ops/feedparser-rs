@@ -1764,6 +1764,8 @@ pub struct PodcastEntryMeta {
     pub txt: Vec<PodcastTxt>,
     /// Follow links (podcast:follow)
     pub follow: Vec<PodcastFollow>,
+    /// Value-for-value payment information (podcast:value)
+    pub value: Option<PodcastValue>,
 }
 
 impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
@@ -1798,6 +1800,7 @@ impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
                 .collect(),
             txt: core.txt.into_iter().map(PodcastTxt::from).collect(),
             follow: core.follow.into_iter().map(PodcastFollow::from).collect(),
+            value: core.value.map(PodcastValue::from),
         }
     }
 }
