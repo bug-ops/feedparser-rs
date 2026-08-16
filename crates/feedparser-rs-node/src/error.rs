@@ -76,7 +76,12 @@ mod tests {
 
     #[test]
     fn preserves_error_message() {
+        // Capture the inner quick-xml error's own message dynamically rather
+        // than hardcoding its Display wording, which is outside quick-xml's
+        // semver guarantee.
+        let inner_message = mismatched_end_tag_error().to_string();
         let err = convert_feed_error(FeedError::XmlError(mismatched_end_tag_error()));
-        assert!(err.reason.contains("ill-formed document"));
+        assert!(err.reason.starts_with("XML parse error: "));
+        assert!(err.reason.contains(&inner_message));
     }
 }
