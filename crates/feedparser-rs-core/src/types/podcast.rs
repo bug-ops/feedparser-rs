@@ -249,10 +249,6 @@ pub struct PodcastValue {
     pub recipients: Vec<PodcastValueRecipient>,
     /// Time-bounded payment splits for pre-recorded remote content
     /// (podcast:valueTimeSplit)
-    ///
-    /// Populated only from channel-level `<podcast:value>` in this release;
-    /// item-level `<podcast:value>` is not yet parsed (tracked in a
-    /// follow-up issue).
     pub time_splits: Vec<PodcastValueTimeSplit>,
 }
 
@@ -310,10 +306,6 @@ pub struct PodcastValueRecipient {
 /// value-for-value payments for a specific time range of an episode to its
 /// own set of recipients and/or to a remote item (e.g. a licensed music
 /// track).
-///
-/// Populated only from channel-level `<podcast:value>` in this release;
-/// item-level `<podcast:value>` is not yet parsed (tracked in a follow-up
-/// issue).
 ///
 /// # Examples
 ///
@@ -768,6 +760,19 @@ pub struct PodcastEntryMeta {
     pub episode: Option<String>,
     /// Alternate enclosures (podcast:alternateEnclosure)
     pub alternate_enclosures: Vec<PodcastAlternateEnclosure>,
+    /// Value-for-value payment information (podcast:value)
+    ///
+    /// Item-level `<podcast:value>` is where time-bounded payment splits
+    /// (`podcast:valueTimeSplit`) are expected to appear in practice, since
+    /// they redistribute payment during playback of a specific episode.
+    ///
+    /// `None` both when `<podcast:value>` is absent and when it is present
+    /// but self-closing (`<podcast:value/>`) — a self-closing `podcast:value`
+    /// is skipped entirely (attributes included), matching how self-closing
+    /// `podcast:valueTimeSplit` is handled. If multiple `<podcast:value>`
+    /// elements appear in the same `<item>` (invalid per spec, which allows
+    /// at most one), the last one parsed wins.
+    pub value: Option<PodcastValue>,
     /// Geographic location (podcast:location)
     pub location: Option<PodcastLocation>,
     /// Social interaction threads (podcast:socialInteract)
