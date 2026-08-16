@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `feedparser-rs-py`: migrated `compat.rs`'s field-alias maps from `once_cell::sync::Lazy` to `std::sync::LazyLock`, matching the pattern already used in `feedparser-rs-core`. `LazyLock` has been stable since Rust 1.80, well below this project's MSRV (1.88.0), so `once_cell` is no longer a direct dependency of any workspace crate and was removed from `[workspace.dependencies]` (#489).
+
 ### Fixed
 
 - CI: the `release.yml` npm build/publish jobs used `npm ci` against a stale `package-lock.json` that had drifted from `package.json`'s devDependencies, failing every npm platform build during the v0.6.0 release. Switched those jobs to `pnpm` (matching `ci.yml` and the `cargo-make` Node.js tasks) and removed `package-lock.json`, so the workspace has a single Node.js lockfile (`pnpm-lock.yaml`) instead of two that can drift out of sync. Also switched the `security` CI job's `npm audit` back to `pnpm audit`, which had regressed to `npm audit` despite `pnpm` already being installed in that job.
