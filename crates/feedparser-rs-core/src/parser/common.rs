@@ -666,9 +666,13 @@ pub fn skip_element(
 /// `gml:Envelope`/`gml:lowerCorner`+`gml:upperCorner`. The `srsName` and
 /// `srsDimension` attributes on the geometry element drive axis-order
 /// normalization and 3D coordinate handling (see
-/// [`georss::build_gml_geometry`] and [`georss::build_gml_envelope`]). For
-/// `gml:Envelope`, `srsDimension` on `gml:lowerCorner`/`gml:upperCorner`
-/// takes precedence over the root element's value.
+/// [`georss::build_gml_geometry`] and [`georss::build_gml_envelope`]).
+/// `srsDimension` belongs to GML's `SRSReferenceGroup`, so it is legal on
+/// every geometry element and resolves to the nearest declaring ancestor of
+/// the coordinate text: a value on `gml:pos`/`gml:posList` (or, for
+/// `gml:Envelope`, on `gml:lowerCorner`/`gml:upperCorner`) wins over one on
+/// an intermediate wrapper such as `gml:LinearRing`, which in turn wins over
+/// the geometry root's.
 /// Unrecognized nested elements are skipped tolerantly; malformed
 /// coordinate text yields `None` without aborting the parse.
 ///
@@ -704,8 +708,8 @@ pub fn parse_georss_where(
                             georss::build_gml_envelope(srs_name, &lower, &upper, dims)
                         });
                     } else {
-                        let (coord_text, bozo) =
-                            find_gml_coord_text(reader, buf, limits, next_depth, &end_tag)?;
+                        let (coord_text, bozo, dims) =
+                            find_gml_coord_text(reader, buf, limits, next_depth, &end_tag, dims)?;
                         had_bozo |= bozo;
                         geometry = coord_text.and_then(|text| {
                             georss::build_gml_geometry(geo_type, srs_name, &text, dims)
@@ -727,7 +731,8 @@ pub fn parse_georss_where(
 }
 
 /// Extract the geometry type, matching end-tag local name, `srsName`, and
-/// `srsDimension` (default `2`, non-numeric falls back to `2`) from a
+/// `srsDimension` (default `2`; non-numeric or out-of-range falls back to
+/// `2`, see [`gml_srs_dimension`]) from a
 /// `<gml:Point>`/`<gml:LineString>`/`<gml:Polygon>` start tag. Attribute
 /// names are matched case-insensitively (real-world feeds vary), and
 /// `srsName` is trimmed (XML attribute-value normalization of a
@@ -750,9 +755,7 @@ fn gml_geometry_start(
     let srs_name = gml_attr(start, b"srsName", limits.max_attribute_length)
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
-    let dims = gml_attr(start, b"srsDimension", limits.max_attribute_length)
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .unwrap_or(2);
+    let dims = gml_srs_dimension(start, limits, 2);
 
     Some((geo_type, local.as_bytes().to_vec(), srs_name, dims))
 }
@@ -768,13 +771,37 @@ fn gml_attr(start: &BytesStart<'_>, key: &[u8], max_len: usize) -> Option<String
         .map(|v| v.to_string())
 }
 
+/// Read `srsDimension` from a GML element, falling back to `inherited` when
+/// absent *or* when present but not `2`/`3` — the only two dimensionalities
+/// this crate's `GeoLocation` can represent. Without this clamp, a
+/// syntactically valid but out-of-range override (e.g. `srsDimension="0"`)
+/// would silently replace a correct inherited value instead of being
+/// rejected, corrupting coordinates that `srsDimension` was never meant to
+/// affect.
+fn gml_srs_dimension(start: &BytesStart<'_>, limits: &ParserLimits, inherited: usize) -> usize {
+    gml_attr(start, b"srsDimension", limits.max_attribute_length)
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|d| (2..=3).contains(d))
+        .unwrap_or(inherited)
+}
+
+/// Coordinate text (if found), whether an entity-resolution error occurred,
+/// and the resolved `srsDimension`.
+type GmlCoordText = (Option<String>, bool, usize);
+
 /// Recursively search a GML geometry subtree for the first `gml:pos` or
 /// `gml:posList` element, transparently descending through wrapper
 /// elements (e.g. `gml:exterior`/`gml:LinearRing`) or skipping unrecognized
 /// nested content. Consumes events up through the matching `end_tag` close
 /// tag, so the caller's depth accounting stays balanced. Returns the
-/// coordinate text (if found) together with whether an entity-resolution
-/// error occurred while reading it.
+/// coordinate text (if found), whether an entity-resolution error occurred
+/// while reading it, and the resolved `srsDimension`.
+///
+/// Per the GML spec, `srsDimension` may be specified on `gml:pos`/
+/// `gml:posList` themselves rather than only on the geometry root element —
+/// a common real-world placement. A dimension found on the matched element
+/// takes precedence over `root_dims` (the value read from the geometry root
+/// start tag).
 ///
 /// For `gml:MultiSurface`, this only returns the first `gml:surfaceMember`
 /// with parseable coordinates — `GeoLocation` has no multi-geometry slot, so
@@ -786,27 +813,47 @@ fn find_gml_coord_text(
     limits: &ParserLimits,
     depth: usize,
     end_tag: &[u8],
-) -> Result<(Option<String>, bool)> {
+    root_dims: usize,
+) -> Result<GmlCoordText> {
     let mut found = None;
     let mut had_bozo = false;
+    let mut dims = root_dims;
 
     loop {
         match reader.read_event_into(buf) {
             Ok(Event::Start(e)) => {
                 let next_depth = depth + 1;
                 check_depth(next_depth, limits.max_nesting_depth)?;
-                let name = e.name();
-                let local = is_gml_tag(name.as_ref()).map(str::to_owned);
+                let local = is_gml_tag(e.name().as_ref()).map(str::to_owned);
+                // srsDimension is legal on any GML element (e.g. LinearRing,
+                // Polygon under surfaceMember), not just pos/posList.
+                let elem_dims = gml_srs_dimension(&e, limits, dims);
 
                 if found.is_none() && matches!(local.as_deref(), Some("pos" | "posList")) {
                     let (text, bozo) = read_text(reader, buf, limits)?;
                     had_bozo |= bozo;
                     found = Some(text);
+                    dims = elem_dims;
                 } else if let Some(local) = local {
-                    let (inner, bozo) =
-                        find_gml_coord_text(reader, buf, limits, next_depth, local.as_bytes())?;
+                    let (inner, bozo, inner_dims) = find_gml_coord_text(
+                        reader,
+                        buf,
+                        limits,
+                        next_depth,
+                        local.as_bytes(),
+                        elem_dims,
+                    )?;
                     had_bozo |= bozo;
-                    found = found.or(inner);
+                    // Invariant: dims changes only alongside found going
+                    // None -> Some; an unsuccessful subtree (inner is None)
+                    // must not leak its own srsDimension into the caller's
+                    // dims, or it corrupts a later, unrelated sibling.
+                    if found.is_none()
+                        && let Some(text) = inner
+                    {
+                        found = Some(text);
+                        dims = inner_dims;
+                    }
                 } else {
                     skip_element(reader, buf, limits, next_depth)?;
                 }
@@ -819,7 +866,7 @@ fn find_gml_coord_text(
         buf.clear();
     }
 
-    Ok((found, had_bozo))
+    Ok((found, had_bozo, dims))
 }
 
 /// `(lower_corner, upper_corner)` raw coordinate text, whether an
@@ -859,18 +906,17 @@ fn find_gml_envelope_corners(
                 check_depth(next_depth, limits.max_nesting_depth)?;
                 let name = e.name();
                 let local = is_gml_tag(name.as_ref());
-                let corner_dims = gml_attr(&e, b"srsDimension", limits.max_attribute_length)
-                    .and_then(|v| v.trim().parse::<usize>().ok());
+                let corner_dims = gml_srs_dimension(&e, limits, dims);
 
                 match local {
                     Some("lowerCorner") if lower.is_none() => {
-                        dims = corner_dims.unwrap_or(dims);
+                        dims = corner_dims;
                         let (text, bozo) = read_text(reader, buf, limits)?;
                         had_bozo |= bozo;
                         lower = Some(text);
                     }
                     Some("upperCorner") if upper.is_none() => {
-                        dims = corner_dims.unwrap_or(dims);
+                        dims = corner_dims;
                         let (text, bozo) = read_text(reader, buf, limits)?;
                         had_bozo |= bozo;
                         upper = Some(text);
