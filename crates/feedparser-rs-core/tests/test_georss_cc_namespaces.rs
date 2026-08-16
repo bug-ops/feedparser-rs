@@ -1043,3 +1043,225 @@ fn test_issue_454_gml_deeply_nested_sets_bozo_no_panic() {
     );
     assert!(feed.entries.is_empty());
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Issue #461: GeoRSS GML profile — gml:Envelope and gml:MultiSurface
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_issue_461_gml_envelope() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Envelope Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Envelope srsName="EPSG:4326">
+                        <gml:lowerCorner>42.9 -71.9</gml:lowerCorner>
+                        <gml:upperCorner>43.1 -71.5</gml:upperCorner>
+                    </gml:Envelope>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Box);
+    assert_eq!(geo.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+    assert_eq!(geo.srs_name.as_deref(), Some("EPSG:4326"));
+}
+
+#[test]
+fn test_issue_461_gml_multi_surface_wrapping_polygon() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML MultiSurface Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:MultiSurface srsName="EPSG:4326">
+                        <gml:surfaceMember>
+                            <gml:Polygon>
+                                <gml:exterior>
+                                    <gml:LinearRing>
+                                        <gml:posList>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</gml:posList>
+                                    </gml:LinearRing>
+                                </gml:exterior>
+                            </gml:Polygon>
+                        </gml:surfaceMember>
+                    </gml:MultiSurface>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Polygon);
+    assert_eq!(geo.coordinates.len(), 4);
+    assert_eq!(geo.coordinates[0], (45.0, -71.0));
+    assert_eq!(geo.coordinates[3], (45.0, -71.0));
+}
+
+#[test]
+fn test_issue_461_gml_envelope_missing_corner_no_panic() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Incomplete Envelope</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Envelope srsName="EPSG:4326">
+                        <gml:lowerCorner>42.9 -71.9</gml:lowerCorner>
+                    </gml:Envelope>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).expect("must not panic on missing upperCorner");
+    assert!(
+        feed.entries[0].r#where.is_none(),
+        "envelope missing a corner must produce no geometry, not panic"
+    );
+}
+
+#[test]
+fn test_issue_461_gml_envelope_malformed_corner_no_panic() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Malformed Envelope</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Envelope srsName="EPSG:4326">
+                        <gml:lowerCorner>not numbers</gml:lowerCorner>
+                        <gml:upperCorner>43.1 -71.5</gml:upperCorner>
+                    </gml:Envelope>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).expect("must not panic on malformed corner text");
+    assert!(
+        feed.entries[0].r#where.is_none(),
+        "malformed corner text must produce no geometry, not panic"
+    );
+}
+
+#[test]
+fn test_issue_461_gml_envelope_srs_dimension_on_corner_elements() {
+    // srsDimension can be placed directly on gml:lowerCorner/gml:upperCorner
+    // rather than only on the gml:Envelope root — a common real-world
+    // placement per the GML spec. It must still be honored.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D Envelope Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Envelope srsName="EPSG:4326">
+                        <gml:lowerCorner srsDimension="3">42.9 -71.9 10.0</gml:lowerCorner>
+                        <gml:upperCorner srsDimension="3">43.1 -71.5 20.0</gml:upperCorner>
+                    </gml:Envelope>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Box);
+    assert_eq!(geo.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+}
+
+#[test]
+fn test_issue_461_gml_multi_surface_multiple_members_uses_first_only() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML MultiSurface Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:MultiSurface srsName="EPSG:4326">
+                        <gml:surfaceMember>
+                            <gml:Polygon>
+                                <gml:exterior>
+                                    <gml:LinearRing>
+                                        <gml:posList>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</gml:posList>
+                                    </gml:LinearRing>
+                                </gml:exterior>
+                            </gml:Polygon>
+                        </gml:surfaceMember>
+                        <gml:surfaceMember>
+                            <gml:Polygon>
+                                <gml:exterior>
+                                    <gml:LinearRing>
+                                        <gml:posList>10.0 -20.0 11.0 -20.0 11.0 -21.0 10.0 -20.0</gml:posList>
+                                    </gml:LinearRing>
+                                </gml:exterior>
+                            </gml:Polygon>
+                        </gml:surfaceMember>
+                    </gml:MultiSurface>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Polygon);
+    // Only the first surfaceMember's coordinates are used; the second
+    // member's ring (10.0 -20.0 ...) is discarded.
+    assert_eq!(geo.coordinates.len(), 4);
+    assert_eq!(geo.coordinates[0], (45.0, -71.0));
+    assert_eq!(geo.coordinates[3], (45.0, -71.0));
+}

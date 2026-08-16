@@ -145,9 +145,9 @@ fn validate_ipv4(ip: Ipv4Addr) -> Result<()> {
 }
 
 /// Validates IANA special-purpose IPv4 ranges not covered by `Ipv4Addr`'s
-/// built-in classifiers, plus cloud-metadata/CGN/this-network blocks. Split
-/// out of [`validate_ipv4`] to keep that function close to the project's
-/// function-length target.
+/// built-in classifiers, plus cloud-metadata/CGN/this-network/AS112/AMT
+/// blocks. Split out of [`validate_ipv4`] to keep that function close to the
+/// project's function-length target.
 fn validate_ipv4_special_purpose(ip: Ipv4Addr, octets: [u8; 4]) -> Result<()> {
     // Reserved for future use (RFC 1112), excluding 255.255.255.255 which
     // is already covered by the broadcast check in `validate_ipv4`.
@@ -190,6 +190,29 @@ fn validate_ipv4_special_purpose(ip: Ipv4Addr, octets: [u8; 4]) -> Result<()> {
     if octets[0] == 100 && (octets[1] & 0xC0) == 64 {
         return Err(FeedError::Http {
             message: format!("Carrier-grade NAT address not allowed: {ip} (100.64.0.0/10)"),
+        });
+    }
+
+    // AS112-v4 (RFC 7535)
+    if octets[0] == 192 && octets[1] == 31 && octets[2] == 196 {
+        return Err(FeedError::Http {
+            message: format!("AS112-v4 address not allowed: {ip} (192.31.196.0/24)"),
+        });
+    }
+
+    // AMT (RFC 7450)
+    if octets[0] == 192 && octets[1] == 52 && octets[2] == 193 {
+        return Err(FeedError::Http {
+            message: format!("AMT address not allowed: {ip} (192.52.193.0/24)"),
+        });
+    }
+
+    // Direct Delegation AS112 Service (RFC 7534)
+    if octets[0] == 192 && octets[1] == 175 && octets[2] == 48 {
+        return Err(FeedError::Http {
+            message: format!(
+                "Direct Delegation AS112 Service address not allowed: {ip} (192.175.48.0/24)"
+            ),
         });
     }
 
@@ -297,9 +320,10 @@ fn validate_ipv6(ip: Ipv6Addr) -> Result<()> {
 }
 
 /// Validates IANA special-purpose IPv6 ranges not covered by `Ipv6Addr`'s
-/// built-in classifiers (Teredo, `ORCHIDv2`, documentation, discard-only, and
-/// the RFC 8215 NAT64 local-use prefix). Split out of [`validate_ipv6`] to
-/// keep that function under the project's function-length limit.
+/// built-in classifiers (Teredo, `ORCHIDv2`, documentation, discard-only, the
+/// RFC 8215 NAT64 local-use prefix, PCP/TURN anycast, AMT, and the AS112
+/// service ranges). Split out of [`validate_ipv6`] to keep that function
+/// under the project's function-length limit.
 fn validate_ipv6_special_purpose(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()> {
     // Teredo tunneling (RFC 4380)
     if segments[0] == 0x2001 && segments[1] == 0 {
@@ -335,6 +359,43 @@ fn validate_ipv6_special_purpose(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()>
     if segments[0] == 0x0064 && segments[1] == 0xff9b && segments[2] == 0x0001 {
         return Err(FeedError::Http {
             message: format!("IPv6 NAT64 local-use address not allowed: {ip} (64:ff9b:1::/48)"),
+        });
+    }
+
+    // PCP Anycast (RFC 7723)
+    if segments == [0x2001, 1, 0, 0, 0, 0, 0, 1] {
+        return Err(FeedError::Http {
+            message: format!("IPv6 PCP Anycast address not allowed: {ip} (2001:1::1/128)"),
+        });
+    }
+
+    // TURN Relay Anycast (RFC 8155)
+    if segments == [0x2001, 1, 0, 0, 0, 0, 0, 2] {
+        return Err(FeedError::Http {
+            message: format!("IPv6 TURN Relay Anycast address not allowed: {ip} (2001:1::2/128)"),
+        });
+    }
+
+    // AMT (RFC 7450)
+    if segments[0] == 0x2001 && segments[1] == 3 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 AMT address not allowed: {ip} (2001:3::/32)"),
+        });
+    }
+
+    // AS112-v6 (RFC 7535)
+    if segments[0] == 0x2001 && segments[1] == 4 && segments[2] == 0x0112 {
+        return Err(FeedError::Http {
+            message: format!("IPv6 AS112-v6 address not allowed: {ip} (2001:4:112::/48)"),
+        });
+    }
+
+    // Direct Delegation AS112 Service (RFC 7534)
+    if segments[0] == 0x2620 && segments[1] == 0x004f && segments[2] == 0x8000 {
+        return Err(FeedError::Http {
+            message: format!(
+                "IPv6 Direct Delegation AS112 Service address not allowed: {ip} (2620:4f:8000::/48)"
+            ),
         });
     }
 
@@ -642,5 +703,81 @@ mod tests {
         // in `validate_ipv6`. Pinned here as a regression guard.
         assert!(validate_ipv6(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0)).is_ok());
         assert!(validate_ipv6(Ipv6Addr::new(0x2002, 0x0a00, 0x0001, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    // --- #462: IANA AS112/AMT/PCP anycast sub-ranges ---
+
+    #[test]
+    fn test_validate_ipv4_rejects_as112_v4_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 196, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 196, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 195, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 197, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv4_rejects_amt_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 193, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 193, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 192, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 194, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv4_rejects_direct_delegation_as112_boundaries() {
+        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 48, 0)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 48, 255)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 47, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 49, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_pcp_anycast() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 1)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 3)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_turn_relay_anycast() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 2)).is_err());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_amt_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 3, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 2, 0, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_as112_v6_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0112, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2001, 4, 0x0112, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0111, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0113, 0, 0, 0, 0, 0)).is_ok());
+    }
+
+    #[test]
+    fn test_validate_ipv6_rejects_direct_delegation_as112_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2620, 0x004f, 0x8000, 0, 0, 0, 0, 0)).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::new(
+                0x2620, 0x004f, 0x8000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ))
+            .is_err()
+        );
+        assert!(validate_ipv6(Ipv6Addr::new(0x2620, 0x004f, 0x7fff, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2620, 0x004f, 0x8001, 0, 0, 0, 0, 0)).is_ok());
     }
 }

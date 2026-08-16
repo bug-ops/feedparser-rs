@@ -12,11 +12,11 @@
 //! - `georss:box` - Bounding box (lower-left + upper-right)
 //!
 //! Also supports the GeoRSS GML profile (`georss:where` wrapping
-//! `gml:Point`/`gml:LineString`/`gml:Polygon`), including `srsName`-driven
-//! axis-order normalization. XML traversal for the GML profile lives in the
-//! parser's internal `common::parse_georss_where` since it needs the
-//! `quick-xml` reader; this module provides the pure coordinate/axis-order
-//! logic it calls into.
+//! `gml:Point`/`gml:LineString`/`gml:Polygon`/`gml:MultiSurface`/
+//! `gml:Envelope`), including `srsName`-driven axis-order normalization.
+//! XML traversal for the GML profile lives in the parser's internal
+//! `common::parse_georss_where` since it needs the `quick-xml` reader; this
+//! module provides the pure coordinate/axis-order logic it calls into.
 //!
 //! # Specification
 //!
@@ -639,8 +639,10 @@ fn srs_uses_lat_lon_order(srs_name: Option<&str>) -> bool {
 
 /// Build a `GeoLocation` from a parsed `GeoRSS` GML profile geometry.
 ///
-/// `geo_type` must be `Point`, `Line`, or `Polygon` — GML has no `Box`
-/// equivalent, so `Box` always returns `None`. `text` is the raw
+/// `geo_type` must be `Point`, `Line`, or `Polygon` — `Box` (`gml:Envelope`)
+/// is handled separately by [`build_gml_envelope`], since it has no
+/// `gml:pos`/`gml:posList` coordinate text; passing `Box` here always
+/// returns `None`. `text` is the raw
 /// `gml:pos`/`gml:posList` coordinate text; axis order is normalized to
 /// `(latitude, longitude)` using `srs_name` per the referenced CRS's axis
 /// order (geographic CRSes, including the WGS84 default, use `(lat, lon)`;
@@ -700,6 +702,51 @@ pub fn build_gml_geometry(
     Some(GeoLocation {
         geo_type,
         coordinates: coords,
+        srs_name,
+        ..Default::default()
+    })
+}
+
+/// Build a `GeoLocation` (`GeoType::Box`) from a `GeoRSS` GML profile
+/// `gml:Envelope`.
+///
+/// `lower_text`/`upper_text` are the raw `gml:lowerCorner`/`gml:upperCorner`
+/// coordinate text, each a single coordinate tuple; axis order is
+/// normalized to `(latitude, longitude)` using `srs_name`, the same rule
+/// [`build_gml_geometry`] applies to `gml:pos`/`gml:posList`. `dims` is
+/// `gml:srsDimension` (`3` drops the elevation component per corner;
+/// anything else means 2D).
+///
+/// Returns `None` — the tolerant "bozo" pattern — if either corner's text is
+/// malformed, out of range, or not a single coordinate tuple; the caller
+/// should skip the geometry rather than fail parsing.
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::namespace::georss::build_gml_envelope;
+///
+/// let loc = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5", 2).unwrap();
+/// assert_eq!(loc.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+/// ```
+#[must_use]
+pub fn build_gml_envelope(
+    srs_name: Option<String>,
+    lower_text: &str,
+    upper_text: &str,
+    dims: usize,
+) -> Option<GeoLocation> {
+    let lat_lon_order = srs_uses_lat_lon_order(srs_name.as_deref());
+    let lower = parse_coordinates_ordered(lower_text, lat_lon_order, dims)?;
+    let upper = parse_coordinates_ordered(upper_text, lat_lon_order, dims)?;
+
+    if lower.len() != 1 || upper.len() != 1 {
+        return None;
+    }
+
+    Some(GeoLocation {
+        geo_type: GeoType::Box,
+        coordinates: vec![lower[0], upper[0]],
         srs_name,
         ..Default::default()
     })
@@ -1151,5 +1198,45 @@ mod tests {
     fn test_build_gml_geometry_malformed_text() {
         assert!(build_gml_geometry(GeoType::Point, None, "not numbers", 2).is_none());
         assert!(build_gml_geometry(GeoType::Point, None, "", 2).is_none());
+    }
+
+    #[test]
+    fn test_build_gml_envelope() {
+        let loc = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5", 2).unwrap();
+        assert_eq!(loc.geo_type, GeoType::Box);
+        assert_eq!(loc.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+    }
+
+    #[test]
+    fn test_build_gml_envelope_swaps_projected_crs() {
+        let loc = build_gml_envelope(
+            Some("EPSG:3857".to_string()),
+            "-8004866.0 5675670.0",
+            "-8000000.0 5680000.0",
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            loc.coordinates,
+            vec![(5_675_670.0, -8_004_866.0), (5_680_000.0, -8_000_000.0)]
+        );
+    }
+
+    #[test]
+    fn test_build_gml_envelope_srs_dimension_3_drops_elevation() {
+        let loc = build_gml_envelope(None, "42.9 -71.9 10.0", "43.1 -71.5 20.0", 3).unwrap();
+        assert_eq!(loc.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+    }
+
+    #[test]
+    fn test_build_gml_envelope_malformed_corner() {
+        assert!(build_gml_envelope(None, "not numbers", "43.1 -71.5", 2).is_none());
+        assert!(build_gml_envelope(None, "42.9 -71.9", "", 2).is_none());
+    }
+
+    #[test]
+    fn test_build_gml_envelope_corner_wrong_arity() {
+        // Each corner must be exactly one coordinate tuple.
+        assert!(build_gml_envelope(None, "42.9 -71.9 43.1 -71.5", "43.1 -71.5", 2).is_none());
     }
 }
