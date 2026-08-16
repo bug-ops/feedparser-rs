@@ -321,27 +321,29 @@ fn validate_ipv6(ip: Ipv6Addr) -> Result<()> {
 }
 
 /// Validates IANA special-purpose IPv6 ranges not covered by `Ipv6Addr`'s
-/// built-in classifiers (Teredo, `ORCHIDv2`, documentation, discard-only, the
-/// RFC 9780 dummy prefix, the RFC 8215 NAT64 local-use prefix, PCP/TURN/DNS-SD
-/// anycast, AMT, and the AS112 service ranges). Split out of
-/// [`validate_ipv6`] to keep that function under the project's
-/// function-length limit.
+/// built-in classifiers: the entire `2001::/23` IETF Protocol Assignments
+/// block (Teredo, `ORCHIDv2`, deprecated ORCHID, DRIP, PCP/TURN/DNS-SD
+/// anycast, AMT, AS112-v6, and any future IANA registration inside the
+/// block — see #474), the separate documentation range, discard-only, the
+/// RFC 9780 dummy prefix, the RFC 8215 NAT64 local-use prefix, and the AS112
+/// service range. Split out of [`validate_ipv6`] to keep that function under
+/// the project's function-length limit.
 fn validate_ipv6_special_purpose(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()> {
-    // Teredo tunneling (RFC 4380)
-    if segments[0] == 0x2001 && segments[1] == 0 {
+    // IETF Protocol Assignments (RFC 6890), 2001::/23: blocks the whole
+    // block in one check rather than allowlisting sub-ranges by omission,
+    // so a future IANA registration inside it can't silently become
+    // reachable (see #474).
+    if segments[0] == 0x2001 && (segments[1] & 0xFE00) == 0 {
         return Err(FeedError::Http {
-            message: format!("IPv6 Teredo address not allowed: {ip} (2001::/32)"),
+            message: format!(
+                "IPv6 IETF Protocol Assignments address not allowed: {ip} (2001::/23, RFC 6890)"
+            ),
         });
     }
 
-    // ORCHIDv2 (RFC 7343)
-    if segments[0] == 0x2001 && (segments[1] & 0xFFF0) == 0x0020 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 ORCHIDv2 address not allowed: {ip} (2001:20::/28)"),
-        });
-    }
-
-    // Documentation range (RFC 3849)
+    // Documentation range (RFC 3849): a separate top-level IANA allocation,
+    // not a sub-range of 2001::/23 above (2001:0db8 falls outside the
+    // block's segments[1] mask).
     if segments[0] == 0x2001 && segments[1] == 0x0db8 {
         return Err(FeedError::Http {
             message: format!("IPv6 documentation address not allowed: {ip} (2001:db8::/32)"),
@@ -373,41 +375,6 @@ fn validate_ipv6_special_purpose(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()>
         });
     }
 
-    // PCP Anycast (RFC 7723)
-    if segments == [0x2001, 1, 0, 0, 0, 0, 0, 1] {
-        return Err(FeedError::Http {
-            message: format!("IPv6 PCP Anycast address not allowed: {ip} (2001:1::1/128)"),
-        });
-    }
-
-    // TURN Relay Anycast (RFC 8155)
-    if segments == [0x2001, 1, 0, 0, 0, 0, 0, 2] {
-        return Err(FeedError::Http {
-            message: format!("IPv6 TURN Relay Anycast address not allowed: {ip} (2001:1::2/128)"),
-        });
-    }
-
-    // DNS-SD Service Registration Protocol Anycast (RFC 9665)
-    if segments == [0x2001, 1, 0, 0, 0, 0, 0, 3] {
-        return Err(FeedError::Http {
-            message: format!("IPv6 DNS-SD Anycast address not allowed: {ip} (2001:1::3/128)"),
-        });
-    }
-
-    // AMT (RFC 7450)
-    if segments[0] == 0x2001 && segments[1] == 3 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 AMT address not allowed: {ip} (2001:3::/32)"),
-        });
-    }
-
-    // AS112-v6 (RFC 7535)
-    if segments[0] == 0x2001 && segments[1] == 4 && segments[2] == 0x0112 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 AS112-v6 address not allowed: {ip} (2001:4:112::/48)"),
-        });
-    }
-
     // Direct Delegation AS112 Service (RFC 7534)
     if segments[0] == 0x2620 && segments[1] == 0x004f && segments[2] == 0x8000 {
         return Err(FeedError::Http {
@@ -421,36 +388,13 @@ fn validate_ipv6_special_purpose(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()>
 }
 
 /// Validates additional IANA IPv6 special-purpose ranges not covered by
-/// [`validate_ipv6_special_purpose`]: IPv6 Benchmarking (RFC 5180), the
-/// deprecated ORCHID range (RFC 4843) and DRIP Entity Tags (RFC 9374) under
-/// `2001::/23`, and the RFC 9637/9602 documentation and Segment Routing
-/// ranges. Kept separate to keep both functions under the project's
-/// function-length limit.
+/// [`validate_ipv6_special_purpose`]: the RFC 9637 documentation range and
+/// the RFC 9602 Segment Routing range. Kept separate to keep both functions
+/// under the project's function-length limit.
 ///
 /// `2002::/16` (6to4) is deliberately not blocked here either; see the
 /// comment in [`validate_ipv6`].
 fn validate_ipv6_special_purpose_extended(ip: Ipv6Addr, segments: [u16; 8]) -> Result<()> {
-    // Benchmarking (RFC 5180), 2001:2::/48. Distinct from 2001:1::/32 above.
-    if segments[0] == 0x2001 && segments[1] == 2 && segments[2] == 0 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 benchmarking address not allowed: {ip} (2001:2::/48)"),
-        });
-    }
-
-    // Deprecated (previously ORCHID) (RFC 4843, deprecated by RFC 7343)
-    if segments[0] == 0x2001 && (segments[1] & 0xFFF0) == 0x0010 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 deprecated ORCHID address not allowed: {ip} (2001:10::/28)"),
-        });
-    }
-
-    // DRIP Entity Tags (DETs) (RFC 9374)
-    if segments[0] == 0x2001 && (segments[1] & 0xFFF0) == 0x0030 {
-        return Err(FeedError::Http {
-            message: format!("IPv6 DRIP Entity Tag address not allowed: {ip} (2001:30::/28)"),
-        });
-    }
-
     // Documentation range (RFC 9637)
     if segments[0] == 0x3fff && (segments[1] & 0xF000) == 0 {
         return Err(FeedError::Http {
@@ -671,14 +615,18 @@ mod tests {
         assert!(validate_ipv4(Ipv4Addr::new(198, 20, 0, 0)).is_ok());
     }
 
-    // --- #453: additional IANA special-purpose IPv6 ranges ---
+    // --- #453/#474: IANA special-purpose IPv6 ranges ---
 
     #[test]
-    fn test_validate_ipv6_rejects_teredo_boundaries() {
+    fn test_validate_ipv6_rejects_ietf_protocol_assignments_2001_23_boundaries() {
+        // #474: the whole 2001::/23 block is blocked in one check, so every
+        // sub-range previously enumerated individually (Teredo, ORCHIDv2,
+        // deprecated ORCHID, DRIP, PCP/TURN/DNS-SD anycast, benchmarking,
+        // AMT, AS112-v6) is covered here instead of by dedicated tests.
         assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0, 0)).is_err());
         assert!(
             validate_ipv6(Ipv6Addr::new(
-                0x2001, 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+                0x2001, 0x01ff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
             ))
             .is_err()
         );
@@ -688,34 +636,26 @@ mod tests {
             ))
             .is_ok()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 0)).is_ok());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_orchidv2_boundaries() {
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0200, 0, 0, 0, 0, 0, 0)).is_ok());
+        // 2001:1:: itself (no anycast suffix) is unassigned within 2001::/23
+        // and must now be blocked, not just 2001:1::1/2/3 (see #474).
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 1)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 2)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 3)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 2, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 3, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0112, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0010, 0, 0, 0, 0, 0, 0)).is_err());
         assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0020, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 0x002f, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
-        // 2001:1f::/28 and 2001:30::/28 are contiguous with ORCHIDv2 on
-        // either side (2001:10::/28, 2001:30::/28; see #471), so they are
-        // blocked too, just for a different reason. See
-        // test_validate_ipv6_rejects_protocol_assignment_10_boundaries for
-        // the genuinely free address immediately below 2001:10::/28.
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 0x001f, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
         assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0030, 0, 0, 0, 0, 0, 0)).is_err());
     }
 
     #[test]
     fn test_validate_ipv6_rejects_documentation_boundaries() {
+        // 2001:db8::/32 is a separate top-level IANA allocation, not a
+        // sub-range of 2001::/23 above (segments[1] = 0x0db8 falls outside
+        // the block's 0x0000-0x01ff mask).
         assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0)).is_err());
         assert!(
             validate_ipv6(Ipv6Addr::new(
@@ -805,28 +745,7 @@ mod tests {
         assert!(validate_ipv4(Ipv4Addr::new(192, 175, 49, 0)).is_ok());
     }
 
-    #[test]
-    fn test_validate_ipv6_rejects_pcp_anycast() {
-        // No "allowed" assertion against another single address in
-        // 2001:1::/32 here on purpose: that's exactly the failure mode
-        // #471 was filed for (RFC 9665 registered 2001:1::3 after PR #469
-        // asserted it was allowed) — a future IANA registration would
-        // silently break it again.
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 1)).is_err());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_turn_relay_anycast() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 2)).is_err());
-    }
-
     // --- #471: stale assertions + remaining IANA IPv6 special-purpose gaps ---
-
-    #[test]
-    fn test_validate_ipv6_rejects_dns_sd_anycast() {
-        // 2001:1::3, RFC 9665: registered after PR #469 blocked ::1/::2.
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 3)).is_err());
-    }
 
     #[test]
     fn test_validate_ipv6_rejects_dummy_prefix_boundaries() {
@@ -838,48 +757,6 @@ mod tests {
             .is_err()
         );
         assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 2, 0, 0, 0, 0)).is_ok());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_benchmarking_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 2, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 2, 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 2, 1, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 0)).is_ok());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_protocol_assignment_10_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0010, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 0x001f, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x000f, 0, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0020, 0, 0, 0, 0, 0, 0)).is_err());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_protocol_assignment_30_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0030, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 0x003f, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
-        // 2001:2f::/28 is contiguous with the ORCHIDv2 range (2001:20::/28)
-        // immediately below 2001:30::/28, so it is blocked too, just for a
-        // different reason.
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x002f, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0040, 0, 0, 0, 0, 0, 0)).is_ok());
     }
 
     #[test]
@@ -906,34 +783,6 @@ mod tests {
         );
         assert!(validate_ipv6(Ipv6Addr::new(0x5eff, 0xffff, 0, 0, 0, 0, 0, 0)).is_ok());
         assert!(validate_ipv6(Ipv6Addr::new(0x5f01, 0, 0, 0, 0, 0, 0, 0)).is_ok());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_amt_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 3, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 3, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
-        // 2001:2::/48 (segments[2] == 0) is now the RFC 5180 benchmarking
-        // range (see #471); segments[2] != 0 stays outside it and AMT.
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 2, 1, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0, 0, 0, 0, 0, 0)).is_ok());
-    }
-
-    #[test]
-    fn test_validate_ipv6_rejects_as112_v6_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0112, 0, 0, 0, 0, 0)).is_err());
-        assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2001, 4, 0x0112, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
-            .is_err()
-        );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0111, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0113, 0, 0, 0, 0, 0)).is_ok());
     }
 
     #[test]

@@ -2180,7 +2180,7 @@ fn parse_podcast_podroll(
                         .try_push_limited(item, limits.max_podcast_podroll);
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref().starts_with(b"podcast:podroll") => break,
+            Ok(Event::End(e)) if e.name().as_ref() == b"podcast:podroll" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -2406,7 +2406,7 @@ fn parse_alternate_enclosure_children(
                     }
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref().starts_with(b"podcast:alternateEnclosure") => {
+            Ok(Event::End(e)) if e.name().as_ref() == b"podcast:alternateEnclosure" => {
                 break;
             }
             Ok(Event::Eof) => break,
@@ -6835,6 +6835,36 @@ mod tests {
     }
 
     #[test]
+    fn test_podcast_chat_item_respects_limit() {
+        let mut xml = String::from(
+            r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>"#,
+        );
+        for i in 0..10 {
+            use std::fmt::Write;
+            let _ = write!(
+                xml,
+                r#"<podcast:chat server="server{i}.example.com" protocol="matrix"/>"#
+            );
+        }
+        xml.push_str("</item></channel></rss>");
+
+        let limits = ParserLimits {
+            max_podcast_chat: 3,
+            ..Default::default()
+        };
+        let feed = parse_rss20_with_limits(xml.as_bytes(), limits).unwrap();
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("entry podcast should be Some");
+        assert_eq!(podcast.chat.len(), 3, "should respect max_podcast_chat");
+    }
+
+    #[test]
     fn test_podcast_chat_channel_missing_server_skipped() {
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
@@ -6914,6 +6944,45 @@ mod tests {
     }
 
     #[test]
+    fn test_podcast_podping_uses_podping_false() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:podping usesPodping="false"/>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.podping_uses_podping, Some(false));
+    }
+
+    #[test]
+    fn test_podcast_podping_first_wins() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:podping usesPodping="true"/>
+                <podcast:podping usesPodping="false"/>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let podcast = feed
+            .feed
+            .podcast
+            .as_deref()
+            .expect("podcast should be Some");
+        assert_eq!(podcast.podping_uses_podping, Some(true));
+    }
+
+    #[test]
     fn test_podcast_podping_unknown_value_is_none() {
         let xml = br#"<?xml version="1.0"?>
         <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
@@ -6980,6 +7049,66 @@ mod tests {
             .as_ref()
             .expect("remote_item should be Some");
         assert_eq!(remote_item.item_guid.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn test_podcast_value_time_split_remote_percentage_clamps_above_range() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:value type="lightning" method="keysend">
+                    <podcast:valueTimeSplit startTime="10" duration="20" remotePercentage="150">
+                        <podcast:remoteItem itemGuid="abc123"/>
+                    </podcast:valueTimeSplit>
+                </podcast:value>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let value = feed.feed.podcast.as_ref().unwrap().value.as_ref().unwrap();
+        let split = &value.time_splits[0];
+        assert!((split.remote_percentage - 100.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_podcast_value_time_split_remote_percentage_clamps_below_range() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:value type="lightning" method="keysend">
+                    <podcast:valueTimeSplit startTime="10" duration="20" remotePercentage="-5">
+                        <podcast:remoteItem itemGuid="abc123"/>
+                    </podcast:valueTimeSplit>
+                </podcast:value>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let value = feed.feed.podcast.as_ref().unwrap().value.as_ref().unwrap();
+        let split = &value.time_splits[0];
+        assert!((split.remote_percentage - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_podcast_value_time_split_remote_start_time_unparseable_defaults_to_zero() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:value type="lightning" method="keysend">
+                    <podcast:valueTimeSplit startTime="10" duration="20" remoteStartTime="not-a-number">
+                        <podcast:remoteItem itemGuid="abc123"/>
+                    </podcast:valueTimeSplit>
+                </podcast:value>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        let value = feed.feed.podcast.as_ref().unwrap().value.as_ref().unwrap();
+        let split = &value.time_splits[0];
+        assert!((split.remote_start_time - 0.0).abs() < f64::EPSILON);
     }
 
     #[test]

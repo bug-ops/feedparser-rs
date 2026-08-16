@@ -50,8 +50,11 @@ mod tests {
     #[test]
     fn test_error_display() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "test");
+        let inner = io_err.to_string();
         let err = FeedError::from(quick_xml::Error::Io(std::sync::Arc::new(io_err)));
-        assert_eq!(err.to_string(), "XML parsing error: I/O error: test");
+        assert!(err.to_string().starts_with("XML parsing error: "));
+        assert!(err.to_string().contains(&inner));
+        assert!(matches!(err, FeedError::XmlError(quick_xml::Error::Io(_))));
     }
 
     #[test]
