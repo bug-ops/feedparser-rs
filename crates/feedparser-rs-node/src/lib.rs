@@ -9,6 +9,7 @@ use chrono::{DateTime, Utc};
 use error::convert_feed_error;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
+use serde_json::Value;
 use std::collections::HashMap;
 
 use feedparser_rs::types::{
@@ -47,6 +48,102 @@ const DEFAULT_MAX_FEED_SIZE: usize = 100 * 1024 * 1024;
 #[allow(clippy::cast_precision_loss)]
 const fn timestamp_millis_f64(dt: DateTime<Utc>) -> f64 {
     dt.timestamp_millis() as f64
+}
+
+/// Recursively sanitizes a captured JSON Feed extension value for safe exposure to
+/// JavaScript through napi's serde bridge:
+///
+/// - Drops `__proto__`/`constructor`/`prototype` object keys at any depth. napi's
+///   map serializer calls `set_named_property` for every key (V8 `[[Set]]`
+///   semantics), unlike `JSON.parse`'s `[[DefineOwnProperty]]`, so a nested
+///   `__proto__` key would otherwise silently rewrite the containing object's
+///   prototype instead of becoming a normal own property. Top-level extension keys
+///   (`_evil`, etc.) can never collide with this since `is_json_extension_key`
+///   already rejects keys not starting with `_` followed by a letter.
+/// - Converts non-negative integers above `u32::MAX` to their decimal string form.
+///   With the `napi6`+ feature set enabled here, napi's `Serializer::serialize_u64`
+///   fast-paths values `<= u32::MAX` to a plain JS Number and creates a `BigInt`
+///   (`napi_create_bigint_uint64`) for everything above that — and a single `BigInt`
+///   anywhere in the returned object graph makes `JSON.stringify` throw for the
+///   entire result.
+fn sanitize_json_extension_value(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut sanitized = serde_json::Map::with_capacity(map.len());
+            for (key, v) in map {
+                if matches!(key.as_str(), "__proto__" | "constructor" | "prototype") {
+                    continue;
+                }
+                sanitized.insert(key.clone(), sanitize_json_extension_value(v));
+            }
+            Value::Object(sanitized)
+        }
+        Value::Array(items) => {
+            Value::Array(items.iter().map(sanitize_json_extension_value).collect())
+        }
+        Value::Number(n) => match n.as_u64() {
+            Some(u) if u > u64::from(u32::MAX) => Value::String(u.to_string()),
+            _ => value.clone(),
+        },
+        _ => value.clone(),
+    }
+}
+
+/// Applies [`sanitize_json_extension_value`] to every captured extension value.
+/// Top-level keys (the extension names) are left untouched — only the internal
+/// object graph of each captured value needs sanitizing.
+fn sanitize_json_extensions(extensions: HashMap<String, Value>) -> HashMap<String, Value> {
+    extensions
+        .into_iter()
+        .map(|(key, value)| (key, sanitize_json_extension_value(&value)))
+        .collect()
+}
+
+#[cfg(test)]
+mod json_extension_sanitization_tests {
+    use super::{Value, sanitize_json_extension_value};
+    use serde_json::json;
+
+    #[test]
+    fn strips_nested_proto_pollution_keys() {
+        let value = json!({"__proto__": {"isAdmin": true}, "ok": 1});
+        let sanitized = sanitize_json_extension_value(&value);
+        let obj = sanitized.as_object().unwrap();
+        assert_eq!(obj.len(), 1);
+        assert_eq!(obj.get("ok"), Some(&json!(1)));
+        assert!(!obj.contains_key("__proto__"));
+    }
+
+    #[test]
+    fn strips_constructor_and_prototype_keys_at_any_depth() {
+        let value = json!({"a": {"constructor": {"x": 1}, "prototype": {"y": 2}, "b": 3}});
+        let sanitized = sanitize_json_extension_value(&value);
+        let inner = sanitized["a"].as_object().unwrap();
+        assert_eq!(inner.len(), 1);
+        assert_eq!(inner.get("b"), Some(&json!(3)));
+    }
+
+    #[test]
+    fn converts_u64_above_u32_max_to_string() {
+        let value = json!({"_big": 4_294_967_296u64});
+        let sanitized = sanitize_json_extension_value(&value);
+        assert_eq!(sanitized["_big"], Value::String("4294967296".to_string()));
+    }
+
+    #[test]
+    fn leaves_u32_range_numbers_as_numbers() {
+        let value = json!({"_ok": 42, "_max": u32::MAX});
+        let sanitized = sanitize_json_extension_value(&value);
+        assert_eq!(sanitized["_ok"], json!(42));
+        assert_eq!(sanitized["_max"], json!(u32::MAX));
+    }
+
+    #[test]
+    fn leaves_arrays_and_negative_numbers_intact() {
+        let value = json!({"_arr": [1, -5, "x", null]});
+        let sanitized = sanitize_json_extension_value(&value);
+        assert_eq!(sanitized["_arr"], json!([1, -5, "x", null]));
+    }
 }
 
 /// Parsing options accepted by `parseWithOptions` and `parseUrlWithOptions`
@@ -491,6 +588,18 @@ pub struct FeedMeta {
     pub skiphours: Vec<u32>,
     /// RSS 2.0 skip days
     pub skipdays: Vec<String>,
+    /// Custom JSON Feed extension objects captured from the feed's top level
+    /// (underscore-prefixed keys). Only populated by the JSON Feed parser;
+    /// empty for RSS/Atom feeds. Only the feed-root scope is captured, not
+    /// nested scopes like `authors[]`/`hubs[]`.
+    ///
+    /// Values are sanitized for safe JS exposure: nested `__proto__`/`constructor`/
+    /// `prototype` object keys are dropped (see `sanitize_json_extension_value`),
+    /// and non-negative integers above `u32::MAX` are converted to decimal strings
+    /// to avoid a JS `BigInt`, which would otherwise make `JSON.stringify` throw on
+    /// the whole parse result.
+    #[napi(js_name = "jsonExtensions")]
+    pub json_extensions: HashMap<String, Value>,
 }
 
 impl From<CoreFeedMeta> for FeedMeta {
@@ -553,6 +662,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             textinput: core.textinput.map(TextInput::from),
             skiphours: core.skiphours,
             skipdays: core.skipdays,
+            json_extensions: sanitize_json_extensions(core.json_extensions),
         }
     }
 }
@@ -775,6 +885,17 @@ pub struct Entry {
     /// External URL where the full content lives (JSON Feed `external_url`)
     #[napi(js_name = "externalUrl")]
     pub external_url: Option<String>,
+    /// Custom JSON Feed extension objects captured from this item
+    /// (underscore-prefixed keys). Only populated by the JSON Feed parser;
+    /// empty for RSS/Atom entries.
+    ///
+    /// Values are sanitized for safe JS exposure: nested `__proto__`/`constructor`/
+    /// `prototype` object keys are dropped (see `sanitize_json_extension_value`),
+    /// and non-negative integers above `u32::MAX` are converted to decimal strings
+    /// to avoid a JS `BigInt`, which would otherwise make `JSON.stringify` throw on
+    /// the whole parse result.
+    #[napi(js_name = "jsonExtensions")]
+    pub json_extensions: HashMap<String, Value>,
 }
 
 impl From<CoreEntry> for Entry {
@@ -859,6 +980,7 @@ impl From<CoreEntry> for Entry {
             guidislink: core.guidislink,
             language: core.language.map(|s| s.to_string()),
             external_url: core.external_url,
+            json_extensions: sanitize_json_extensions(core.json_extensions),
         }
     }
 }

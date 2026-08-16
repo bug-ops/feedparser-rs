@@ -625,6 +625,7 @@ dependencies = [
  "chrono",
  "feedparser-rs",
  "pyo3",
+ "serde_json",
 ]
 
 [[package]]
@@ -1328,6 +1329,8 @@ dependencies = [
  "napi-sys",
  "nohash-hasher",
  "rustc-hash 2.1.3",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

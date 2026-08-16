@@ -110,7 +110,10 @@ pub struct ParserLimits {
 
     /// Maximum text field length in bytes
     ///
-    /// Prevents excessive memory from huge title/description fields.
+    /// Prevents excessive memory from huge title/description fields. Also bounds
+    /// the per-value serialized size of a captured JSON Feed extension object
+    /// (see `max_json_extensions`); an oversized extension value is dropped
+    /// entirely rather than truncated.
     ///
     /// Default: 10 MB
     pub max_text_length: usize,
@@ -209,6 +212,20 @@ pub struct ParserLimits {
     ///
     /// Default: 20
     pub max_podcast_value_time_splits: usize,
+
+    /// Maximum number of JSON Feed extension objects captured per scope
+    ///
+    /// JSON Feed permits custom object keys (starting with `_` followed by a
+    /// letter) anywhere in a feed; this bounds how many distinct keys are
+    /// captured per feed-root or item-root scope, counted independently. When a
+    /// scope has more extension keys than this limit, the surviving keys are the
+    /// alphabetically-first ones, not the document-order-first ones: `serde_json`
+    /// backs a JSON object with a `BTreeMap` by default (the `preserve_order`
+    /// feature, which would switch it to an `IndexMap` and make truncation
+    /// document-order-first, is not enabled).
+    ///
+    /// Default: 100
+    pub max_json_extensions: usize,
 }
 
 impl Default for ParserLimits {
@@ -245,6 +262,7 @@ impl Default for ParserLimits {
             max_podcast_follow: 20,
             max_podcast_chat: 20,
             max_podcast_value_time_splits: 20,
+            max_json_extensions: 100,
         }
     }
 }
@@ -293,6 +311,7 @@ impl ParserLimits {
             max_podcast_follow: 5,
             max_podcast_chat: 5,
             max_podcast_value_time_splits: 5,
+            max_json_extensions: 20,
         }
     }
 
@@ -339,6 +358,7 @@ impl ParserLimits {
             max_podcast_follow: 100,
             max_podcast_chat: 100,
             max_podcast_value_time_splits: 50,
+            max_json_extensions: 500,
         }
     }
 
@@ -634,5 +654,20 @@ mod tests {
             limits.check_collection_size(20, limits.max_podcast_value_time_splits, "time_splits");
         assert!(result.is_err());
         assert!(matches!(result, Err(LimitError::CollectionTooLarge { .. })));
+    }
+
+    #[test]
+    fn test_max_json_extensions_tiers() {
+        assert_eq!(ParserLimits::default().max_json_extensions, 100);
+        assert_eq!(ParserLimits::strict().max_json_extensions, 20);
+        assert_eq!(ParserLimits::permissive().max_json_extensions, 500);
+        assert!(
+            ParserLimits::strict().max_json_extensions
+                < ParserLimits::default().max_json_extensions
+        );
+        assert!(
+            ParserLimits::permissive().max_json_extensions
+                > ParserLimits::default().max_json_extensions
+        );
     }
 }

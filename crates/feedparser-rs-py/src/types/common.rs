@@ -6,7 +6,59 @@ use feedparser_rs::{
     TextInput as CoreTextInput, TextType,
 };
 use pyo3::prelude::*;
-use pyo3::types::PyList;
+use pyo3::types::{PyDict, PyList};
+use serde_json::Value;
+
+/// Recursively converts a [`serde_json::Value`] into the equivalent native Python
+/// object (`None`/`bool`/`int`/`float`/`str`/`list`/`dict`).
+///
+/// Recursion depth is bounded by `serde_json`'s own 128-level recursion limit
+/// enforced during the initial deserialization of the feed, so this cannot
+/// stack-overflow on adversarial input.
+pub fn json_value_to_py(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
+    match value {
+        Value::Null => Ok(py.None()),
+        Value::Bool(b) => Ok(b.into_pyobject(py)?.to_owned().into_any().unbind()),
+        Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                Ok(i.into_pyobject(py)?.into_any().unbind())
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.into_pyobject(py)?.into_any().unbind())
+            } else {
+                Ok(py.None())
+            }
+        }
+        Value::String(s) => Ok(s.into_pyobject(py)?.into_any().unbind()),
+        Value::Array(items) => {
+            let list = items
+                .iter()
+                .map(|v| json_value_to_py(py, v))
+                .collect::<PyResult<Vec<_>>>()?;
+            Ok(PyList::new(py, list)?.into_any().unbind())
+        }
+        Value::Object(map) => {
+            let dict = PyDict::new(py);
+            for (key, v) in map {
+                dict.set_item(key, json_value_to_py(py, v)?)?;
+            }
+            Ok(dict.into_any().unbind())
+        }
+    }
+}
+
+/// Eagerly converts a JSON Feed extension capture map (`_key -> raw JSON value`)
+/// into a `Py<PyDict>`, once, at construction time — see [`json_value_to_py`] for
+/// the per-value conversion rules.
+pub fn json_extensions_to_py_dict(
+    py: Python<'_>,
+    extensions: &std::collections::HashMap<String, Value>,
+) -> PyResult<Py<PyDict>> {
+    let dict = PyDict::new(py);
+    for (key, value) in extensions {
+        dict.set_item(key, json_value_to_py(py, value)?)?;
+    }
+    Ok(dict.unbind())
+}
 
 #[pyclass(name = "TextConstruct", module = "feedparser_rs", from_py_object)]
 #[derive(Clone)]

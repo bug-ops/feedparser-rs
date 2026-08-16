@@ -180,6 +180,18 @@ export interface Entry {
   language?: string
   /** External URL where the full content lives (JSON Feed `external_url`) */
   externalUrl?: string
+  /**
+   * Custom JSON Feed extension objects captured from this item
+   * (underscore-prefixed keys). Only populated by the JSON Feed parser;
+   * empty for RSS/Atom entries.
+   *
+   * Values are sanitized for safe JS exposure: nested `__proto__`/`constructor`/
+   * `prototype` object keys are dropped (see `sanitize_json_extension_value`),
+   * and non-negative integers above `u32::MAX` are converted to decimal strings
+   * to avoid a JS `BigInt`, which would otherwise make `JSON.stringify` throw on
+   * the whole parse result.
+   */
+  jsonExtensions: Record<string, any>
 }
 
 /** Feed metadata */
@@ -282,6 +294,19 @@ export interface FeedMeta {
   skiphours: Array<number>
   /** RSS 2.0 skip days */
   skipdays: Array<string>
+  /**
+   * Custom JSON Feed extension objects captured from the feed's top level
+   * (underscore-prefixed keys). Only populated by the JSON Feed parser;
+   * empty for RSS/Atom feeds. Only the feed-root scope is captured, not
+   * nested scopes like `authors[]`/`hubs[]`.
+   *
+   * Values are sanitized for safe JS exposure: nested `__proto__`/`constructor`/
+   * `prototype` object keys are dropped (see `sanitize_json_extension_value`),
+   * and non-negative integers above `u32::MAX` are converted to decimal strings
+   * to avoid a JS `BigInt`, which would otherwise make `JSON.stringify` throw on
+   * the whole parse result.
+   */
+  jsonExtensions: Record<string, any>
 }
 
 /** Generator metadata */

@@ -8,6 +8,7 @@ use super::{
     thread::InReplyTo,
 };
 use chrono::{DateTime, Utc};
+use std::collections::HashMap;
 
 /// Feed entry/item
 #[derive(Debug, Clone, Default)]
@@ -132,6 +133,26 @@ pub struct Entry {
     pub language: Option<super::common::SmallString>,
     /// External URL where the full content lives (JSON Feed `external_url`)
     pub external_url: Option<String>,
+    /// Custom JSON Feed extension objects captured from this item.
+    ///
+    /// Same capture mechanism as [`super::feed::FeedMeta::json_extensions`],
+    /// scoped to this entry independently — a key present at both feed and
+    /// item level is captured separately in each map, with no merging.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::parse;
+    ///
+    /// let json = br#"{
+    ///     "version": "https://jsonfeed.org/version/1.1",
+    ///     "title": "Feed",
+    ///     "items": [{"id": "1", "_explicit": true}]
+    /// }"#;
+    /// let feed = parse(json).unwrap();
+    /// assert_eq!(feed.entries[0].json_extensions["_explicit"], true);
+    /// ```
+    pub json_extensions: HashMap<String, serde_json::Value>,
 }
 
 impl Entry {

@@ -12,6 +12,8 @@ use crate::{
     util::{date::parse_date, text::truncate_to_length},
 };
 use serde_json::Value;
+use std::collections::HashMap;
+use std::io;
 
 /// Parse JSON Feed with default limits
 #[allow(dead_code)]
@@ -79,6 +81,86 @@ pub fn parse_json_feed_with_limits(data: &[u8], limits: ParserLimits) -> Result<
     }
 
     Ok(feed)
+}
+
+/// Returns `true` if `key` matches the JSON Feed extension naming rule: `_`
+/// followed by a letter (e.g. `_cast`). Near-miss keys (`_1foo`, bare `_`,
+/// `__double`) are intentionally excluded per spec FR-006 — the naming rule is
+/// prescriptive, and capturing non-conformant keys risks hoovering up
+/// producer-internal junk instead of spec-sanctioned extensions.
+fn is_json_extension_key(key: &str) -> bool {
+    let mut chars = key.chars();
+    chars.next() == Some('_') && chars.next().is_some_and(char::is_alphabetic)
+}
+
+/// Returns `true` if serializing `value` would exceed `max_len` bytes, without
+/// allocating a full serialization buffer just to measure it. Writes into a
+/// counting sink and aborts as soon as the limit is crossed, so an oversized
+/// adversarial value costs at most `max_len` bytes of work rather than a full
+/// `to_string()` allocation.
+fn exceeds_serialized_size(value: &Value, max_len: usize) -> bool {
+    struct CountingSink {
+        count: usize,
+        max: usize,
+    }
+
+    impl io::Write for CountingSink {
+        fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+            self.count += buf.len();
+            if self.count > self.max {
+                return Err(io::Error::other("size limit exceeded"));
+            }
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut sink = CountingSink {
+        count: 0,
+        max: max_len,
+    };
+    serde_json::to_writer(&mut sink, value).is_err()
+}
+
+/// Captures JSON Feed extension objects (underscore-prefixed keys) from a
+/// single JSON object scope: either the feed root or an item root.
+///
+/// Bounded by [`ParserLimits::max_json_extensions`] (key count) and
+/// [`ParserLimits::max_text_length`] (per-value serialized size). Never sets
+/// bozo — extension capture is optional, spec-sanctioned data, not malformed
+/// input (FR-007).
+///
+/// Nesting inside a captured value is not re-checked here: `serde_json`
+/// 1.x's `from_slice` enforces a 128-level recursion limit
+/// (`disable_recursion_limit: false`, `remaining_depth: 128`) during the
+/// initial deserialization at the top of [`parse_json_feed_with_limits`], so
+/// any `Value` reachable here already satisfies that bound.
+///
+// TODO(critic): JSON Feed permits custom objects at any depth; only feed-root
+// and item-root scopes are captured here, not nested scopes like `authors[]`,
+// `attachments[]`, or `hubs[]` (MVP limitation, see FR-001/FR-002).
+// TODO(critic): each captured subtree is cloned; `Map::remove` on a `&mut`
+// root would avoid the copy (no core JSON Feed field name starts with `_`,
+// so this is provably safe) — deferred as premature for MVP.
+fn extract_json_extensions(json: &Value, limits: &ParserLimits) -> HashMap<String, Value> {
+    let Some(obj) = json.as_object() else {
+        return HashMap::new();
+    };
+
+    let mut extensions = HashMap::new();
+    for (key, value) in obj {
+        if extensions.len() >= limits.max_json_extensions {
+            break;
+        }
+        if !is_json_extension_key(key) || exceeds_serialized_size(value, limits.max_text_length) {
+            continue;
+        }
+        extensions.insert(key.clone(), value.clone());
+    }
+    extensions
 }
 
 fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits) {
@@ -174,6 +256,8 @@ fn parse_feed_metadata(json: &Value, feed: &mut FeedMeta, limits: &ParserLimits)
             }
         }
     }
+
+    feed.json_extensions = extract_json_extensions(json, limits);
 }
 
 fn parse_item(
@@ -200,6 +284,7 @@ fn parse_item(
     parse_item_media_and_dates(json, &mut entry, limits);
     parse_item_authors(json, &mut entry, limits, feed_authors);
     parse_item_tags_and_lang(json, &mut entry, limits, effective_lang);
+    parse_item_extensions(json, &mut entry, limits);
 
     entry
 }
@@ -371,6 +456,11 @@ fn parse_item_tags_and_lang(
     if let Some(lang) = effective_lang {
         entry.language = Some(lang.into());
     }
+}
+
+/// Parse item-level JSON Feed extension objects (underscore-prefixed keys).
+fn parse_item_extensions(json: &Value, entry: &mut Entry, limits: &ParserLimits) {
+    entry.json_extensions = extract_json_extensions(json, limits);
 }
 
 /// Unified author parsing for both feed and entry levels
@@ -1160,5 +1250,242 @@ mod tests {
                 .iter()
                 .any(|l| l.rel.as_deref() == Some("hub"))
         );
+    }
+
+    #[test]
+    fn test_json_feed_level_extension_captured() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "_cast": {"subcategory": "Tech News"},
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(
+            feed.feed.json_extensions["_cast"]["subcategory"],
+            "Tech News"
+        );
+    }
+
+    #[test]
+    fn test_json_item_level_extension_captured() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [{"id": "1", "_explicit": true}]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.entries[0].json_extensions["_explicit"], true);
+    }
+
+    #[test]
+    fn test_json_extensions_absent_are_empty() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [{"id": "1"}]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.json_extensions.is_empty());
+        assert!(feed.entries[0].json_extensions.is_empty());
+    }
+
+    #[test]
+    fn test_json_extension_near_miss_keys_not_captured() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "_1foo": "not captured",
+            "_": "not captured",
+            "__double": "not captured",
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.json_extensions.is_empty());
+    }
+
+    #[test]
+    fn test_json_extension_non_object_values_captured_as_is() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "_null": null,
+            "_array": [1, 2, 3],
+            "_number": 42,
+            "_string": "hello",
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.json_extensions["_null"].is_null());
+        assert_eq!(
+            feed.feed.json_extensions["_array"],
+            serde_json::json!([1, 2, 3])
+        );
+        assert_eq!(feed.feed.json_extensions["_number"], 42);
+        assert_eq!(feed.feed.json_extensions["_string"], "hello");
+    }
+
+    #[test]
+    fn test_json_extension_max_count_limit() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "_a": 1, "_b": 2, "_c": 3, "_d": 4, "_e": 5,
+            "items": []
+        }"#;
+        let limits = ParserLimits {
+            max_json_extensions: 2,
+            ..ParserLimits::default()
+        };
+        let feed = parse_json_feed_with_limits(json, limits).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.feed.json_extensions.len(), 2);
+    }
+
+    #[test]
+    fn test_json_extension_oversized_value_dropped() {
+        let big_value = "x".repeat(1000);
+        let json = format!(
+            r#"{{
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "Test",
+                "_big": "{big_value}",
+                "items": []
+            }}"#
+        );
+        let limits = ParserLimits {
+            max_text_length: 100,
+            ..ParserLimits::default()
+        };
+        let feed = parse_json_feed_with_limits(json.as_bytes(), limits).unwrap();
+        assert!(!feed.bozo);
+        assert!(!feed.feed.json_extensions.contains_key("_big"));
+    }
+
+    #[test]
+    fn test_json_extension_same_key_feed_and_item_independent() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "_shared": "feed-value",
+            "items": [{"id": "1", "_shared": "item-value"}]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.feed.json_extensions["_shared"], "feed-value");
+        assert_eq!(feed.entries[0].json_extensions["_shared"], "item-value");
+    }
+
+    #[test]
+    fn test_json_extension_duplicate_key_keeps_last_occurrence() {
+        // serde_json's Map insert overwrites on duplicate keys during
+        // deserialization; extraction never sees the earlier value.
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "_dup": "first",
+            "_dup": "second",
+            "items": []
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.feed.json_extensions["_dup"], "second");
+    }
+
+    #[test]
+    fn test_json_extension_items_with_non_object_elements() {
+        let json = br#"{
+            "version": "https://jsonfeed.org/version/1.1",
+            "title": "Test",
+            "items": [1, 2]
+        }"#;
+        let feed = parse_json_feed(json).unwrap();
+        assert!(!feed.bozo);
+        assert_eq!(feed.entries.len(), 2);
+        assert!(feed.entries[0].json_extensions.is_empty());
+        assert!(feed.entries[1].json_extensions.is_empty());
+    }
+
+    #[test]
+    fn test_json_extension_rss_fixture_stays_empty() {
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Example RSS Feed</title>
+    <item>
+      <title>First Item</title>
+      <guid>http://example.com/item1</guid>
+    </item>
+  </channel>
+</rss>"#;
+        let feed = crate::parser::rss::parse_rss20(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.json_extensions.is_empty());
+        assert!(feed.entries[0].json_extensions.is_empty());
+    }
+
+    #[test]
+    fn test_json_extension_atom_fixture_stays_empty() {
+        let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Example Atom Feed</title>
+  <id>http://example.com/feed</id>
+  <updated>2024-12-14T10:00:00Z</updated>
+  <entry>
+    <title>First Entry</title>
+    <id>http://example.com/entry1</id>
+    <updated>2024-12-14T09:00:00Z</updated>
+  </entry>
+</feed>"#;
+        let feed = crate::parser::atom::parse_atom10(xml).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.json_extensions.is_empty());
+        assert!(feed.entries[0].json_extensions.is_empty());
+    }
+
+    #[test]
+    fn test_json_extension_deeply_nested_value_near_recursion_bound() {
+        // Pins the assumption documented on `extract_json_extensions`: serde_json's
+        // 128-level recursion limit during initial deserialization already bounds
+        // any captured subtree, so no additional nesting check is needed here.
+        let depth = 120;
+        let nested = "[".repeat(depth) + &"]".repeat(depth);
+        let json = format!(
+            r#"{{
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "Test",
+                "_deep": {nested},
+                "items": []
+            }}"#
+        );
+        let feed = parse_json_feed(json.as_bytes()).unwrap();
+        assert!(!feed.bozo);
+        assert!(feed.feed.json_extensions.contains_key("_deep"));
+    }
+
+    #[test]
+    fn test_json_extension_nesting_past_recursion_bound_sets_bozo_without_panic() {
+        // Pins the other side of the same assumption: past serde_json's 128-level
+        // recursion limit, initial deserialization itself fails (caught by the
+        // existing JSON-parse-error bozo path), so no panic or stack overflow ever
+        // reaches `extract_json_extensions` in the first place.
+        let depth = 200;
+        let nested = "[".repeat(depth) + &"]".repeat(depth);
+        let json = format!(
+            r#"{{
+                "version": "https://jsonfeed.org/version/1.1",
+                "title": "Test",
+                "_deep": {nested},
+                "items": []
+            }}"#
+        );
+        let feed = parse_json_feed(json.as_bytes()).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.feed.json_extensions.is_empty());
     }
 }

@@ -112,6 +112,34 @@ pub struct FeedMeta {
     pub skiphours: Vec<u32>,
     /// RSS 2.0 `<skipDays>` — days of the week when the channel may be skipped
     pub skipdays: Vec<String>,
+    /// Custom JSON Feed extension objects captured from the feed's top level.
+    ///
+    /// JSON Feed 1.1 permits custom object keys anywhere in a feed, provided the
+    /// key starts with `_` followed by a letter (e.g. `_cast`). Only the
+    /// feed-root scope is captured here — nested custom objects under array
+    /// scopes such as `authors[]`, `attachments[]`, or `hubs[]` are not (MVP
+    /// limitation; see `parser::json::extract_json_extensions`). Values are
+    /// captured verbatim and never interpreted. Only the JSON Feed parser
+    /// populates this field; RSS and Atom feeds always leave it empty.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use feedparser_rs::parse;
+    ///
+    /// let json = br#"{
+    ///     "version": "https://jsonfeed.org/version/1.1",
+    ///     "title": "Podcast Feed",
+    ///     "_cast": {"subcategory": "Tech News"},
+    ///     "items": []
+    /// }"#;
+    /// let feed = parse(json).unwrap();
+    /// assert_eq!(
+    ///     feed.feed.json_extensions["_cast"]["subcategory"],
+    ///     "Tech News"
+    /// );
+    /// ```
+    pub json_extensions: HashMap<String, serde_json::Value>,
 }
 
 /// Parsed feed result

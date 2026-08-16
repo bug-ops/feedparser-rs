@@ -121,24 +121,7 @@ impl PyParserLimits {
             max_tags: self.max_tags,
             max_content_blocks: self.max_content_blocks,
             max_enclosures: self.max_enclosures,
-            max_namespaces: 100,                         // Use default
-            max_nesting_depth: 100,                      // Use default
-            max_html_nesting_depth: 100,                 // Use default
-            max_text_length: 10 * 1024 * 1024,           // 10 MB
-            max_attribute_length: 64 * 1024,             // 64 KB
-            max_podcast_soundbites: 10,                  // Use default
-            max_podcast_transcripts: 20,                 // Use default
-            max_podcast_funding: 20,                     // Use default
-            max_podcast_persons: 50,                     // Use default
-            max_value_recipients: 20,                    // Use default
-            max_podcast_alternate_enclosures: 10,        // Use default
-            max_podcast_alternate_enclosure_sources: 10, // Use default
-            max_podcast_podroll: 20,                     // Use default
-            max_podcast_social_interact: 10,             // Use default
-            max_podcast_txt: 20,                         // Use default
-            max_podcast_follow: 10,                      // Use default
-            max_podcast_chat: 20,
-            max_podcast_value_time_splits: 20,
+            ..CoreParserLimits::default()
         }
     }
 }
