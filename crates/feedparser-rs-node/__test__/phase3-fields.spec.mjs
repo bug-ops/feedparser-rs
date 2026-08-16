@@ -469,6 +469,140 @@ describe('Field Bindings', () => {
     });
   });
 
+  describe('Podcast chat/podping/valueTimeSplit', () => {
+    it('should parse podcast:chat at feed level', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:chat server="matrix.example.com" protocol="matrix" accountId="@podcast:example.com" space="!room:example.com"/>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      assert.strictEqual(feed.feed.podcast.chat.length, 1);
+      assert.strictEqual(feed.feed.podcast.chat[0].server, 'matrix.example.com');
+      assert.strictEqual(feed.feed.podcast.chat[0].protocol, 'matrix');
+      assert.strictEqual(feed.feed.podcast.chat[0].accountId, '@podcast:example.com');
+      assert.strictEqual(feed.feed.podcast.chat[0].space, '!room:example.com');
+    });
+
+    it('should parse podcast:chat at entry level', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <item>
+              <title>Episode</title>
+              <podcast:chat server="xmpp.example.com" protocol="xmpp"/>
+            </item>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      assert.strictEqual(feed.entries[0].podcast.chat.length, 1);
+      assert.strictEqual(feed.entries[0].podcast.chat[0].server, 'xmpp.example.com');
+      assert.strictEqual(feed.entries[0].podcast.chat[0].protocol, 'xmpp');
+    });
+
+    it('should parse podcast:podping usesPodping attribute', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:podping usesPodping="true"/>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      assert.strictEqual(feed.feed.podcast.podpingUsesPodping, true);
+    });
+
+    it('should parse podcast:valueTimeSplit with recipients', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:value type="lightning" method="keysend">
+              <podcast:valueTimeSplit startTime="60" duration="30">
+                <podcast:valueRecipient type="node" address="addr1" split="100"/>
+              </podcast:valueTimeSplit>
+            </podcast:value>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const [split] = feed.feed.podcast.value.timeSplits;
+      assert.strictEqual(feed.feed.podcast.value.timeSplits.length, 1);
+      assert.strictEqual(split.startTime, 60);
+      assert.strictEqual(split.duration, 30);
+      assert.strictEqual(split.remotePercentage, 100);
+      assert.strictEqual(split.recipients.length, 1);
+      assert.strictEqual(split.recipients[0].address, 'addr1');
+      assert.strictEqual(split.remoteItem, undefined);
+    });
+
+    it('should parse podcast:valueTimeSplit with a remote item', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:value type="lightning" method="keysend">
+              <podcast:valueTimeSplit startTime="10" duration="20" remoteStartTime="5" remotePercentage="50">
+                <podcast:remoteItem feedGuid="feed-guid-1" feedUrl="https://example.com/feed.xml" itemGuid="abc123" medium="podcast" title="Remote Episode"/>
+              </podcast:valueTimeSplit>
+            </podcast:value>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const [split] = feed.feed.podcast.value.timeSplits;
+      assert.strictEqual(split.remoteStartTime, 5);
+      assert.strictEqual(split.remotePercentage, 50);
+      assert.strictEqual(split.remoteItem.feedGuid, 'feed-guid-1');
+      assert.strictEqual(split.remoteItem.feedUrl, 'https://example.com/feed.xml');
+      assert.strictEqual(split.remoteItem.itemGuid, 'abc123');
+      assert.strictEqual(split.remoteItem.medium, 'podcast');
+      assert.strictEqual(split.remoteItem.title, 'Remote Episode');
+    });
+
+    it('should default chat/podpingUsesPodping/timeSplits when absent', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:guid>abc-123-def</podcast:guid>
+            <podcast:value type="lightning" method="keysend">
+              <podcast:valueRecipient type="node" address="addr1" split="100"/>
+            </podcast:value>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      assert.strictEqual(feed.feed.podcast.chat.length, 0);
+      assert.strictEqual(feed.feed.podcast.podpingUsesPodping, undefined);
+      assert.strictEqual(feed.feed.podcast.value.timeSplits.length, 0);
+    });
+
+    it('should silently drop a self-closing podcast:valueTimeSplit without swallowing the feed', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:value type="lightning" method="keysend">
+              <podcast:valueTimeSplit startTime="1" duration="2"/>
+              <podcast:valueRecipient type="node" address="addr1" split="100"/>
+            </podcast:value>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      assert.strictEqual(feed.bozo, false);
+      assert.strictEqual(feed.feed.podcast.value.timeSplits.length, 0);
+      assert.strictEqual(feed.feed.podcast.value.recipients.length, 1);
+    });
+  });
+
   describe('Combined namespaces', () => {
     it('should parse feed with multiple namespace extensions', () => {
       const xml = `<?xml version="1.0"?>
