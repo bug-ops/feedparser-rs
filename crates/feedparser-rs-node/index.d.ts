@@ -2,10 +2,15 @@
 /* eslint-disable */
 /** RSS 2.0 cloud subscription endpoint */
 export interface Cloud {
+  /** Cloud server domain */
   domain?: string
+  /** Cloud server port */
   port?: string
+  /** Cloud server path */
   path?: string
+  /** Remote procedure to call for registration */
   registerprocedure?: string
+  /** Protocol used for notifications (e.g., "xml-rpc", "soap", "http-post") */
   protocol?: string
 }
 
@@ -28,7 +33,7 @@ export interface Content {
  *
  * # Arguments
  *
- * * `source` - Feed content as Buffer, string, or Uint8Array
+ * * `source` - Feed content as Buffer, string, or `Uint8Array`
  *
  * # Returns
  *
@@ -118,7 +123,7 @@ export interface Entry {
   podcastPersons: Array<PodcastPerson>
   /** License URL (Creative Commons, etc.) */
   license?: string
-  /** Geographic location (GeoRSS), exposed as `where` per Python feedparser API */
+  /** Geographic location (`GeoRSS`), exposed as `where` per Python feedparser API */
   where?: GeoLocation
   /** W3C Basic Geo latitude (`geo:lat`) */
   geoLat?: string
@@ -249,7 +254,7 @@ export interface FeedMeta {
   dcPublisher?: string
   /** Dublin Core rights (copyright) */
   dcRights?: string
-  /** Geographic location (GeoRSS), exposed as `where` per Python feedparser API */
+  /** Geographic location (`GeoRSS`), exposed as `where` per Python feedparser API */
   where?: GeoLocation
   /** W3C Basic Geo latitude (`geo:lat`) */
   geoLat?: string
@@ -259,7 +264,7 @@ export interface FeedMeta {
   itunes?: ItunesFeedMeta
   /** Podcast 2.0 metadata */
   podcast?: PodcastMeta
-  /** JSON Feed next_url for pagination (JSON Feed 1.1) */
+  /** JSON Feed `next_url` for pagination (JSON Feed 1.1) */
   nextUrl?: string
   /** Media RSS thumbnails at feed/channel level */
   mediaThumbnails: Array<MediaThumbnail>
@@ -289,14 +294,14 @@ export interface Generator {
   version?: string
 }
 
-/** Geographic location from GeoRSS namespace */
+/** Geographic location from `GeoRSS` namespace */
 export interface GeoLocation {
   /** Type of geographic shape ("point", "line", "polygon", "box") */
   geoType: string
   /**
    * Coordinate pairs as nested array [[lat, lng], ...]
    *
-   * Format depends on geo_type:
+   * Format depends on `geo_type`:
    * - "point": Single pair [[lat, lng]]
    * - "line": Two or more pairs [[lat1, lng1], [lat2, lng2], ...]
    * - "box": Two pairs [[lower-left-lat, lower-left-lng], [upper-right-lat, upper-right-lng]]
@@ -538,7 +543,7 @@ export interface MediaThumbnail {
  *
  * # Arguments
  *
- * * `source` - Feed content as Buffer, string, or Uint8Array
+ * * `source` - Feed content as Buffer, string, or `Uint8Array`
  *
  * # Returns
  *
@@ -574,7 +579,7 @@ export interface ParsedFeed {
   status?: number
   /** Final URL after redirects (if fetched from URL) */
   href?: string
-  /** ETag header from HTTP response */
+  /** `ETag` header from HTTP response */
   etag?: string
   /** Last-Modified header from HTTP response */
   modified?: string
@@ -606,12 +611,12 @@ export interface ParseOptions {
  * Parse feed from HTTP/HTTPS URL with conditional GET support
  *
  * Fetches the feed from the given URL and parses it. Supports conditional GET
- * using ETag and Last-Modified headers for bandwidth-efficient caching.
+ * using `ETag` and Last-Modified headers for bandwidth-efficient caching.
  *
  * # Arguments
  *
  * * `url` - HTTP or HTTPS URL to fetch
- * * `etag` - Optional ETag from previous fetch for conditional GET
+ * * `etag` - Optional `ETag` from previous fetch for conditional GET
  * * `modified` - Optional Last-Modified timestamp from previous fetch
  * * `user_agent` - Optional custom User-Agent header
  *
@@ -620,11 +625,15 @@ export interface ParseOptions {
  * Parsed feed result with HTTP metadata fields populated:
  * - `status`: HTTP status code (200, 304, etc.)
  * - `href`: Final URL after redirects
- * - `etag`: ETag header value (for next request)
+ * - `etag`: `ETag` header value (for next request)
  * - `modified`: Last-Modified header value (for next request)
  * - `headers`: Full HTTP response headers
  *
  * On 304 Not Modified, returns a feed with empty entries but status=304.
+ *
+ * # Errors
+ *
+ * Returns error if the URL is invalid, the request fails, or parsing fails catastrophically
  *
  * # Examples
  *
@@ -653,8 +662,12 @@ export declare function parseUrl(url: string, etag?: string | undefined | null, 
 /**
  * Parse feed from URL with custom options
  *
- * Like `parseUrl` but allows specifying custom options for DoS protection,
+ * Like `parseUrl` but allows specifying custom options for `DoS` protection,
  * HTML sanitization, and relative URI resolution.
+ *
+ * # Errors
+ *
+ * Returns error if the URL is invalid, the request fails, or parsing fails catastrophically
  *
  * # Examples
  *
@@ -677,7 +690,7 @@ export declare function parseUrlWithOptions(url: string, etag?: string | undefin
  *
  * # Arguments
  *
- * * `source` - Feed content as Buffer, string, or Uint8Array
+ * * `source` - Feed content as Buffer, string, or `Uint8Array`
  * * `options` - Optional parsing options (max size, HTML sanitization, URI resolution)
  *
  * # Returns
@@ -900,8 +913,12 @@ export interface TextConstruct {
 
 /** RSS 2.0 text input form */
 export interface TextInput {
+  /** Text input field label */
   title?: string
+  /** Text input field description */
   description?: string
+  /** Text input field name (for form submission) */
   name?: string
+  /** URL to submit the text input to */
   link?: string
 }
