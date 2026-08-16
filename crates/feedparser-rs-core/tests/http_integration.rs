@@ -839,7 +839,7 @@ mod http_tests {
 
         let _client = FeedHttpClient::new()
             .unwrap()
-            .with_timeout(Duration::from_secs(60));
+            .with_timeout(Duration::from_mins(1));
         // Client should be created successfully
     }
 }

@@ -86,7 +86,7 @@ body:
         Please provide relevant environment information:
       placeholder: |
         - OS: macOS 14.0
-        - Rust: 1.88.0
+        - Rust: 1.91.0
         - Node.js: 20.10.0 (if applicable)
         - Python: 3.12 (if applicable)
     validations:

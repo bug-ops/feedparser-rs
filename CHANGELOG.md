@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `feedparser-rs-py`: migrated `compat.rs`'s field-alias maps from `once_cell::sync::Lazy` to `std::sync::LazyLock`, matching the pattern already used in `feedparser-rs-core`. `LazyLock` has been stable since Rust 1.80, well below this project's MSRV (1.88.0), so `once_cell` is no longer a direct dependency of any workspace crate and was removed from `[workspace.dependencies]` (#489).
+- **Breaking**: raised the workspace MSRV from 1.88.0 to 1.91.0 (#490). Per this project's policy, an MSRV bump requires a minor version bump, so this must ship as **0.7.0**, not 0.6.1 — a consumer pinned to `feedparser-rs = "0.6"` will not pull this in via a semver-compatible upgrade. This unlocks `Ipv4Addr::from_octets`/`Ipv6Addr::from_segments`, now used in `util/ssrf.rs` in place of `Ipv4Addr::new`/`Ipv6Addr::new` for a clearer octet/segment-array round-trip with the existing `octets()`/`segments()` getters, and `Duration::from_mins`/`from_hours` in a couple of test-only call sites in `http/client.rs`/`tests/http_integration.rs` (both surfaced by the new clippy `duration_suboptimal_units` lint now in-MSRV); behavior is unchanged in all cases.
 
 ### Fixed
 

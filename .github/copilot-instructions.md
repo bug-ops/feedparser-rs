@@ -6,7 +6,7 @@ High-performance RSS/Atom/JSON Feed parser in Rust with Python (PyO3) and Node.j
 
 **CRITICAL**: API compatibility with Python feedparser is the #1 priority. Field names, types, and behavior must match exactly.
 
-**MSRV:** Rust 1.88.0 | **Edition:** 2024 | **License:** MIT/Apache-2.0
+**MSRV:** Rust 1.91.0 | **Edition:** 2024 | **License:** MIT/Apache-2.0
 
 ## Architecture Overview
 
@@ -86,7 +86,7 @@ All automation via `cargo-make`:
 | `cargo make test-rust` | Rust tests (nextest) |
 | `cargo make pre-commit` | fmt + clippy + test-rust |
 | `cargo make bench` | Criterion benchmarks |
-| `cargo make msrv-check` | Verify MSRV 1.88.0 compatibility |
+| `cargo make msrv-check` | Verify MSRV 1.91.0 compatibility |
 
 ### Bindings
 ```bash

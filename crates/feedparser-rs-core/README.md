@@ -35,7 +35,7 @@ feedparser-rs = "0.6"
 ```
 
 > [!IMPORTANT]
-> Requires Rust 1.88.0 or later (edition 2024).
+> Requires Rust 1.91.0 or later (edition 2024).
 
 ## Quick Start
 
@@ -190,7 +190,7 @@ cargo bench
 
 ## MSRV Policy
 
-Minimum Supported Rust Version: **1.88.0** (edition 2024).
+Minimum Supported Rust Version: **1.91.0** (edition 2024).
 
 MSRV increases are considered breaking changes and will result in a minor version bump.
 

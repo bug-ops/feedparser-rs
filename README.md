@@ -6,7 +6,7 @@
 [![npm](https://img.shields.io/npm/v/feedparser-rs)](https://www.npmjs.com/package/feedparser-rs)
 [![CI](https://img.shields.io/github/actions/workflow/status/bug-ops/feedparser-rs/ci.yml?branch=main)](https://github.com/bug-ops/feedparser-rs/actions)
 [![codecov](https://codecov.io/gh/bug-ops/feedparser-rs/graph/badge.svg)](https://codecov.io/gh/bug-ops/feedparser-rs)
-[![MSRV](https://img.shields.io/badge/MSRV-1.88.0-blue)](https://blog.rust-lang.org/)
+[![MSRV](https://img.shields.io/badge/MSRV-1.91.0-blue)](https://blog.rust-lang.org/)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue)](LICENSE-MIT)
 
 High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node.js bindings. A drop-in replacement for Python [feedparser](https://github.com/kurtmckee/feedparser) that is 90-100x faster.
@@ -62,7 +62,7 @@ feedparser-rs = "0.6"
 ```
 
 > [!IMPORTANT]
-> Requires Rust 1.88.0 or later (edition 2024).
+> Requires Rust 1.91.0 or later (edition 2024).
 
 ### Python
 
@@ -269,7 +269,7 @@ Format detection: **128 ns** (near-instant)
 
 ## MSRV Policy
 
-Minimum Supported Rust Version: **1.88.0** (edition 2024).
+Minimum Supported Rust Version: **1.91.0** (edition 2024).
 
 MSRV increases are considered breaking changes and will result in a minor version bump.
 
