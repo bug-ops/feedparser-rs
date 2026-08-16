@@ -629,10 +629,14 @@ fn parse_feed_entry(
         effective_lang,
         &feed.namespaces,
     ) {
-        Ok((mut entry, entry_bozo)) => {
+        Ok((mut entry, entry_bozo, bozo_reason)) => {
             if entry_bozo && !feed.bozo {
                 feed.bozo = true;
-                feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+                feed.bozo_exception = Some(
+                    bozo_reason
+                        .unwrap_or("Unresolvable entity in entry field")
+                        .to_string(),
+                );
             }
             if entry.summary.is_none()
                 && let Some(content) = entry.content.first()
@@ -910,8 +914,16 @@ fn parse_feed_geo(
     if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
             if georss_element == "where" {
-                let (loc, _had_bozo) =
+                let (loc, had_bozo, bozo_reason) =
                     parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
+                if had_bozo && !feed.bozo {
+                    feed.bozo = true;
+                    feed.bozo_exception = Some(
+                        bozo_reason
+                            .unwrap_or("Unresolvable entity in feed field")
+                            .to_string(),
+                    );
+                }
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut feed.feed.r#where, loc);
                 }
@@ -936,15 +948,17 @@ fn parse_feed_geo(
 
 /// Parse <entry> element
 ///
-/// Returns `(entry, bozo)`, where `bozo` reflects any unresolved entity
-/// references encountered while reading this entry's text fields.
+/// Returns `(entry, bozo, bozo_reason)`, where `bozo` reflects any
+/// unresolved entity reference or GML coordinate/dims mismatch encountered
+/// while reading this entry's text fields, and `bozo_reason` is a specific
+/// description when available.
 fn parse_entry(
     xml: &mut XmlCtx,
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
     entry_lang: Option<&str>,
     namespaces: &HashMap<String, String>,
-) -> Result<(Entry, bool)> {
+) -> Result<(Entry, bool, Option<&'static str>)> {
     let mut entry = Entry::with_capacity();
     let mut ctx = EntryCtx {
         xml: xml.reborrow(),
@@ -952,6 +966,7 @@ fn parse_entry(
         lang: entry_lang,
         namespaces,
         bozo: false,
+        bozo_reason: None,
         has_explicit_link: false,
         guid_is_permalink: None,
     };
@@ -1015,7 +1030,7 @@ fn parse_entry(
         ctx.xml.buf.clear();
     }
 
-    Ok((entry, ctx.bozo))
+    Ok((entry, ctx.bozo, ctx.bozo_reason))
 }
 
 /// Parse extension namespace tags at entry level (Dublin Core, Content, Media RSS,
@@ -1574,9 +1589,12 @@ fn parse_entry_geo(
     if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
             if georss_element == "where" {
-                let (loc, had_bozo) =
+                let (loc, had_bozo, bozo_reason) =
                     parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 ctx.bozo |= had_bozo;
+                if let Some(reason) = bozo_reason {
+                    ctx.bozo_reason.get_or_insert(reason);
+                }
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut entry.r#where, loc);
                 }

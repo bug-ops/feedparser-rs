@@ -813,6 +813,15 @@ fn test_issue_454_gml_pos_entity_error_sets_bozo() {
 
     let feed = parse(xml).unwrap();
     assert!(feed.bozo, "unresolvable entity in gml:pos must set bozo");
+    // Regression (#478 S1): the unresolved entity leaves an odd token count
+    // ("45.0", "&bogus;", "-71.0" = 3 tokens against the default dims=2), but
+    // the real defect is the entity, not a srsDimension mismatch -- no
+    // srsDimension attribute even appears in this feed. Must not be
+    // misdiagnosed with the dims-mismatch description.
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("Unresolvable entity in entry field")
+    );
 }
 
 #[test]
@@ -1698,5 +1707,284 @@ fn test_issue_470_gml_multi_surface_empty_first_member_srs_dimension_does_not_le
     assert_eq!(
         geo.coordinates,
         vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_sets_bozo_in_entry() {
+    // A posList length that isn't a multiple of the resolved srsDimension
+    // must set bozo with a specific description, not silently leave
+    // entry.where == None indistinguishable from "no GML geometry" (#478).
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Line Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                        <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(
+        feed.entries[0].r#where.is_none(),
+        "mismatched coordinate count must not produce a geometry"
+    );
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_sets_bozo_at_feed_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <georss:where>
+                <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                    <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+                </gml:LineString>
+            </georss:where>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(
+        feed.feed.r#where.is_none(),
+        "mismatched coordinate count must not produce a geometry"
+    );
+}
+
+#[test]
+fn test_issue_478_gml_envelope_dims_mismatch_sets_bozo() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Envelope Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Envelope srsName="EPSG:4326" srsDimension="3">
+                        <gml:lowerCorner>42.9 -71.9</gml:lowerCorner>
+                        <gml:upperCorner>43.1 -71.5 20.0</gml:upperCorner>
+                    </gml:Envelope>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch on a corner must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(feed.entries[0].r#where.is_none());
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_sets_bozo_in_rss10_item() {
+    let xml = br#"<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:georss="http://www.georss.org/georss"
+             xmlns:gml="http://www.opengis.net/gml">
+        <channel rdf:about="http://example.com/">
+            <title>GML RSS 1.0 Feed</title>
+            <link>http://example.com</link>
+            <description>Feed with a mismatched GML item</description>
+        </channel>
+        <item rdf:about="http://example.com/article1">
+            <title>Article with location</title>
+            <link>http://example.com/article1</link>
+            <georss:where>
+                <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                    <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+                </gml:LineString>
+            </georss:where>
+        </item>
+    </rdf:RDF>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(feed.entries[0].r#where.is_none());
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_sets_bozo_at_rss10_feed_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:georss="http://www.georss.org/georss"
+             xmlns:gml="http://www.opengis.net/gml">
+        <channel rdf:about="http://example.com/">
+            <title>GML RSS 1.0 Feed</title>
+            <link>http://example.com</link>
+            <description>Feed-level mismatched GML</description>
+            <georss:where>
+                <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                    <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+                </gml:LineString>
+            </georss:where>
+        </channel>
+    </rdf:RDF>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(feed.feed.r#where.is_none());
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_sets_bozo_in_atom_entry() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:georss="http://www.georss.org/georss"
+          xmlns:gml="http://www.opengis.net/gml">
+      <title>GML Atom Test</title>
+      <id>urn:uuid:test</id>
+      <updated>2024-01-01T00:00:00Z</updated>
+      <entry>
+        <id>urn:uuid:entry-1</id>
+        <title>Entry with mismatched GML</title>
+        <link href="https://example.com/entry-1"/>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <georss:where>
+            <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+            </gml:LineString>
+        </georss:where>
+      </entry>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(feed.entries[0].r#where.is_none());
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_sets_bozo_at_atom_feed_level() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:georss="http://www.georss.org/georss"
+          xmlns:gml="http://www.opengis.net/gml">
+      <title>GML Atom Test</title>
+      <id>urn:uuid:test</id>
+      <updated>2024-01-01T00:00:00Z</updated>
+      <georss:where>
+          <gml:LineString srsName="EPSG:4326" srsDimension="3">
+              <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+          </gml:LineString>
+      </georss:where>
+    </feed>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "srsDimension mismatch must set bozo");
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension")
+    );
+    assert!(feed.feed.r#where.is_none());
+}
+
+#[test]
+fn test_issue_478_feed_level_entity_error_in_gml_pos_sets_bozo() {
+    // Regression (#478 S2): feed/channel-level georss:where previously
+    // discarded parse_georss_where's bozo signal entirely, so an
+    // unresolvable entity in the coordinate text at feed level was silently
+    // dropped -- exactly the #478 symptom, at the level the fix itself
+    // touched.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <georss:where>
+                <gml:Point srsName="EPSG:4326">
+                    <gml:pos>&bogus;45.0 -71.0</gml:pos>
+                </gml:Point>
+            </georss:where>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(
+        feed.bozo,
+        "unresolvable entity in feed-level gml:pos must set bozo"
+    );
+    assert!(feed.feed.r#where.is_none());
+}
+
+#[test]
+fn test_issue_478_gml_dims_mismatch_wins_over_unrelated_entity_bozo_in_same_entry() {
+    // Documents actual precedence (#478 M2): EntryCtx::bozo_reason is set
+    // only by the GML dims-mismatch case, applied as an override over the
+    // generic "unresolvable entity" fallback at flush time -- it is not a
+    // general first-set-wins arbiter across every bozo cause in the entry.
+    // Here the entity error in <title> happens first in document order, but
+    // the GML-specific message still wins because it is the only writer of
+    // `bozo_reason`.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Bad &bogus; Title</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                        <gml:posList>45.0 -71.0 10.0 46.0 -72.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo);
+    assert_eq!(
+        feed.bozo_exception.as_deref(),
+        Some("GML coordinate list length is not a multiple of resolved srsDimension"),
+        "GML-specific description must win over the generic entity-bozo fallback"
     );
 }

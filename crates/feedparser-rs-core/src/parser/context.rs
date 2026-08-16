@@ -57,9 +57,19 @@ pub struct EntryCtx<'r, 'd, 'p> {
     pub lang: Option<&'p str>,
     /// Declared namespace prefix -> URI mapping for the whole feed.
     pub namespaces: &'p HashMap<String, String>,
-    /// Entity-resolution bozo accumulator, returned to the caller once the
-    /// item/entry has been fully parsed.
+    /// Bozo accumulator (entity-resolution errors, GML coordinate/dims
+    /// mismatches, ...), returned to the caller once the item/entry has been
+    /// fully parsed.
     pub bozo: bool,
+    /// Specific description for `bozo`, set only by the `GeoRSS` GML
+    /// `srsDimension`-mismatch case (currently the sole writer); the flush
+    /// site falls back to a generic "unresolvable entity" description when
+    /// this is `None`. Not a general first-set-wins arbiter across every
+    /// bozo cause in the item/entry — an unrelated entity-resolution error
+    /// elsewhere in the same item/entry does not compete with this field for
+    /// which description wins; the GML message always takes precedence over
+    /// the generic fallback when both occurred, regardless of document order.
+    pub bozo_reason: Option<&'static str>,
     /// RSS 2.0 only: whether an explicit `<link>` element was seen (unused
     /// by Atom and RSS 1.0, which have no equivalent guid-fallback rule).
     pub has_explicit_link: bool,

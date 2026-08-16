@@ -654,11 +654,24 @@ pub fn skip_element(
     Ok(())
 }
 
+/// Description for the "bozo" signal set when a GML geometry's coordinate
+/// text is present and non-empty but its length doesn't cleanly divide by
+/// the resolved `srsDimension` (#478).
+const GML_DIMS_MISMATCH_BOZO: &str =
+    "GML coordinate list length is not a multiple of resolved srsDimension";
+
 /// Parse a `<georss:where>` element (`GeoRSS` GML profile) and return the
 /// geometry it contains (or `None` if no recognized geometry was found)
-/// together with whether an entity-resolution error occurred in the
-/// coordinate text (the "bozo" pattern; the caller should OR this into its
-/// own bozo tracking, matching how `GeoRSS` Simple elements are handled).
+/// together with whether a bozo condition occurred while reading it — either
+/// an entity-resolution error in the coordinate text, or a coordinate-count/
+/// `srsDimension` mismatch (see `GML_DIMS_MISMATCH_BOZO`) — and, for the
+/// latter, a specific description of it. The caller should OR the bool into
+/// its own bozo tracking (matching how `GeoRSS` Simple elements are
+/// handled) and prefer the description when present over a generic one.
+/// When an entity-resolution error already occurred while reading a
+/// geometry's coordinate text, an odd resulting token count is attributed to
+/// that error rather than a `srsDimension` mismatch — the two are
+/// distinguishable defects and the description should name the real one.
 ///
 /// Recognizes `gml:Point`/`gml:pos`, `gml:LineString`/`gml:posList`,
 /// `gml:Polygon` wrapping `gml:exterior`/`gml:LinearRing`/`gml:posList`,
@@ -684,9 +697,10 @@ pub fn parse_georss_where(
     buf: &mut Vec<u8>,
     limits: &ParserLimits,
     depth: usize,
-) -> Result<(Option<GeoLocation>, bool)> {
+) -> Result<(Option<GeoLocation>, bool, Option<&'static str>)> {
     let mut geometry = None;
     let mut had_bozo = false;
+    let mut bozo_reason = None;
 
     loop {
         match reader.read_event_into(buf) {
@@ -705,14 +719,33 @@ pub fn parse_georss_where(
                         )?;
                         had_bozo |= bozo;
                         geometry = corners.and_then(|(lower, upper)| {
-                            georss::build_gml_envelope(srs_name, &lower, &upper, dims)
+                            match georss::build_gml_envelope(srs_name, &lower, &upper, dims) {
+                                Ok(geo) => geo,
+                                // An entity-resolution error already reading the corner
+                                // text (`bozo`) can itself produce an odd token count —
+                                // don't misattribute that to a dims mismatch (#478 S1).
+                                Err(georss::GmlDimsMismatch) if !bozo => {
+                                    had_bozo = true;
+                                    bozo_reason.get_or_insert(GML_DIMS_MISMATCH_BOZO);
+                                    None
+                                }
+                                Err(georss::GmlDimsMismatch) => None,
+                            }
                         });
                     } else {
                         let (coord_text, bozo, dims) =
                             find_gml_coord_text(reader, buf, limits, next_depth, &end_tag, dims)?;
                         had_bozo |= bozo;
                         geometry = coord_text.and_then(|text| {
-                            georss::build_gml_geometry(geo_type, srs_name, &text, dims)
+                            match georss::build_gml_geometry(geo_type, srs_name, &text, dims) {
+                                Ok(geo) => geo,
+                                Err(georss::GmlDimsMismatch) if !bozo => {
+                                    had_bozo = true;
+                                    bozo_reason.get_or_insert(GML_DIMS_MISMATCH_BOZO);
+                                    None
+                                }
+                                Err(georss::GmlDimsMismatch) => None,
+                            }
                         });
                     }
                 } else {
@@ -727,7 +760,7 @@ pub fn parse_georss_where(
         buf.clear();
     }
 
-    Ok((geometry, had_bozo))
+    Ok((geometry, had_bozo, bozo_reason))
 }
 
 /// Extract the geometry type, matching end-tag local name, `srsName`, and

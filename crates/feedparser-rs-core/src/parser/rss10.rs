@@ -303,10 +303,14 @@ fn parse_rdf_item(
         &item_base_ctx,
         &feed.namespaces,
     ) {
-        Ok((entry, item_bozo)) => {
+        Ok((entry, item_bozo, bozo_reason)) => {
             if item_bozo && !feed.bozo {
                 feed.bozo = true;
-                feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+                feed.bozo_exception = Some(
+                    bozo_reason
+                        .unwrap_or("Unresolvable entity in entry field")
+                        .to_string(),
+                );
             }
             feed.entries.push(entry);
         }
@@ -439,7 +443,16 @@ fn parse_rss10_channel_namespace(
         syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
     } else if let Some(georss_element) = is_georss_tag(full_name) {
         if georss_element == "where" {
-            let (loc, _had_bozo) = parse_georss_where(ctx.reader, ctx.buf, ctx.limits, depth)?;
+            let (loc, had_bozo, bozo_reason) =
+                parse_georss_where(ctx.reader, ctx.buf, ctx.limits, depth)?;
+            if had_bozo && !feed.bozo {
+                feed.bozo = true;
+                feed.bozo_exception = Some(
+                    bozo_reason
+                        .unwrap_or("Unresolvable entity in feed field")
+                        .to_string(),
+                );
+            }
             if let Some(loc) = loc {
                 georss::merge_geometry(&mut feed.feed.r#where, loc);
             }
@@ -460,8 +473,10 @@ fn parse_rss10_channel_namespace(
 
 /// Parse <item> element (entry)
 ///
-/// Returns `(entry, bozo)`, where `bozo` reflects any unresolved entity
-/// references encountered while reading this item's text fields.
+/// Returns `(entry, bozo, bozo_reason)`, where `bozo` reflects any
+/// unresolved entity reference or GML coordinate/dims mismatch encountered
+/// while reading this item's text fields, and `bozo_reason` is a specific
+/// description when available.
 fn parse_item(
     xml: &mut XmlCtx,
     depth: &mut usize,
@@ -469,7 +484,7 @@ fn parse_item(
     lang: Option<&str>,
     base_ctx: &BaseUrlContext,
     namespaces: &HashMap<String, String>,
-) -> Result<(Entry, bool)> {
+) -> Result<(Entry, bool, Option<&'static str>)> {
     let mut entry = Entry::with_capacity();
     entry.id = item_id.map(std::convert::Into::into);
 
@@ -479,6 +494,7 @@ fn parse_item(
         lang,
         namespaces,
         bozo: false,
+        bozo_reason: None,
         has_explicit_link: false,
         guid_is_permalink: None,
     };
@@ -536,7 +552,7 @@ fn parse_item(
         entry.author = Some(dc.clone());
     }
 
-    Ok((entry, ctx.bozo))
+    Ok((entry, ctx.bozo, ctx.bozo_reason))
 }
 
 /// Parse standard RSS 1.0 item elements: title, link, description.
@@ -652,9 +668,12 @@ fn parse_rss10_item_ns_geo_thr(
 ) -> Result<bool> {
     if let Some(georss_element) = is_georss_tag(full_name) {
         if georss_element == "where" {
-            let (loc, had_bozo) =
+            let (loc, had_bozo, bozo_reason) =
                 parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             ctx.bozo |= had_bozo;
+            if let Some(reason) = bozo_reason {
+                ctx.bozo_reason.get_or_insert(reason);
+            }
             if let Some(loc) = loc {
                 georss::merge_geometry(&mut entry.r#where, loc);
             }

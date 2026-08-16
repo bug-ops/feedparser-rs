@@ -499,7 +499,30 @@ fn parse_box(text: &str) -> Option<GeoLocation> {
 ///
 /// Format: "lat1 lon1 lat2 lon2 ..." (pairs of floats)
 fn parse_coordinates(text: &str) -> Option<Vec<(f64, f64)>> {
-    parse_coordinates_ordered(text, true, 2)
+    parse_coordinates_ordered(text, true, 2).into_option()
+}
+
+/// Outcome of [`parse_coordinates_ordered`], distinguishing a coordinate
+/// count that doesn't divide evenly by `dims` from other malformed input
+/// (non-numeric tokens, out-of-range values, empty text) — the former is a
+/// distinct, more specific "bozo" condition the GML profile callers surface
+/// to the caller instead of collapsing to a generic failure.
+enum CoordParse {
+    /// Successfully parsed coordinate pairs.
+    Ok(Vec<(f64, f64)>),
+    /// Token count present but not a multiple of `dims`.
+    DimsMismatch,
+    /// Empty text, a non-numeric token, or an out-of-range/non-finite value.
+    Invalid,
+}
+
+impl CoordParse {
+    fn into_option(self) -> Option<Vec<(f64, f64)>> {
+        match self {
+            Self::Ok(coords) => Some(coords),
+            Self::DimsMismatch | Self::Invalid => None,
+        }
+    }
 }
 
 /// Parse coordinate tuples, applying the given axis order and dimensionality.
@@ -518,24 +541,27 @@ fn parse_coordinates(text: &str) -> Option<Vec<(f64, f64)>> {
 /// value (including the `GeoRSS` Simple default) chunks by two. Comma
 /// separators (a common non-conformant real-world variant) are normalized
 /// to whitespace before splitting.
-fn parse_coordinates_ordered(
-    text: &str,
-    lat_lon_order: bool,
-    dims: usize,
-) -> Option<Vec<(f64, f64)>> {
+fn parse_coordinates_ordered(text: &str, lat_lon_order: bool, dims: usize) -> CoordParse {
     let dims = if dims == 3 { 3 } else { 2 };
     let normalized = text.replace(',', " ");
     let parts: Vec<&str> = normalized.split_whitespace().collect();
 
-    if parts.is_empty() || !parts.len().is_multiple_of(dims) {
-        return None;
+    if parts.is_empty() {
+        return CoordParse::Invalid;
+    }
+    if !parts.len().is_multiple_of(dims) {
+        return CoordParse::DimsMismatch;
     }
 
     let mut coords = Vec::with_capacity(parts.len() / dims);
 
     for chunk in parts.chunks(dims) {
-        let a = chunk[0].parse::<f64>().ok()?;
-        let b = chunk[1].parse::<f64>().ok()?;
+        let Ok(a) = chunk[0].parse::<f64>() else {
+            return CoordParse::Invalid;
+        };
+        let Ok(b) = chunk[1].parse::<f64>() else {
+            return CoordParse::Invalid;
+        };
         // chunk[2] (present only when dims == 3) is the elevation component;
         // intentionally dropped here — GeoLocation has no z-coordinate slot
         // (see `georss:elev` for the crate's separate elevation field).
@@ -543,16 +569,16 @@ fn parse_coordinates_ordered(
 
         if lat_lon_order {
             if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lon) {
-                return None;
+                return CoordParse::Invalid;
             }
         } else if !lat.is_finite() || !lon.is_finite() {
-            return None;
+            return CoordParse::Invalid;
         }
 
         coords.push((lat, lon));
     }
 
-    Some(coords)
+    CoordParse::Ok(coords)
 }
 
 /// EPSG codes for geographic (latitude/longitude-axis) coordinate reference
@@ -637,12 +663,24 @@ fn srs_uses_lat_lon_order(srs_name: Option<&str>) -> bool {
     }
 }
 
+/// Marker error: a GML geometry's coordinate text was present and non-empty,
+/// but its token count wasn't a multiple of the resolved `srsDimension`.
+///
+/// Returned by [`build_gml_geometry`] and [`build_gml_envelope`] as a
+/// distinct outcome from `Ok(None)` (other malformed input, which stays
+/// silent per the tolerant "bozo" pattern): this specific condition is one
+/// the caller should surface as `bozo = true` with a description, since a
+/// coordinate-count mismatch is otherwise indistinguishable from a feed with
+/// no GML geometry at all (#478).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GmlDimsMismatch;
+
 /// Build a `GeoLocation` from a parsed `GeoRSS` GML profile geometry.
 ///
 /// `geo_type` must be `Point`, `Line`, or `Polygon` — `Box` (`gml:Envelope`)
 /// is handled separately by [`build_gml_envelope`], since it has no
 /// `gml:pos`/`gml:posList` coordinate text; passing `Box` here always
-/// returns `None`. `text` is the raw
+/// returns `Ok(None)`. `text` is the raw
 /// `gml:pos`/`gml:posList` coordinate text; axis order is normalized to
 /// `(latitude, longitude)` using `srs_name` per the referenced CRS's axis
 /// order (geographic CRSes, including the WGS84 default, use `(lat, lon)`;
@@ -653,58 +691,76 @@ fn srs_uses_lat_lon_order(srs_name: Option<&str>) -> bool {
 /// `gml:pos`/`gml:posList`; anything else, including the common absence of
 /// the attribute, means 2D).
 ///
-/// Returns `None` — the tolerant "bozo" pattern — if the coordinate text is
-/// malformed, out of range, or has too few points for `geo_type`; the
+/// Returns `Ok(None)` — the tolerant "bozo" pattern — if the coordinate text
+/// is malformed, out of range, or has too few points for `geo_type`; the
 /// caller should skip the geometry (including `srs_name`, since there is no
-/// geometry left to attach it to) rather than fail parsing.
+/// geometry left to attach it to) rather than fail parsing. Returns
+/// `Err(GmlDimsMismatch)` instead when the coordinate text's token count
+/// wasn't a multiple of the resolved `srsDimension` — a distinct anomaly the
+/// caller should surface as bozo, unlike the other malformed-input cases
+/// collapsed into `Ok(None)`.
+///
+/// # Errors
+///
+/// Returns `Err(GmlDimsMismatch)` when the coordinate text's token count
+/// isn't a multiple of the resolved `srsDimension` — see above.
 ///
 /// # Examples
 ///
 /// ```
-/// use feedparser_rs::namespace::georss::{GeoType, build_gml_geometry};
+/// use feedparser_rs::namespace::georss::{GeoType, GmlDimsMismatch, build_gml_geometry};
 ///
-/// let loc = build_gml_geometry(GeoType::Point, Some("EPSG:4326".to_string()), "45.256 -71.92", 2)
-///     .unwrap();
-/// assert_eq!(loc.coordinates[0], (45.256, -71.92));
+/// let loc =
+///     build_gml_geometry(GeoType::Point, Some("EPSG:4326".to_string()), "45.256 -71.92", 2);
+/// assert_eq!(loc.unwrap().unwrap().coordinates[0], (45.256, -71.92));
 ///
 /// // A projected (non-geographic) EPSG CRS uses (lon, lat) order and gets swapped;
 /// // note projected coordinates are typically meters, not degrees (EPSG:3857 here).
 /// let loc =
-///     build_gml_geometry(GeoType::Point, Some("EPSG:3857".to_string()), "-8004866.0 5675670.0", 2)
-///         .unwrap();
-/// assert_eq!(loc.coordinates[0], (5_675_670.0, -8_004_866.0));
+///     build_gml_geometry(GeoType::Point, Some("EPSG:3857".to_string()), "-8004866.0 5675670.0", 2);
+/// assert_eq!(loc.unwrap().unwrap().coordinates[0], (5_675_670.0, -8_004_866.0));
 ///
 /// // srsDimension="3": the third (elevation) value per tuple is dropped, not
 /// // misaligned into the next tuple's latitude.
-/// let loc = build_gml_geometry(GeoType::Line, None, "45.0 -71.0 10.0 46.0 -72.0 20.0", 3).unwrap();
-/// assert_eq!(loc.coordinates, vec![(45.0, -71.0), (46.0, -72.0)]);
+/// let loc = build_gml_geometry(GeoType::Line, None, "45.0 -71.0 10.0 46.0 -72.0 20.0", 3);
+/// assert_eq!(
+///     loc.unwrap().unwrap().coordinates,
+///     vec![(45.0, -71.0), (46.0, -72.0)]
+/// );
+///
+/// // 5 values isn't a multiple of dims=3 — a distinct bozo condition.
+/// let result = build_gml_geometry(GeoType::Point, None, "45.0 -71.0 10.0 46.0 -72.0", 3);
+/// assert_eq!(result, Err(GmlDimsMismatch));
 /// ```
-#[must_use]
 pub fn build_gml_geometry(
     geo_type: GeoType,
     srs_name: Option<String>,
     text: &str,
     dims: usize,
-) -> Option<GeoLocation> {
+) -> Result<Option<GeoLocation>, GmlDimsMismatch> {
     let min_points = match geo_type {
         GeoType::Point => 1,
         GeoType::Line => 2,
         GeoType::Polygon => 3,
-        GeoType::Box => return None,
+        GeoType::Box => return Ok(None),
     };
 
     let lat_lon_order = srs_uses_lat_lon_order(srs_name.as_deref());
-    let coords = parse_coordinates_ordered(text, lat_lon_order, dims)?;
+    let coords = match parse_coordinates_ordered(text, lat_lon_order, dims) {
+        CoordParse::Ok(coords) => coords,
+        CoordParse::DimsMismatch => return Err(GmlDimsMismatch),
+        CoordParse::Invalid => return Ok(None),
+    };
     if coords.len() < min_points || (geo_type == GeoType::Point && coords.len() != 1) {
-        return None;
+        return Ok(None);
     }
 
-    Some(GeoLocation {
+    Ok(Some(GeoLocation {
         geo_type,
         coordinates: coords,
         srs_name,
         ..Default::default()
-    })
+    }))
 }
 
 /// Build a `GeoLocation` (`GeoType::Box`) from a `GeoRSS` GML profile
@@ -717,39 +773,58 @@ pub fn build_gml_geometry(
 /// `gml:srsDimension` (`3` drops the elevation component per corner;
 /// anything else means 2D).
 ///
-/// Returns `None` — the tolerant "bozo" pattern — if either corner's text is
-/// malformed, out of range, or not a single coordinate tuple; the caller
-/// should skip the geometry rather than fail parsing.
+/// Returns `Ok(None)` — the tolerant "bozo" pattern — if either corner's
+/// text is malformed, out of range, or not a single coordinate tuple; the
+/// caller should skip the geometry rather than fail parsing. Returns
+/// `Err(GmlDimsMismatch)` instead when a corner's token count wasn't a
+/// multiple of the resolved `srsDimension` — a distinct anomaly the caller
+/// should surface as bozo, unlike the other malformed-input cases collapsed
+/// into `Ok(None)`.
+///
+/// # Errors
+///
+/// Returns `Err(GmlDimsMismatch)` when a corner's token count isn't a
+/// multiple of the resolved `srsDimension` — see above.
 ///
 /// # Examples
 ///
 /// ```
 /// use feedparser_rs::namespace::georss::build_gml_envelope;
 ///
-/// let loc = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5", 2).unwrap();
-/// assert_eq!(loc.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+/// let loc = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5", 2);
+/// assert_eq!(
+///     loc.unwrap().unwrap().coordinates,
+///     vec![(42.9, -71.9), (43.1, -71.5)]
+/// );
 /// ```
-#[must_use]
 pub fn build_gml_envelope(
     srs_name: Option<String>,
     lower_text: &str,
     upper_text: &str,
     dims: usize,
-) -> Option<GeoLocation> {
+) -> Result<Option<GeoLocation>, GmlDimsMismatch> {
     let lat_lon_order = srs_uses_lat_lon_order(srs_name.as_deref());
-    let lower = parse_coordinates_ordered(lower_text, lat_lon_order, dims)?;
-    let upper = parse_coordinates_ordered(upper_text, lat_lon_order, dims)?;
+    let lower = match parse_coordinates_ordered(lower_text, lat_lon_order, dims) {
+        CoordParse::Ok(coords) => coords,
+        CoordParse::DimsMismatch => return Err(GmlDimsMismatch),
+        CoordParse::Invalid => return Ok(None),
+    };
+    let upper = match parse_coordinates_ordered(upper_text, lat_lon_order, dims) {
+        CoordParse::Ok(coords) => coords,
+        CoordParse::DimsMismatch => return Err(GmlDimsMismatch),
+        CoordParse::Invalid => return Ok(None),
+    };
 
     if lower.len() != 1 || upper.len() != 1 {
-        return None;
+        return Ok(None);
     }
 
-    Some(GeoLocation {
+    Ok(Some(GeoLocation {
         geo_type: GeoType::Box,
         coordinates: vec![lower[0], upper[0]],
         srs_name,
         ..Default::default()
-    })
+    }))
 }
 
 #[cfg(test)]
@@ -1111,8 +1186,8 @@ mod tests {
             Some("EPSG:4326".to_string()),
             "45.256 -71.92",
             2,
-        )
-        .unwrap();
+        );
+        let loc = loc.unwrap().unwrap();
         assert_eq!(loc.geo_type, GeoType::Point);
         assert_eq!(loc.coordinates, vec![(45.256, -71.92)]);
         assert_eq!(loc.srs_name.as_deref(), Some("EPSG:4326"));
@@ -1120,7 +1195,8 @@ mod tests {
 
     #[test]
     fn test_build_gml_geometry_point_no_srs_name_defaults_lat_lon() {
-        let loc = build_gml_geometry(GeoType::Point, None, "45.256 -71.92", 2).unwrap();
+        let loc = build_gml_geometry(GeoType::Point, None, "45.256 -71.92", 2);
+        let loc = loc.unwrap().unwrap();
         assert_eq!(loc.coordinates, vec![(45.256, -71.92)]);
         assert_eq!(loc.srs_name, None);
     }
@@ -1135,17 +1211,18 @@ mod tests {
             Some("EPSG:3857".to_string()),
             "-8004866.0 5675670.0",
             2,
-        )
-        .unwrap();
-        assert_eq!(loc.coordinates, vec![(5_675_670.0, -8_004_866.0)]);
+        );
+        assert_eq!(
+            loc.unwrap().unwrap().coordinates,
+            vec![(5_675_670.0, -8_004_866.0)]
+        );
     }
 
     #[test]
     fn test_build_gml_geometry_projected_crs_rejects_non_finite() {
-        assert!(
-            build_gml_geometry(GeoType::Point, Some("EPSG:3857".to_string()), "NaN NaN", 2)
-                .is_none()
-        );
+        let result =
+            build_gml_geometry(GeoType::Point, Some("EPSG:3857".to_string()), "NaN NaN", 2);
+        assert_eq!(result, Ok(None));
     }
 
     #[test]
@@ -1155,8 +1232,8 @@ mod tests {
             Some("urn:ogc:def:crs:EPSG::4326".to_string()),
             "45.256 -71.92 46.0 -72.0",
             2,
-        )
-        .unwrap();
+        );
+        let loc = loc.unwrap().unwrap();
         assert_eq!(loc.geo_type, GeoType::Line);
         assert_eq!(loc.coordinates.len(), 2);
     }
@@ -1165,44 +1242,53 @@ mod tests {
     fn test_build_gml_geometry_srs_dimension_3_drops_elevation() {
         // C1: dims=3 must chunk by 3 and drop the elevation component,
         // never let it corrupt the next tuple's latitude.
-        let loc =
-            build_gml_geometry(GeoType::Line, None, "45.0 -71.0 10.0 46.0 -72.0 20.0", 3).unwrap();
-        assert_eq!(loc.coordinates, vec![(45.0, -71.0), (46.0, -72.0)]);
-    }
-
-    #[test]
-    fn test_build_gml_geometry_srs_dimension_mismatch_is_none() {
-        // 5 values isn't a multiple of dims=3 — must not silently misalign.
-        assert!(
-            build_gml_geometry(GeoType::Point, None, "45.0 -71.0 10.0 46.0 -72.0", 3).is_none()
+        let loc = build_gml_geometry(GeoType::Line, None, "45.0 -71.0 10.0 46.0 -72.0 20.0", 3);
+        assert_eq!(
+            loc.unwrap().unwrap().coordinates,
+            vec![(45.0, -71.0), (46.0, -72.0)]
         );
     }
 
     #[test]
+    fn test_build_gml_geometry_srs_dimension_mismatch_sets_bozo() {
+        // 5 values isn't a multiple of dims=3 — must not silently misalign,
+        // and must surface as bozo instead of being indistinguishable from a
+        // feed with no GML geometry at all (#478).
+        let result = build_gml_geometry(GeoType::Point, None, "45.0 -71.0 10.0 46.0 -72.0", 3);
+        assert_eq!(result, Err(GmlDimsMismatch));
+    }
+
+    #[test]
     fn test_build_gml_geometry_comma_separated_coordinates() {
-        let loc = build_gml_geometry(GeoType::Point, None, "45.256,-71.92", 2).unwrap();
-        assert_eq!(loc.coordinates, vec![(45.256, -71.92)]);
+        let loc = build_gml_geometry(GeoType::Point, None, "45.256,-71.92", 2);
+        assert_eq!(loc.unwrap().unwrap().coordinates, vec![(45.256, -71.92)]);
     }
 
     #[test]
     fn test_build_gml_geometry_polygon_too_few_points() {
-        assert!(build_gml_geometry(GeoType::Polygon, None, "45.0 -71.0 46.0 -71.0", 2).is_none());
+        let result = build_gml_geometry(GeoType::Polygon, None, "45.0 -71.0 46.0 -71.0", 2);
+        assert_eq!(result, Ok(None));
     }
 
     #[test]
     fn test_build_gml_geometry_box_unsupported() {
-        assert!(build_gml_geometry(GeoType::Box, None, "45.0 -71.0 46.0 -71.0", 2).is_none());
+        let result = build_gml_geometry(GeoType::Box, None, "45.0 -71.0 46.0 -71.0", 2);
+        assert_eq!(result, Ok(None));
     }
 
     #[test]
     fn test_build_gml_geometry_malformed_text() {
-        assert!(build_gml_geometry(GeoType::Point, None, "not numbers", 2).is_none());
-        assert!(build_gml_geometry(GeoType::Point, None, "", 2).is_none());
+        assert_eq!(
+            build_gml_geometry(GeoType::Point, None, "not numbers", 2),
+            Ok(None)
+        );
+        assert_eq!(build_gml_geometry(GeoType::Point, None, "", 2), Ok(None));
     }
 
     #[test]
     fn test_build_gml_envelope() {
-        let loc = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5", 2).unwrap();
+        let loc = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5", 2);
+        let loc = loc.unwrap().unwrap();
         assert_eq!(loc.geo_type, GeoType::Box);
         assert_eq!(loc.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
     }
@@ -1214,29 +1300,42 @@ mod tests {
             "-8004866.0 5675670.0",
             "-8000000.0 5680000.0",
             2,
-        )
-        .unwrap();
+        );
         assert_eq!(
-            loc.coordinates,
+            loc.unwrap().unwrap().coordinates,
             vec![(5_675_670.0, -8_004_866.0), (5_680_000.0, -8_000_000.0)]
         );
     }
 
     #[test]
     fn test_build_gml_envelope_srs_dimension_3_drops_elevation() {
-        let loc = build_gml_envelope(None, "42.9 -71.9 10.0", "43.1 -71.5 20.0", 3).unwrap();
-        assert_eq!(loc.coordinates, vec![(42.9, -71.9), (43.1, -71.5)]);
+        let loc = build_gml_envelope(None, "42.9 -71.9 10.0", "43.1 -71.5 20.0", 3);
+        assert_eq!(
+            loc.unwrap().unwrap().coordinates,
+            vec![(42.9, -71.9), (43.1, -71.5)]
+        );
     }
 
     #[test]
     fn test_build_gml_envelope_malformed_corner() {
-        assert!(build_gml_envelope(None, "not numbers", "43.1 -71.5", 2).is_none());
-        assert!(build_gml_envelope(None, "42.9 -71.9", "", 2).is_none());
+        assert_eq!(
+            build_gml_envelope(None, "not numbers", "43.1 -71.5", 2),
+            Ok(None)
+        );
+        assert_eq!(build_gml_envelope(None, "42.9 -71.9", "", 2), Ok(None));
     }
 
     #[test]
     fn test_build_gml_envelope_corner_wrong_arity() {
         // Each corner must be exactly one coordinate tuple.
-        assert!(build_gml_envelope(None, "42.9 -71.9 43.1 -71.5", "43.1 -71.5", 2).is_none());
+        let result = build_gml_envelope(None, "42.9 -71.9 43.1 -71.5", "43.1 -71.5", 2);
+        assert_eq!(result, Ok(None));
+    }
+
+    #[test]
+    fn test_build_gml_envelope_dims_mismatch_sets_bozo() {
+        // Lower corner has 2 values, not a multiple of dims=3 (#478).
+        let result = build_gml_envelope(None, "42.9 -71.9", "43.1 -71.5 20.0", 3);
+        assert_eq!(result, Err(GmlDimsMismatch));
     }
 }
