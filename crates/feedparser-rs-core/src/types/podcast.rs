@@ -249,6 +249,9 @@ pub struct PodcastValue {
     pub recipients: Vec<PodcastValueRecipient>,
     /// Time-bounded payment splits for pre-recorded remote content
     /// (podcast:valueTimeSplit)
+    ///
+    /// A self-closing `<podcast:valueTimeSplit/>` carries no children worth
+    /// keeping and is silently dropped rather than producing an empty entry.
     pub time_splits: Vec<PodcastValueTimeSplit>,
 }
 
