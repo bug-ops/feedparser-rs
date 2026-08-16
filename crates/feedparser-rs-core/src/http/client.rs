@@ -17,6 +17,11 @@ use std::time::Duration;
 /// enforces it explicitly alongside SSRF re-validation.
 const MAX_REDIRECTS: usize = 10;
 
+/// Default per-request timeout used both to build the underlying
+/// `reqwest::blocking::Client` in [`FeedHttpClient::new`] and to seed
+/// [`FeedHttpClient::timeout`], so the two never drift apart.
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// HTTP client for fetching feeds
 pub struct FeedHttpClient {
     client: Client,
@@ -44,7 +49,7 @@ impl FeedHttpClient {
     /// Returns `FeedError::Http` if the underlying HTTP client cannot be created.
     pub fn new() -> Result<Self> {
         let client = Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(DEFAULT_TIMEOUT)
             .gzip(true)
             .deflate(true)
             .brotli(true)
@@ -62,7 +67,7 @@ impl FeedHttpClient {
                 "feedparser-rs/{} (+https://github.com/bug-ops/feedparser-rs)",
                 env!("CARGO_PKG_VERSION")
             ),
-            timeout: Duration::from_secs(30),
+            timeout: DEFAULT_TIMEOUT,
         })
     }
 
@@ -144,10 +149,24 @@ impl FeedHttpClient {
         self
     }
 
-    /// Sets request timeout
+    /// Sets the per-request timeout applied to every [`Self::get`] call.
+    ///
+    /// The value is a total deadline covering connection, all redirect hops,
+    /// and the full response body — not a per-hop timeout. `Duration::ZERO`
+    /// means "time out immediately", not "disable the timeout"; this API has
+    /// no way to disable it entirely. Values above one hour are clamped to
+    /// one hour: `reqwest`'s blocking wait computes its deadline as
+    /// `Instant::now() + timeout` without an overflow check, so passing
+    /// `Duration::MAX` (or another value near the `Instant` range limit)
+    /// would otherwise panic instead of erroring.
     #[must_use]
     pub const fn with_timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = timeout;
+        const MAX_TIMEOUT_SECS: u64 = 3600;
+        self.timeout = if timeout.as_secs() > MAX_TIMEOUT_SECS {
+            Duration::from_secs(MAX_TIMEOUT_SECS)
+        } else {
+            timeout
+        };
         self
     }
 
@@ -245,16 +264,41 @@ impl FeedHttpClient {
             headers.extend(extra.clone());
         }
 
-        let response = self
-            .client
-            .get(url_str)
-            .headers(headers)
-            .send()
-            .map_err(|e| FeedError::Http {
-                message: format!("HTTP request failed: {}", Self::describe_request_error(&e)),
-            })?;
+        let request = self.build_request(url_str, headers)?;
+
+        let response = self.client.execute(request).map_err(|e| FeedError::Http {
+            message: format!("HTTP request failed: {}", Self::describe_request_error(&e)),
+        })?;
 
         Self::build_response(response, url_str)
+    }
+
+    /// Builds the GET request for `url_str` with `headers`, applying the
+    /// configured per-request timeout.
+    ///
+    /// Extracted from [`Self::get`] so the built [`reqwest::blocking::Request`]
+    /// can be inspected directly in tests (via [`reqwest::blocking::Request::timeout`])
+    /// without a network round trip.
+    ///
+    /// # Errors
+    ///
+    /// Returns `FeedError::Http` if the request cannot be constructed.
+    fn build_request(
+        &self,
+        url_str: &str,
+        headers: HeaderMap,
+    ) -> Result<reqwest::blocking::Request> {
+        self.client
+            .get(url_str)
+            .headers(headers)
+            .timeout(self.timeout)
+            .build()
+            .map_err(|e| FeedError::Http {
+                message: format!(
+                    "Failed to build request: {}",
+                    Self::describe_request_error(&e)
+                ),
+            })
     }
 
     /// Converts `reqwest` Response to `FeedHttpResponse`
@@ -496,6 +540,110 @@ mod tests {
         let timeout = Duration::from_secs(60);
         let client = FeedHttpClient::new().unwrap().with_timeout(timeout);
         assert_eq!(client.timeout, timeout);
+    }
+
+    #[test]
+    fn test_with_timeout_clamps_absurd_duration() {
+        // `Duration::MAX` would overflow `Instant::now() + timeout` inside
+        // reqwest's blocking wait and panic; it must be clamped instead.
+        let client = FeedHttpClient::new().unwrap().with_timeout(Duration::MAX);
+        assert_eq!(client.timeout, Duration::from_secs(3600));
+    }
+
+    #[test]
+    fn test_build_request_applies_configured_timeout() {
+        // Deterministic, network-free complement to the end-to-end tests
+        // below: asserts the timeout is actually wired onto the built
+        // request, not just stored on the struct.
+        let timeout = Duration::from_secs(7);
+        let client = FeedHttpClient::new().unwrap().with_timeout(timeout);
+        let request = client
+            .build_request("http://example.test/feed.xml", HeaderMap::new())
+            .unwrap();
+        assert_eq!(request.timeout(), Some(&timeout));
+    }
+
+    // === Timeout enforcement tests (regression for #451) ===
+
+    #[test]
+    #[allow(clippy::significant_drop_tightening)]
+    fn test_with_timeout_enforced_on_slow_response() {
+        let mut server = mockito::Server::new();
+        let addr = server.socket_address();
+
+        let mock = server
+            .mock("GET", "/slow")
+            .with_chunked_body(|w| {
+                std::thread::sleep(Duration::from_millis(500));
+                w.write_all(b"too slow")
+            })
+            .create();
+
+        // Uses the "public.test" + `.resolve()` trick from the redirect
+        // tests above to drive `FeedHttpClient::get` end-to-end (including
+        // `validate_url`, which would reject the mock server's real
+        // loopback address) while actually connecting to the mock.
+        let raw_client = Client::builder()
+            .dns_resolver(Arc::new(SsrfSafeResolver))
+            .resolve("public.test", addr)
+            .build()
+            .unwrap();
+
+        let client = FeedHttpClient {
+            client: raw_client,
+            user_agent: "test-agent".to_string(),
+            timeout: Duration::from_millis(100),
+        };
+
+        let url = format!("http://public.test:{}/slow", addr.port());
+        let started = std::time::Instant::now();
+        client
+            .get(&url, None, None, None)
+            .expect_err("a response slower than the configured 100ms timeout must fail");
+        let elapsed = started.elapsed();
+
+        // The mock sleeps 500ms before writing its body. Without the fix,
+        // `self.timeout` is never passed to the request builder, so this
+        // request would block for the full 500ms and succeed. Failing well
+        // before that proves `with_timeout` is actually enforced on `get`.
+        assert!(
+            elapsed < Duration::from_millis(400),
+            "request did not fail until {elapsed:?}; timeout was not enforced"
+        );
+        mock.assert();
+    }
+
+    #[test]
+    #[allow(clippy::significant_drop_tightening)]
+    fn test_with_timeout_allows_fast_response() {
+        let mut server = mockito::Server::new();
+        let addr = server.socket_address();
+
+        let mock = server
+            .mock("GET", "/fast")
+            .with_status(200)
+            .with_body("ok")
+            .create();
+
+        let raw_client = Client::builder()
+            .dns_resolver(Arc::new(SsrfSafeResolver))
+            .resolve("public.test", addr)
+            .build()
+            .unwrap();
+
+        let client = FeedHttpClient {
+            client: raw_client,
+            user_agent: "test-agent".to_string(),
+            timeout: Duration::from_secs(5),
+        };
+
+        let url = format!("http://public.test:{}/fast", addr.port());
+        let response = client
+            .get(&url, None, None, None)
+            .expect("a response faster than the configured timeout must succeed");
+
+        assert_eq!(response.status, 200);
+        mock.assert();
     }
 
     // SSRF protection tests
