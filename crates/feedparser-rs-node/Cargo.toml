@@ -13,6 +13,7 @@ description = "Node.js bindings for feedparser-rs-core"
 crate-type = ["cdylib"]
 
 [dependencies]
+chrono = { workspace = true, features = ["std"] }
 feedparser-rs = { path = "../feedparser-rs-core" }
 napi = { workspace = true, features = ["napi9", "error_anyhow"] }
 napi-derive = { workspace = true }
@@ -23,3 +24,6 @@ http = ["feedparser-rs/http"]
 
 [build-dependencies]
 napi-build = "2.3"
+
+[lints]
+workspace = true

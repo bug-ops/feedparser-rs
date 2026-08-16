@@ -1,7 +1,9 @@
-#![deny(clippy::all)]
+//! Node.js bindings for `feedparser-rs`, exposing the RSS/Atom/JSON Feed parser to
+//! JavaScript/TypeScript consumers via `napi-rs`.
 
 mod error;
 
+use chrono::{DateTime, Utc};
 use error::convert_feed_error;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
@@ -25,8 +27,16 @@ use feedparser_rs::{
     TextInput as CoreTextInput, TextType,
 };
 
-/// Default maximum feed size (100 MB) - prevents DoS attacks
+/// Default maximum feed size (100 MB) - prevents `DoS` attacks
 const DEFAULT_MAX_FEED_SIZE: usize = 100 * 1024 * 1024;
+
+/// Converts a timestamp to milliseconds since the epoch as `f64`, the numeric type JS uses
+/// for all `Date` values. Precision loss only occurs for dates far beyond any real feed
+/// timestamp (`f64` exactly represents millisecond timestamps up to roughly year 287396).
+#[allow(clippy::cast_precision_loss)]
+const fn timestamp_millis_f64(dt: DateTime<Utc>) -> f64 {
+    dt.timestamp_millis() as f64
+}
 
 /// Parsing options accepted by `parseWithOptions` and `parseUrlWithOptions`
 ///
@@ -68,7 +78,7 @@ impl ParseOptions {
 ///
 /// # Arguments
 ///
-/// * `source` - Feed content as Buffer, string, or Uint8Array
+/// * `source` - Feed content as Buffer, string, or `Uint8Array`
 ///
 /// # Returns
 ///
@@ -86,7 +96,7 @@ pub fn parse(source: Either<Buffer, String>) -> Result<ParsedFeed> {
 ///
 /// # Arguments
 ///
-/// * `source` - Feed content as Buffer, string, or Uint8Array
+/// * `source` - Feed content as Buffer, string, or `Uint8Array`
 /// * `options` - Optional parsing options (max size, HTML sanitization, URI resolution)
 ///
 /// # Returns
@@ -96,6 +106,9 @@ pub fn parse(source: Either<Buffer, String>) -> Result<ParsedFeed> {
 /// # Errors
 ///
 /// Returns error if input exceeds size limit or parsing fails catastrophically
+// napi FFI boundary: exported functions must take owned values (napi-rs cannot bind
+// `&Either<..>`/`&str` for these types), so the value isn't consumed on every path.
+#[allow(clippy::needless_pass_by_value)]
 #[napi]
 pub fn parse_with_options(
     source: Either<Buffer, String>,
@@ -133,11 +146,13 @@ pub fn parse_with_options(
 ///
 /// # Arguments
 ///
-/// * `source` - Feed content as Buffer, string, or Uint8Array
+/// * `source` - Feed content as Buffer, string, or `Uint8Array`
 ///
 /// # Returns
 ///
 /// Feed version string (e.g., "rss20", "atom10")
+// napi FFI boundary: exported functions must take owned values.
+#[allow(clippy::needless_pass_by_value)]
 #[napi]
 pub fn detect_format(source: Either<Buffer, String>) -> String {
     let bytes: &[u8] = match &source {
@@ -153,12 +168,12 @@ pub fn detect_format(source: Either<Buffer, String>) -> String {
 /// Parse feed from HTTP/HTTPS URL with conditional GET support
 ///
 /// Fetches the feed from the given URL and parses it. Supports conditional GET
-/// using ETag and Last-Modified headers for bandwidth-efficient caching.
+/// using `ETag` and Last-Modified headers for bandwidth-efficient caching.
 ///
 /// # Arguments
 ///
 /// * `url` - HTTP or HTTPS URL to fetch
-/// * `etag` - Optional ETag from previous fetch for conditional GET
+/// * `etag` - Optional `ETag` from previous fetch for conditional GET
 /// * `modified` - Optional Last-Modified timestamp from previous fetch
 /// * `user_agent` - Optional custom User-Agent header
 ///
@@ -167,11 +182,15 @@ pub fn detect_format(source: Either<Buffer, String>) -> String {
 /// Parsed feed result with HTTP metadata fields populated:
 /// - `status`: HTTP status code (200, 304, etc.)
 /// - `href`: Final URL after redirects
-/// - `etag`: ETag header value (for next request)
+/// - `etag`: `ETag` header value (for next request)
 /// - `modified`: Last-Modified header value (for next request)
 /// - `headers`: Full HTTP response headers
 ///
 /// On 304 Not Modified, returns a feed with empty entries but status=304.
+///
+/// # Errors
+///
+/// Returns error if the URL is invalid, the request fails, or parsing fails catastrophically
 ///
 /// # Examples
 ///
@@ -194,6 +213,9 @@ pub fn detect_format(source: Either<Buffer, String>) -> String {
 ///   console.log("Feed not modified, use cached version");
 /// }
 /// ```
+// napi FFI boundary: exported functions must take owned values (napi-rs cannot bind
+// JS string arguments by reference).
+#[allow(clippy::needless_pass_by_value)]
 #[cfg(feature = "http")]
 #[napi]
 pub fn parse_url(
@@ -215,8 +237,12 @@ pub fn parse_url(
 
 /// Parse feed from URL with custom options
 ///
-/// Like `parseUrl` but allows specifying custom options for DoS protection,
+/// Like `parseUrl` but allows specifying custom options for `DoS` protection,
 /// HTML sanitization, and relative URI resolution.
+///
+/// # Errors
+///
+/// Returns error if the URL is invalid, the request fails, or parsing fails catastrophically
 ///
 /// # Examples
 ///
@@ -231,6 +257,9 @@ pub fn parse_url(
 ///   { maxSize: 10485760 } // 10MB
 /// );
 /// ```
+// napi FFI boundary: exported functions must take owned values (napi-rs cannot bind
+// JS string arguments by reference).
+#[allow(clippy::needless_pass_by_value)]
 #[cfg(feature = "http")]
 #[napi]
 pub fn parse_url_with_options(
@@ -277,7 +306,7 @@ pub struct ParsedFeed {
     pub status: Option<u32>,
     /// Final URL after redirects (if fetched from URL)
     pub href: Option<String>,
-    /// ETag header from HTTP response
+    /// `ETag` header from HTTP response
     pub etag: Option<String>,
     /// Last-Modified header from HTTP response
     pub modified: Option<String>,
@@ -300,7 +329,7 @@ impl From<CoreParsedFeed> for ParsedFeed {
             encoding: core.encoding,
             version: core.version.to_string(),
             namespaces: core.namespaces,
-            status: core.status.map(|s| s as u32),
+            status: core.status.map(u32::from),
             href: core.href,
             etag: core.etag,
             modified: core.modified,
@@ -332,7 +361,7 @@ impl From<CoreSyndicationMeta> for SyndicationMeta {
     fn from(core: CoreSyndicationMeta) -> Self {
         Self {
             update_period: core.update_period.map(|p| p.as_str().to_string()),
-            update_frequency: core.update_frequency.clone(),
+            update_frequency: core.update_frequency,
             update_base: core.update_base,
         }
     }
@@ -416,7 +445,7 @@ pub struct FeedMeta {
     /// Dublin Core rights (copyright)
     #[napi(js_name = "dcRights")]
     pub dc_rights: Option<String>,
-    /// Geographic location (GeoRSS), exposed as `where` per Python feedparser API
+    /// Geographic location (`GeoRSS`), exposed as `where` per Python feedparser API
     #[napi(js_name = "where")]
     pub r#where: Option<GeoLocation>,
     /// W3C Basic Geo latitude (`geo:lat`)
@@ -429,7 +458,7 @@ pub struct FeedMeta {
     pub itunes: Option<ItunesFeedMeta>,
     /// Podcast 2.0 metadata
     pub podcast: Option<PodcastMeta>,
-    /// JSON Feed next_url for pagination (JSON Feed 1.1)
+    /// JSON Feed `next_url` for pagination (JSON Feed 1.1)
     pub next_url: Option<String>,
     /// Media RSS thumbnails at feed/channel level
     #[napi(js_name = "mediaThumbnails")]
@@ -465,9 +494,9 @@ impl From<CoreFeedMeta> for FeedMeta {
             summary: core.summary,
             summary_detail: core.summary_detail.map(TextConstruct::from),
             updated: core.updated_str,
-            updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
+            updated_parsed: core.updated.map(timestamp_millis_f64),
             published: core.published_str,
-            published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
+            published_parsed: core.published.map(timestamp_millis_f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
@@ -483,7 +512,7 @@ impl From<CoreFeedMeta> for FeedMeta {
             icon: core.icon,
             logo: core.logo,
             tags: core.tags.into_iter().map(Tag::from).collect(),
-            id: core.id.map(|s| s.to_string()),
+            id: core.id,
             ttl: core.ttl,
             docs: core.docs,
             license: core.license,
@@ -657,7 +686,7 @@ pub struct Entry {
     pub podcast_persons: Vec<PodcastPerson>,
     /// License URL (Creative Commons, etc.)
     pub license: Option<String>,
-    /// Geographic location (GeoRSS), exposed as `where` per Python feedparser API
+    /// Geographic location (`GeoRSS`), exposed as `where` per Python feedparser API
     #[napi(js_name = "where")]
     pub r#where: Option<GeoLocation>,
     /// W3C Basic Geo latitude (`geo:lat`)
@@ -753,13 +782,13 @@ impl From<CoreEntry> for Entry {
             summary_detail: core.summary_detail.map(TextConstruct::from),
             content: core.content.into_iter().map(Content::from).collect(),
             published: core.published_str,
-            published_parsed: core.published.map(|dt| dt.timestamp_millis() as f64),
+            published_parsed: core.published.map(timestamp_millis_f64),
             updated: core.updated_str,
-            updated_parsed: core.updated.map(|dt| dt.timestamp_millis() as f64),
-            created: core.created_str.clone(),
-            created_parsed: core.created.map(|dt| dt.timestamp_millis() as f64),
-            expired: core.expired.as_ref().map(|dt| dt.to_rfc3339()),
-            expired_parsed: core.expired.map(|dt| dt.timestamp_millis() as f64),
+            updated_parsed: core.updated.map(timestamp_millis_f64),
+            created: core.created_str,
+            created_parsed: core.created.map(timestamp_millis_f64),
+            expired: core.expired.as_ref().map(DateTime::to_rfc3339),
+            expired_parsed: core.expired.map(timestamp_millis_f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
             authors: core.authors.into_iter().map(Person::from).collect(),
@@ -786,7 +815,7 @@ impl From<CoreEntry> for Entry {
             geo_long: core.geo_long,
             dc_creator: core.dc_creator.map(|s| s.to_string()),
             dc_date: core.dc_date.map(|dt| dt.to_rfc3339()),
-            dc_date_parsed: core.dc_date.map(|dt| dt.timestamp_millis() as f64),
+            dc_date_parsed: core.dc_date.map(timestamp_millis_f64),
             dc_subject: core.dc_subject,
             dc_rights: core.dc_rights,
             media_thumbnail: core
@@ -887,8 +916,8 @@ impl From<CoreLink> for Link {
             length: core.length,
             hreflang: core.hreflang.map(|s| s.to_string()),
             thr_count: core.thr_count,
-            thr_updated: core.thr_updated.as_ref().map(|dt| dt.to_rfc3339()),
-            thr_updated_parsed: core.thr_updated.map(|dt| dt.timestamp_millis() as f64),
+            thr_updated: core.thr_updated.as_ref().map(DateTime::to_rfc3339),
+            thr_updated_parsed: core.thr_updated.map(timestamp_millis_f64),
         }
     }
 }
@@ -910,7 +939,7 @@ impl From<CorePerson> for Person {
     fn from(core: CorePerson) -> Self {
         Self {
             name: core.name.map(|s| s.to_string()),
-            email: core.email.map(|e| e.into_inner()),
+            email: core.email.map(core::Email::into_inner),
             href: core.uri,
             avatar: core.avatar,
         }
@@ -941,20 +970,29 @@ impl From<CoreTag> for Tag {
 /// RSS 2.0 cloud subscription endpoint
 #[napi(object)]
 pub struct Cloud {
+    /// Cloud server domain
     pub domain: Option<String>,
+    /// Cloud server port
     pub port: Option<String>,
+    /// Cloud server path
     pub path: Option<String>,
+    /// Remote procedure to call for registration
     #[napi(js_name = "registerprocedure")]
     pub register_procedure: Option<String>,
+    /// Protocol used for notifications (e.g., "xml-rpc", "soap", "http-post")
     pub protocol: Option<String>,
 }
 
 /// RSS 2.0 text input form
 #[napi(object)]
 pub struct TextInput {
+    /// Text input field label
     pub title: Option<String>,
+    /// Text input field description
     pub description: Option<String>,
+    /// Text input field name (for form submission)
     pub name: Option<String>,
+    /// URL to submit the text input to
     pub link: Option<String>,
 }
 
@@ -1121,7 +1159,7 @@ impl From<CoreSource> for Source {
             href: core.href,
             link: core.link,
             author: core.author,
-            id: core.id.map(|s| s.to_string()),
+            id: core.id,
             links: core.links.into_iter().map(Link::from).collect(),
             updated: core.updated_str,
             rights: core.rights,
@@ -1130,7 +1168,7 @@ impl From<CoreSource> for Source {
     }
 }
 
-/// Geographic location from GeoRSS namespace
+/// Geographic location from `GeoRSS` namespace
 #[napi(object)]
 pub struct GeoLocation {
     /// Type of geographic shape ("point", "line", "polygon", "box")
@@ -1138,7 +1176,7 @@ pub struct GeoLocation {
     pub geo_type: String,
     /// Coordinate pairs as nested array [[lat, lng], ...]
     ///
-    /// Format depends on geo_type:
+    /// Format depends on `geo_type`:
     /// - "point": Single pair [[lat, lng]]
     /// - "line": Two or more pairs [[lat1, lng1], [lat2, lng2], ...]
     /// - "box": Two pairs [[lower-left-lat, lower-left-lng], [upper-right-lat, upper-right-lng]]
@@ -1341,7 +1379,7 @@ pub struct ItunesFeedMeta {
 impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
     fn from(core: CoreItunesFeedMeta) -> Self {
         Self {
-            author: core.author.map(|s| s.to_string()),
+            author: core.author,
             owner: core.owner.map(ItunesOwner::from),
             categories: core
                 .categories
@@ -1349,11 +1387,11 @@ impl From<CoreItunesFeedMeta> for ItunesFeedMeta {
                 .map(ItunesCategory::from)
                 .collect(),
             explicit: core.explicit,
-            image: core.image.map(|u| u.into_inner()),
+            image: core.image.map(core::Url::into_inner),
             keywords: core.keywords,
             podcast_type: core.podcast_type,
             complete: core.complete,
-            new_feed_url: core.new_feed_url.map(|u| u.into_inner()),
+            new_feed_url: core.new_feed_url.map(core::Url::into_inner),
             block: core.block,
         }
     }
@@ -1371,7 +1409,7 @@ pub struct ItunesOwner {
 impl From<CoreItunesOwner> for ItunesOwner {
     fn from(core: CoreItunesOwner) -> Self {
         Self {
-            name: core.name.map(|s| s.to_string()),
+            name: core.name,
             email: core.email,
         }
     }
@@ -1425,10 +1463,10 @@ impl From<CoreItunesEntryMeta> for ItunesEntryMeta {
     fn from(core: CoreItunesEntryMeta) -> Self {
         Self {
             title: core.title,
-            author: core.author.map(|s| s.to_string()),
+            author: core.author,
             duration: core.duration,
             explicit: core.explicit,
-            image: core.image.map(|u| u.into_inner()),
+            image: core.image.map(core::Url::into_inner),
             episode: core.episode,
             season: core.season,
             episode_type: core.episode_type,
@@ -1524,7 +1562,7 @@ pub struct PodcastValueRecipient {
 impl From<CorePodcastValueRecipient> for PodcastValueRecipient {
     fn from(core: CorePodcastValueRecipient) -> Self {
         Self {
-            name: core.name.map(|s| s.to_string()),
+            name: core.name,
             recipient_type: core.type_,
             address: core.address,
             split: core.split,
@@ -1658,8 +1696,8 @@ impl From<CorePodcastTranscript> for PodcastTranscript {
         Self {
             url: core.url.into_inner(),
             transcript_type: core.transcript_type.map(|t| t.to_string()),
-            language: core.language.map(|s| s.to_string()),
-            rel: core.rel.map(|s| s.to_string()),
+            language: core.language,
+            rel: core.rel,
         }
     }
 }
@@ -1689,8 +1727,8 @@ impl From<CorePodcastPerson> for PodcastPerson {
             name: core.name,
             role: core.role,
             group: core.group,
-            img: core.img.map(|u| u.into_inner()),
-            href: core.href.map(|u| u.into_inner()),
+            img: core.img.map(core::Url::into_inner),
+            href: core.href.map(core::Url::into_inner),
         }
     }
 }
