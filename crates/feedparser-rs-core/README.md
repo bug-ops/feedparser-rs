@@ -13,6 +13,7 @@ This is the core parsing library that powers the Python and Node.js bindings.
 
 - **Multi-format**: RSS 0.9x/1.0/2.0, Atom 0.3/1.0, JSON Feed 1.0/1.1
 - **Tolerant**: Bozo flag for graceful handling of malformed feeds
+- **Sanitized by default**: HTML-bearing fields are sanitized against XSS unless explicitly disabled via `ParseOptions`
 - **Fast**: Native Rust performance (200+ MB/s throughput)
 - **Safe**: No unsafe code, comprehensive error handling
 - **HTTP support**: Fetch feeds from URLs with compression and conditional GET
@@ -30,7 +31,7 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.5"
+feedparser-rs = "0.6"
 ```
 
 > [!IMPORTANT]
@@ -92,7 +93,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.5", default-features = false }
+feedparser-rs = { version = "0.6", default-features = false }
 ```
 
 ## Cargo Features
@@ -137,6 +138,32 @@ let feed = parse_with_limits(xml.as_bytes(), limits)?;
 
 > [!NOTE]
 > Default limits are generous for typical feeds. Use `ParserLimits::strict()` for untrusted input.
+
+## Full Control with `ParseOptions`
+
+`parse_with_options`/`parse_url_with_options` expose every knob in one call: HTML sanitization,
+relative URI resolution, and `ParserLimits`. `parse`/`parse_with_limits` (and their `parse_url*`
+counterparts) are thin wrappers over these with sanitization and URI resolution both enabled.
+
+```rust
+use feedparser_rs::{parse_with_options, ParseOptions, ParserLimits};
+
+let xml = b"<rss version=\"2.0\"><channel><title>Trusted Feed</title></channel></rss>";
+
+let options = ParseOptions {
+    sanitize_html: false, // Trust this feed source; skips the sanitizer pass
+    resolve_relative_uris: true,
+    limits: ParserLimits::strict(),
+};
+
+let feed = parse_with_options(xml, &options)?;
+# Ok::<(), feedparser_rs::FeedError>(())
+```
+
+> [!IMPORTANT]
+> `sanitize_html` defaults to `true`: HTML-bearing fields (titles, summaries, `content:encoded`,
+> etc.) are sanitized against XSS by default, matching Python feedparser's sanitizer coverage.
+> Disable it only for feed sources you fully trust.
 
 ## Benchmarks
 

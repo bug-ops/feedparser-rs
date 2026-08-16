@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-17
+
 ### Security
 
 - Close an SSRF protection bypass in `FeedHttpClient` (CWE-918, #436): HTTP redirects (`Location` headers) are now re-validated against the same SSRF checks as the initial request, and DNS resolution results are re-checked at connect time via a custom resolver, closing a DNS-rebinding gap where a domain resolving to a public IP at validation time could be repointed to a private/loopback/link-local/metadata address before the connection was made. Also consolidated `util::base_url::is_safe_url` to reuse the same validation rules as `http::validation::validate_url` instead of a separate, weaker, duplicated implementation.
@@ -174,15 +176,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.5.1] - 2026-03-24
 
-### Changed
-
-- **BREAKING**: `PodcastEntryMeta.person` renamed to `PodcastEntryMeta.persons` for consistency with feed-level `PodcastMeta.persons` (#320)
-- **BREAKING**: `ItunesFeedMeta.complete` changed from `Option<bool>` to `Option<String>` to return the raw XML text value (e.g. `"Yes"`, `"No"`) instead of a parsed boolean (#281)
-- `itunes:subtitle` now always overrides `<description>` for `feed.subtitle` regardless of XML element order; previously it only set subtitle when absent (#257)
-- `itunes:summary` populates new `feed.summary` field instead of aliasing to `feed.subtitle` (#257)
-- Entry-level `itunes:subtitle` and `itunes:summary` promotion is now order-independent via post-processing (#257)
-- Atom entry `itunes:subtitle` now promotes to `entry.subtitle` (was missing) (#257)
-
 ### Added
 
 - Core, Python, Node.js bindings: `PodcastEntryMeta.medium` field exposes `podcast:medium` at entry/item level (#320)
@@ -201,6 +194,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: `enclosure.title` populated from JSON Feed attachment `title` (#196)
 - Core, Python, Node.js bindings: `enclosure.duration` populated from JSON Feed attachment `duration_in_seconds` as raw string (#196)
 - Core, Python, Node.js bindings: `Person.avatar` field populated from JSON Feed author `avatar` URL (#210)
+- Core, Python, Node.js bindings: `entry.source` now exposes `links` (all link elements), `updated`/`updated_parsed`, `rights`, and `guidislink` fields for Atom `<source>` elements, matching Python feedparser (#242, #214)
+- Core: `entry.source.guidislink` is `Some(true)` when the Atom `<source>` `<id>` looks like a URL and no explicit `<link>` is present; `Some(false)` when an explicit `<link>` is present or the id is not a URL; `None` for RSS sources
+
+### Changed
+
+- **BREAKING**: `PodcastEntryMeta.person` renamed to `PodcastEntryMeta.persons` for consistency with feed-level `PodcastMeta.persons` (#320)
+- **BREAKING**: `ItunesFeedMeta.complete` changed from `Option<bool>` to `Option<String>` to return the raw XML text value (e.g. `"Yes"`, `"No"`) instead of a parsed boolean (#281)
+- `itunes:subtitle` now always overrides `<description>` for `feed.subtitle` regardless of XML element order; previously it only set subtitle when absent (#257)
+- `itunes:summary` populates new `feed.summary` field instead of aliasing to `feed.subtitle` (#257)
+- Entry-level `itunes:subtitle` and `itunes:summary` promotion is now order-independent via post-processing (#257)
+- Atom entry `itunes:subtitle` now promotes to `entry.subtitle` (was missing) (#257)
+- **BREAKING**: `entry.source.link` renamed to `entry.source.href` in core Rust type and Node.js bindings for Python feedparser API compatibility; Python binding retains `source.link` as an alias for `source.href` (#240)
 
 ### Fixed
 
@@ -221,7 +226,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: `media:credit`, `media:copyright`, `media:rating`, `media:keywords`, and `media:description` are now parsed from RSS and Atom feeds and exposed on `Entry` as `media_credit`, `media_copyright`, `media_rating`, `media_keywords`, and `media_description` (#246, #288)
 - Core, Python, Node.js bindings: `media:rating` and `media:keywords` are now parsed at feed level and exposed as `feed.media_rating` / `feed.media_keywords` (#302, #208)
 - Core, Python, Node.js bindings: `media:thumbnail` now parses the `time` attribute (NTP offset string) and exposes it as `MediaThumbnail.time: Option<String>` (#229)
-
 - Core: XHTML serializer now correctly re-emits entity references (`&amp;`, `&lt;`, `&gt;`) that quick-xml emits as `GeneralRef` events; previously they were silently dropped producing bare `&` / `<` in output (#215)
 - Core, Python, Node.js bindings: Atom 0.3 `<created>` element now maps to `entry.created` / `entry.created_str` (raw date string) consistent with `published_str` / `updated_str`; previously the field was always `None` (#301)
 - Core: date parser now handles ASCTIME format `Www Mmm [D]D HH:MM:SS YYYY` with optional space-padded single-digit day (e.g. `Mon Jan  6 12:30:00 2025`) (#258)
@@ -245,18 +249,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Core, Python, Node.js bindings: Atom `<source><author>` is now exposed as `entry.source.author` flat string in `"Name (email)"` format (#262)
 - Core, Python, Node.js bindings: Atom `<content src="...">` (out-of-line content per RFC 4287 §4.1.3.2) is now parsed — `content.src` is set to the URL, `content.value` is empty string, `content.type` is set from the `type` attribute (#252)
 - Core, Python, Node.js bindings: Atom flat `author` string now uses `"Name (email)"` format when email is present; previously only the name was used (#251)
-
-### Changed
-
-- **BREAKING**: `entry.source.link` renamed to `entry.source.href` in core Rust type and Node.js bindings for Python feedparser API compatibility; Python binding retains `source.link` as an alias for `source.href` (#240)
-
-### Added
-
-- Core, Python, Node.js bindings: `entry.source` now exposes `links` (all link elements), `updated`/`updated_parsed`, `rights`, and `guidislink` fields for Atom `<source>` elements, matching Python feedparser (#242, #214)
-- Core: `entry.source.guidislink` is `Some(true)` when the Atom `<source>` `<id>` looks like a URL and no explicit `<link>` is present; `Some(false)` when an explicit `<link>` is present or the id is not a URL; `None` for RSS sources
-
-### Fixed
-
 - Core: Atom entries without an explicit `<link>` now have `entry.link` promoted from `entry.id`, and `entry.guidislink` set to `true`; when an explicit `<link>` is present, `entry.guidislink` is `false`, matching Python feedparser behavior (#273)
 - Core: Atom feeds without an explicit `<link>` now have `feed.link` promoted from `feed.id`, matching Python feedparser behavior (#274)
 - Core: Atom entries with `<published>` but no `<updated>` now have `entry.updated` and `entry.updated_str` set from `entry.published`, matching Python feedparser behavior (#275)
@@ -609,7 +601,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...v0.6.0
 [0.5.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.3...v0.5.4
