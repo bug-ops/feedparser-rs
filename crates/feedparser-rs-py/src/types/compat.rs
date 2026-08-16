@@ -1,91 +1,95 @@
-use once_cell::sync::Lazy;
-/// Python feedparser backward compatibility field mappings.
-///
-/// This module provides field alias mappings for deprecated Python feedparser field names.
-/// Old field names map to new field names for backward compatibility.
-///
-/// Example: `feed.description` → `feed.subtitle`
-///          `entry.guid` → `entry.id`
+//! Python feedparser backward compatibility field mappings.
+//!
+//! This module provides field alias mappings for deprecated Python feedparser field names.
+//! Old field names map to new field names for backward compatibility.
+//!
+//! Example: `feed.description` → `feed.subtitle`
+//!          `entry.guid` → `entry.id`
+
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 /// Feed-level field mappings: old name → list of new names (tried in order).
 ///
 /// Some aliases can map to multiple fields (e.g., description → subtitle OR summary).
 /// The resolver tries each new field in order until it finds a non-None value.
-pub static FEED_FIELD_MAP: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
-    let mut map = HashMap::new();
+pub static FEED_FIELD_MAP: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
+    LazyLock::new(|| {
+        let mut map = HashMap::new();
 
-    // Description aliases
-    map.insert("description", vec!["subtitle", "summary"]);
-    map.insert(
-        "description_detail",
-        vec!["subtitle_detail", "summary_detail"],
-    );
+        // Description aliases
+        map.insert("description", vec!["subtitle", "summary"]);
+        map.insert(
+            "description_detail",
+            vec!["subtitle_detail", "summary_detail"],
+        );
 
-    // Tagline aliases (old Atom 0.3 field)
-    map.insert("tagline", vec!["subtitle"]);
-    map.insert("tagline_detail", vec!["subtitle_detail"]);
+        // Tagline aliases (old Atom 0.3 field)
+        map.insert("tagline", vec!["subtitle"]);
+        map.insert("tagline_detail", vec!["subtitle_detail"]);
 
-    // Info alias (RSS 1.0)
-    map.insert("info", vec!["subtitle"]);
-    map.insert("info_detail", vec!["subtitle_detail"]);
+        // Info alias (RSS 1.0)
+        map.insert("info", vec!["subtitle"]);
+        map.insert("info_detail", vec!["subtitle_detail"]);
 
-    // Copyright alias
-    map.insert("copyright", vec!["rights"]);
-    map.insert("copyright_detail", vec!["rights_detail"]);
+        // Copyright alias
+        map.insert("copyright", vec!["rights"]);
+        map.insert("copyright_detail", vec!["rights_detail"]);
 
-    // Modified alias
-    map.insert("modified", vec!["updated"]);
-    map.insert("modified_parsed", vec!["updated_parsed"]);
+        // Modified alias
+        map.insert("modified", vec!["updated"]);
+        map.insert("modified_parsed", vec!["updated_parsed"]);
 
-    // Date alias (generic fallback)
-    map.insert("date", vec!["updated", "published"]);
-    map.insert("date_parsed", vec!["updated_parsed", "published_parsed"]);
+        // Date alias (generic fallback)
+        map.insert("date", vec!["updated", "published"]);
+        map.insert("date_parsed", vec!["updated_parsed", "published_parsed"]);
 
-    // URL alias
-    map.insert("url", vec!["link"]);
+        // URL alias
+        map.insert("url", vec!["link"]);
 
-    map
-});
+        map
+    });
 
 /// Entry-level field mappings: old name → list of new names (tried in order).
-pub static ENTRY_FIELD_MAP: Lazy<HashMap<&'static str, Vec<&'static str>>> = Lazy::new(|| {
-    let mut map = HashMap::new();
+pub static ENTRY_FIELD_MAP: LazyLock<HashMap<&'static str, Vec<&'static str>>> =
+    LazyLock::new(|| {
+        let mut map = HashMap::new();
 
-    // GUID alias (RSS)
-    map.insert("guid", vec!["id"]);
+        // GUID alias (RSS)
+        map.insert("guid", vec!["id"]);
 
-    // Description alias
-    map.insert("description", vec!["summary"]);
-    map.insert("description_detail", vec!["summary_detail"]);
+        // Description alias
+        map.insert("description", vec!["summary"]);
+        map.insert("description_detail", vec!["summary_detail"]);
 
-    // Issued alias (old feedparser field)
-    map.insert("issued", vec!["published"]);
-    map.insert("issued_parsed", vec!["published_parsed"]);
+        // Issued alias (old feedparser field)
+        map.insert("issued", vec!["published"]);
+        map.insert("issued_parsed", vec!["published_parsed"]);
 
-    // Modified alias
-    map.insert("modified", vec!["updated"]);
-    map.insert("modified_parsed", vec!["updated_parsed"]);
+        // Modified alias
+        map.insert("modified", vec!["updated"]);
+        map.insert("modified_parsed", vec!["updated_parsed"]);
 
-    // Date alias (generic fallback)
-    map.insert("date", vec!["updated", "published"]);
-    map.insert("date_parsed", vec!["updated_parsed", "published_parsed"]);
+        // Date alias (generic fallback)
+        map.insert("date", vec!["updated", "published"]);
+        map.insert("date_parsed", vec!["updated_parsed", "published_parsed"]);
 
-    map
-});
+        map
+    });
 
 /// Container-level field mappings for PyParsedFeed.
-pub static CONTAINER_FIELD_MAP: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
-    let mut map = HashMap::new();
+pub static CONTAINER_FIELD_MAP: LazyLock<HashMap<&'static str, &'static str>> =
+    LazyLock::new(|| {
+        let mut map = HashMap::new();
 
-    // RSS uses <channel>, Atom uses <feed>
-    map.insert("channel", "feed");
+        // RSS uses <channel>, Atom uses <feed>
+        map.insert("channel", "feed");
 
-    // RSS uses <item>, Atom uses <entry>
-    map.insert("items", "entries");
+        // RSS uses <item>, Atom uses <entry>
+        map.insert("items", "entries");
 
-    map
-});
+        map
+    });
 
 #[cfg(test)]
 mod tests {
