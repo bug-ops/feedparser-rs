@@ -1,6 +1,8 @@
 //! Node.js bindings for `feedparser-rs`, exposing the RSS/Atom/JSON Feed parser to
 //! JavaScript/TypeScript consumers via `napi-rs`.
 
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+
 mod error;
 
 use chrono::{DateTime, Utc};

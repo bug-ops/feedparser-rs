@@ -40,7 +40,7 @@ mod tests {
         loop {
             match reader.read_event() {
                 Ok(quick_xml::events::Event::Eof) => unreachable!("input must produce an error"),
-                Ok(_) => continue,
+                Ok(_) => {}
                 Err(e) => return e,
             }
         }
