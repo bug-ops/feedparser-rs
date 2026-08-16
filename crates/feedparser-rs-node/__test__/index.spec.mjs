@@ -1,6 +1,6 @@
 import assert from 'node:assert';
 import { describe, it } from 'node:test';
-import { detectFormat, parse, parseWithOptions, parseUrl } from '../index.js';
+import { detectFormat, parse, parseUrl, parseWithOptions } from '../index.js';
 
 describe('feedparser-rs', () => {
   describe('parse()', () => {
@@ -435,23 +435,29 @@ describe('feedparser-rs', () => {
       `;
 
       // Very small limit (10 bytes) triggers InvalidFormat error
-      assert.throws(() => {
-        parseWithOptions(xml, { maxSize: 10 });
-      }, (err) => {
-        assert.strictEqual(err.code, 'InvalidArg');
-        return true;
-      });
+      assert.throws(
+        () => {
+          parseWithOptions(xml, { maxSize: 10 });
+        },
+        (err) => {
+          assert.strictEqual(err.code, 'InvalidArg');
+          return true;
+        },
+      );
     });
 
     it('should throw with GenericFailure code for SSRF loopback rejection', () => {
       // 127.0.0.1 is rejected by SSRF protection before any socket is opened
       // This tests the GenericFailure path (Http error) from SSRF validation
-      assert.throws(() => {
-        parseUrl('http://127.0.0.1:1/feed.xml');
-      }, (err) => {
-        assert.strictEqual(err.code, 'GenericFailure');
-        return true;
-      });
+      assert.throws(
+        () => {
+          parseUrl('http://127.0.0.1:1/feed.xml');
+        },
+        (err) => {
+          assert.strictEqual(err.code, 'GenericFailure');
+          return true;
+        },
+      );
     });
   });
 
