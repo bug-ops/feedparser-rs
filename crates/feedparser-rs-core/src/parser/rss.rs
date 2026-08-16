@@ -534,14 +534,18 @@ fn parse_channel_item(
         effective_lang,
         &feed.namespaces,
     ) {
-        Ok((mut entry, has_attr_errors, has_entity_bozo)) => {
+        Ok((mut entry, has_attr_errors, has_entity_bozo, bozo_reason)) => {
             if has_attr_errors {
                 feed.bozo = true;
                 feed.bozo_exception = Some(MALFORMED_ATTRIBUTES_ERROR.to_string());
             }
             if has_entity_bozo && !feed.bozo {
                 feed.bozo = true;
-                feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
+                feed.bozo_exception = Some(
+                    bozo_reason
+                        .unwrap_or("Unresolvable entity in entry field")
+                        .to_string(),
+                );
             }
             if entry.summary.is_none()
                 && let Some(content) = entry.content.first()
@@ -1310,8 +1314,16 @@ fn parse_channel_namespace(
     } else if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
             if georss_element == "where" {
-                let (loc, _had_bozo) =
+                let (loc, had_bozo, bozo_reason) =
                     parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
+                if had_bozo && !feed.bozo {
+                    feed.bozo = true;
+                    feed.bozo_exception = Some(
+                        bozo_reason
+                            .unwrap_or("Unresolvable entity in feed field")
+                            .to_string(),
+                    );
+                }
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut feed.feed.r#where, loc);
                 }
@@ -1411,14 +1423,16 @@ fn parse_channel_media(
 /// Returns a tuple where:
 /// - First element: the parsed `Entry`
 /// - Second element: `bool` indicating whether attribute parsing errors occurred
-/// - Third element: `bool` indicating whether unresolvable entities were encountered
+/// - Third element: `bool` indicating whether a bozo condition occurred (unresolvable
+///   entity or GML coordinate/dims mismatch)
+/// - Fourth element: a specific description of the bozo condition, when available
 fn parse_item(
     xml: &mut XmlCtx,
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
     item_lang: Option<&str>,
     namespaces: &HashMap<String, String>,
-) -> Result<(Entry, bool, bool)> {
+) -> Result<(Entry, bool, bool, Option<&'static str>)> {
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
     let mut ctx = EntryCtx {
@@ -1427,6 +1441,7 @@ fn parse_item(
         lang: item_lang,
         namespaces,
         bozo: false,
+        bozo_reason: None,
         has_explicit_link: false,
         guid_is_permalink: None,
     };
@@ -1479,7 +1494,7 @@ fn parse_item(
         entry.author = Some(dc.clone());
     }
 
-    Ok((entry, has_attr_errors, ctx.bozo))
+    Ok((entry, has_attr_errors, ctx.bozo, ctx.bozo_reason))
 }
 
 /// Dispatch a single `<item>` child element to its handler.
@@ -2598,9 +2613,12 @@ fn parse_item_namespace(
     } else if let Some(georss_element) = is_georss_tag(tag) {
         if georss_element == "where" {
             if !is_empty {
-                let (loc, had_bozo) =
+                let (loc, had_bozo, bozo_reason) =
                     parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 ctx.bozo |= had_bozo;
+                if let Some(reason) = bozo_reason {
+                    ctx.bozo_reason.get_or_insert(reason);
+                }
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut entry.r#where, loc);
                 }
