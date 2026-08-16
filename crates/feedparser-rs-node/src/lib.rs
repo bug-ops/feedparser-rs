@@ -11,7 +11,14 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::collections::HashMap;
 
-use feedparser_rs::types::PodcastRemoteItem as CorePodcastRemoteItem;
+use feedparser_rs::types::{
+    PodcastAlternateEnclosure as CorePodcastAlternateEnclosure,
+    PodcastAlternateEnclosureSource as CorePodcastAlternateEnclosureSource,
+    PodcastFollow as CorePodcastFollow, PodcastIntegrity as CorePodcastIntegrity,
+    PodcastLocation as CorePodcastLocation, PodcastRemoteItem as CorePodcastRemoteItem,
+    PodcastSocialInteract as CorePodcastSocialInteract, PodcastTxt as CorePodcastTxt,
+    PodcastUpdateFrequency as CorePodcastUpdateFrequency,
+};
 use feedparser_rs::{
     self as core, Cloud as CoreCloud, Content as CoreContent, Enclosure as CoreEnclosure,
     Entry as CoreEntry, FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage,
@@ -1503,6 +1510,17 @@ pub struct PodcastMeta {
     /// (podcast:podping `usesPodping` attribute)
     #[napi(js_name = "podpingUsesPodping")]
     pub podping_uses_podping: Option<bool>,
+    /// Related feed references (podcast:podroll)
+    pub podroll: Vec<PodcastRemoteItem>,
+    /// Geographic location (podcast:location)
+    pub location: Option<PodcastLocation>,
+    /// Text records (podcast:txt)
+    pub txt: Vec<PodcastTxt>,
+    /// Update frequency schedule (podcast:updateFrequency)
+    #[napi(js_name = "updateFrequency")]
+    pub update_frequency: Option<PodcastUpdateFrequency>,
+    /// Follow links (podcast:follow)
+    pub follow: Vec<PodcastFollow>,
 }
 
 impl From<CorePodcastMeta> for PodcastMeta {
@@ -1522,6 +1540,15 @@ impl From<CorePodcastMeta> for PodcastMeta {
             locked_owner: core.locked_owner,
             chat: core.chat.into_iter().map(PodcastChat::from).collect(),
             podping_uses_podping: core.podping_uses_podping,
+            podroll: core
+                .podroll
+                .into_iter()
+                .map(PodcastRemoteItem::from)
+                .collect(),
+            location: core.location.map(PodcastLocation::from),
+            txt: core.txt.into_iter().map(PodcastTxt::from).collect(),
+            update_frequency: core.update_frequency.map(PodcastUpdateFrequency::from),
+            follow: core.follow.into_iter().map(PodcastFollow::from).collect(),
         }
     }
 }
@@ -1725,6 +1752,18 @@ pub struct PodcastEntryMeta {
     pub episode: Option<String>,
     /// Chat room references (podcast:chat)
     pub chat: Vec<PodcastChat>,
+    /// Alternate enclosures (podcast:alternateEnclosure)
+    #[napi(js_name = "alternateEnclosures")]
+    pub alternate_enclosures: Vec<PodcastAlternateEnclosure>,
+    /// Geographic location (podcast:location)
+    pub location: Option<PodcastLocation>,
+    /// Social interaction threads (podcast:socialInteract)
+    #[napi(js_name = "socialInteract")]
+    pub social_interact: Vec<PodcastSocialInteract>,
+    /// Text records (podcast:txt)
+    pub txt: Vec<PodcastTxt>,
+    /// Follow links (podcast:follow)
+    pub follow: Vec<PodcastFollow>,
 }
 
 impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
@@ -1746,6 +1785,19 @@ impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
             season: core.season,
             episode: core.episode,
             chat: core.chat.into_iter().map(PodcastChat::from).collect(),
+            alternate_enclosures: core
+                .alternate_enclosures
+                .into_iter()
+                .map(PodcastAlternateEnclosure::from)
+                .collect(),
+            location: core.location.map(PodcastLocation::from),
+            social_interact: core
+                .social_interact
+                .into_iter()
+                .map(PodcastSocialInteract::from)
+                .collect(),
+            txt: core.txt.into_iter().map(PodcastTxt::from).collect(),
+            follow: core.follow.into_iter().map(PodcastFollow::from).collect(),
         }
     }
 }
@@ -1847,6 +1899,217 @@ impl From<CorePodcastPerson> for PodcastPerson {
             group: core.group,
             img: core.img.map(core::Url::into_inner),
             href: core.href.map(core::Url::into_inner),
+        }
+    }
+}
+
+/// Podcast 2.0 geographic location (podcast:location)
+#[napi(object)]
+pub struct PodcastLocation {
+    /// Human-readable location name
+    pub name: String,
+    /// Geographic coordinates (e.g., "geo:37.786971,-122.399677")
+    pub geo: Option<String>,
+    /// OpenStreetMap reference (e.g., "R113314")
+    pub osm: Option<String>,
+}
+
+impl From<CorePodcastLocation> for PodcastLocation {
+    fn from(core: CorePodcastLocation) -> Self {
+        Self {
+            name: core.name,
+            geo: core.geo,
+            osm: core.osm,
+        }
+    }
+}
+
+/// Podcast 2.0 text record (podcast:txt)
+#[napi(object)]
+pub struct PodcastTxt {
+    /// Purpose of the text
+    pub purpose: Option<String>,
+    /// Text content
+    pub value: String,
+}
+
+impl From<CorePodcastTxt> for PodcastTxt {
+    fn from(core: CorePodcastTxt) -> Self {
+        Self {
+            purpose: core.purpose,
+            value: core.value,
+        }
+    }
+}
+
+/// Podcast 2.0 update frequency (podcast:updateFrequency)
+#[napi(object)]
+pub struct PodcastUpdateFrequency {
+    /// iCalendar RRULE string
+    pub rrule: Option<String>,
+    /// Whether the podcast is complete
+    pub complete: Option<bool>,
+    /// Start date in ISO 8601
+    pub dtstart: Option<String>,
+    /// Human-readable label
+    pub label: Option<String>,
+}
+
+impl From<CorePodcastUpdateFrequency> for PodcastUpdateFrequency {
+    fn from(core: CorePodcastUpdateFrequency) -> Self {
+        Self {
+            rrule: core.rrule,
+            complete: core.complete,
+            dtstart: core.dtstart,
+            label: core.label,
+        }
+    }
+}
+
+/// Podcast 2.0 follow link (podcast:follow)
+#[napi(object)]
+pub struct PodcastFollow {
+    /// Follow URL
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
+    pub url: String,
+    /// Platform name
+    pub platform: Option<String>,
+}
+
+impl From<CorePodcastFollow> for PodcastFollow {
+    fn from(core: CorePodcastFollow) -> Self {
+        Self {
+            url: core.url.into_inner(),
+            platform: core.platform,
+        }
+    }
+}
+
+/// Podcast 2.0 social interaction thread (podcast:socialInteract)
+#[napi(object)]
+pub struct PodcastSocialInteract {
+    /// Social thread URI
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
+    pub uri: String,
+    /// Social protocol: "activitypub", "twitter", etc.
+    pub protocol: Option<String>,
+    /// Account identifier
+    #[napi(js_name = "accountId")]
+    pub account_id: Option<String>,
+    /// Account URL
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
+    #[napi(js_name = "accountUrl")]
+    pub account_url: Option<String>,
+    /// Priority (lower = higher priority)
+    pub priority: Option<u32>,
+}
+
+impl From<CorePodcastSocialInteract> for PodcastSocialInteract {
+    fn from(core: CorePodcastSocialInteract) -> Self {
+        Self {
+            uri: core.uri.into_inner(),
+            protocol: core.protocol,
+            account_id: core.account_id,
+            account_url: core.account_url.map(core::Url::into_inner),
+            priority: core.priority,
+        }
+    }
+}
+
+/// Podcast 2.0 alternate enclosure (podcast:alternateEnclosure)
+#[napi(object)]
+pub struct PodcastAlternateEnclosure {
+    /// MIME type
+    #[napi(js_name = "type")]
+    pub enclosure_type: String,
+    /// File size in bytes
+    ///
+    /// Note: represented as `f64` (napi has `ToNapiValue` but no `FromNapiValue` for `u64`,
+    /// which `#[napi(object)]` requires since object structs are bidirectional); exact up to
+    /// 2^53 bytes.
+    pub length: Option<f64>,
+    /// Bitrate in kbps
+    pub bitrate: Option<f64>,
+    /// Video height in pixels
+    pub height: Option<u32>,
+    /// Language code
+    pub lang: Option<String>,
+    /// Title
+    pub title: Option<String>,
+    /// Relationship: "default", "alternate", etc.
+    pub rel: Option<String>,
+    /// Codecs string
+    pub codecs: Option<String>,
+    /// Whether this is the default enclosure
+    pub default: Option<bool>,
+    /// Source URIs for this enclosure
+    pub sources: Vec<PodcastAlternateEnclosureSource>,
+    /// Integrity verification
+    pub integrity: Option<PodcastIntegrity>,
+}
+
+#[allow(clippy::cast_precision_loss)]
+impl From<CorePodcastAlternateEnclosure> for PodcastAlternateEnclosure {
+    fn from(core: CorePodcastAlternateEnclosure) -> Self {
+        Self {
+            enclosure_type: core.type_.to_string(),
+            length: core.length.map(|l| l as f64),
+            bitrate: core.bitrate,
+            height: core.height,
+            lang: core.lang,
+            title: core.title,
+            rel: core.rel,
+            codecs: core.codecs,
+            default: core.default,
+            sources: core
+                .sources
+                .into_iter()
+                .map(PodcastAlternateEnclosureSource::from)
+                .collect(),
+            integrity: core.integrity.map(PodcastIntegrity::from),
+        }
+    }
+}
+
+/// Podcast 2.0 alternate enclosure source
+#[napi(object)]
+pub struct PodcastAlternateEnclosureSource {
+    /// Source URI
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
+    pub uri: String,
+    /// Optional MIME type override
+    #[napi(js_name = "contentType")]
+    pub content_type: Option<String>,
+}
+
+impl From<CorePodcastAlternateEnclosureSource> for PodcastAlternateEnclosureSource {
+    fn from(core: CorePodcastAlternateEnclosureSource) -> Self {
+        Self {
+            uri: core.uri.into_inner(),
+            content_type: core.content_type.map(|t| t.to_string()),
+        }
+    }
+}
+
+/// Podcast 2.0 integrity verification for alternate enclosures
+#[napi(object)]
+pub struct PodcastIntegrity {
+    /// Integrity type: "sri" or "pgp-signature"
+    #[napi(js_name = "type")]
+    pub integrity_type: String,
+    /// Integrity value
+    pub value: String,
+}
+
+impl From<CorePodcastIntegrity> for PodcastIntegrity {
+    fn from(core: CorePodcastIntegrity) -> Self {
+        Self {
+            integrity_type: core.type_,
+            value: core.value,
         }
     }
 }

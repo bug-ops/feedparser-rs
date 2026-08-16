@@ -715,6 +715,50 @@ export interface Person {
   avatar?: string
 }
 
+/** Podcast 2.0 alternate enclosure (podcast:alternateEnclosure) */
+export interface PodcastAlternateEnclosure {
+  /** MIME type */
+  type: string
+  /**
+   * File size in bytes
+   *
+   * Note: represented as `f64` (napi has `ToNapiValue` but no `FromNapiValue` for `u64`,
+   * which `#[napi(object)]` requires since object structs are bidirectional); exact up to
+   * 2^53 bytes.
+   */
+  length?: number
+  /** Bitrate in kbps */
+  bitrate?: number
+  /** Video height in pixels */
+  height?: number
+  /** Language code */
+  lang?: string
+  /** Title */
+  title?: string
+  /** Relationship: "default", "alternate", etc. */
+  rel?: string
+  /** Codecs string */
+  codecs?: string
+  /** Whether this is the default enclosure */
+  default?: boolean
+  /** Source URIs for this enclosure */
+  sources: Array<PodcastAlternateEnclosureSource>
+  /** Integrity verification */
+  integrity?: PodcastIntegrity
+}
+
+/** Podcast 2.0 alternate enclosure source */
+export interface PodcastAlternateEnclosureSource {
+  /**
+   * Source URI
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
+  uri: string
+  /** Optional MIME type override */
+  contentType?: string
+}
+
 /** Podcast chapters */
 export interface PodcastChapters {
   /**
@@ -757,6 +801,28 @@ export interface PodcastEntryMeta {
   episode?: string
   /** Chat room references (podcast:chat) */
   chat: Array<PodcastChat>
+  /** Alternate enclosures (podcast:alternateEnclosure) */
+  alternateEnclosures: Array<PodcastAlternateEnclosure>
+  /** Geographic location (podcast:location) */
+  location?: PodcastLocation
+  /** Social interaction threads (podcast:socialInteract) */
+  socialInteract: Array<PodcastSocialInteract>
+  /** Text records (podcast:txt) */
+  txt: Array<PodcastTxt>
+  /** Follow links (podcast:follow) */
+  follow: Array<PodcastFollow>
+}
+
+/** Podcast 2.0 follow link (podcast:follow) */
+export interface PodcastFollow {
+  /**
+   * Follow URL
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
+  url: string
+  /** Platform name */
+  platform?: string
 }
 
 /** Podcast funding link */
@@ -769,6 +835,24 @@ export interface PodcastFunding {
   url: string
   /** Funding message */
   message?: string
+}
+
+/** Podcast 2.0 integrity verification for alternate enclosures */
+export interface PodcastIntegrity {
+  /** Integrity type: "sri" or "pgp-signature" */
+  type: string
+  /** Integrity value */
+  value: string
+}
+
+/** Podcast 2.0 geographic location (podcast:location) */
+export interface PodcastLocation {
+  /** Human-readable location name */
+  name: string
+  /** Geographic coordinates (e.g., "geo:37.786971,-122.399677") */
+  geo?: string
+  /** OpenStreetMap reference (e.g., "R113314") */
+  osm?: string
 }
 
 /** Podcast 2.0 namespace metadata (feed level) */
@@ -796,6 +880,16 @@ export interface PodcastMeta {
    * (podcast:podping `usesPodping` attribute)
    */
   podpingUsesPodping?: boolean
+  /** Related feed references (podcast:podroll) */
+  podroll: Array<PodcastRemoteItem>
+  /** Geographic location (podcast:location) */
+  location?: PodcastLocation
+  /** Text records (podcast:txt) */
+  txt: Array<PodcastTxt>
+  /** Update frequency schedule (podcast:updateFrequency) */
+  updateFrequency?: PodcastUpdateFrequency
+  /** Follow links (podcast:follow) */
+  follow: Array<PodcastFollow>
 }
 
 /** Podcast person metadata */
@@ -838,6 +932,28 @@ export interface PodcastRemoteItem {
   title?: string
 }
 
+/** Podcast 2.0 social interaction thread (podcast:socialInteract) */
+export interface PodcastSocialInteract {
+  /**
+   * Social thread URI
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
+  uri: string
+  /** Social protocol: "activitypub", "twitter", etc. */
+  protocol?: string
+  /** Account identifier */
+  accountId?: string
+  /**
+   * Account URL
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
+  accountUrl?: string
+  /** Priority (lower = higher priority) */
+  priority?: number
+}
+
 /** Podcast soundbite */
 export interface PodcastSoundbite {
   /** Start time in seconds */
@@ -862,6 +978,26 @@ export interface PodcastTranscript {
   language?: string
   /** Relationship type (e.g., "captions", "chapters") */
   rel?: string
+}
+
+/** Podcast 2.0 text record (podcast:txt) */
+export interface PodcastTxt {
+  /** Purpose of the text */
+  purpose?: string
+  /** Text content */
+  value: string
+}
+
+/** Podcast 2.0 update frequency (podcast:updateFrequency) */
+export interface PodcastUpdateFrequency {
+  /** iCalendar RRULE string */
+  rrule?: string
+  /** Whether the podcast is complete */
+  complete?: boolean
+  /** Start date in ISO 8601 */
+  dtstart?: string
+  /** Human-readable label */
+  label?: string
 }
 
 /** Podcast 2.0 value element for monetization */
