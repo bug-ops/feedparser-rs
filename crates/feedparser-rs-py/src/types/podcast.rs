@@ -1,4 +1,11 @@
-use feedparser_rs::types::PodcastRemoteItem as CorePodcastRemoteItem;
+use feedparser_rs::types::{
+    PodcastAlternateEnclosure as CorePodcastAlternateEnclosure,
+    PodcastAlternateEnclosureSource as CorePodcastAlternateEnclosureSource,
+    PodcastFollow as CorePodcastFollow, PodcastIntegrity as CorePodcastIntegrity,
+    PodcastLocation as CorePodcastLocation, PodcastRemoteItem as CorePodcastRemoteItem,
+    PodcastSocialInteract as CorePodcastSocialInteract, PodcastTxt as CorePodcastTxt,
+    PodcastUpdateFrequency as CorePodcastUpdateFrequency,
+};
 use feedparser_rs::{
     ItunesCategory as CoreItunesCategory, ItunesEntryMeta as CoreItunesEntryMeta,
     ItunesFeedMeta as CoreItunesFeedMeta, ItunesOwner as CoreItunesOwner,
@@ -485,6 +492,49 @@ impl PyPodcastMeta {
         self.inner.podping_uses_podping
     }
 
+    #[getter]
+    fn podroll(&self) -> Vec<PyPodcastRemoteItem> {
+        self.inner
+            .podroll
+            .iter()
+            .map(|r| PyPodcastRemoteItem::from_core(r.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn location(&self) -> Option<PyPodcastLocation> {
+        self.inner
+            .location
+            .as_ref()
+            .map(|l| PyPodcastLocation::from_core(l.clone()))
+    }
+
+    #[getter]
+    fn txt(&self) -> Vec<PyPodcastTxt> {
+        self.inner
+            .txt
+            .iter()
+            .map(|t| PyPodcastTxt::from_core(t.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn update_frequency(&self) -> Option<PyPodcastUpdateFrequency> {
+        self.inner
+            .update_frequency
+            .as_ref()
+            .map(|u| PyPodcastUpdateFrequency::from_core(u.clone()))
+    }
+
+    #[getter]
+    fn follow(&self) -> Vec<PyPodcastFollow> {
+        self.inner
+            .follow
+            .iter()
+            .map(|f| PyPodcastFollow::from_core(f.clone()))
+            .collect()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastMeta(guid='{}', persons={}, medium='{}')",
@@ -808,6 +858,50 @@ impl PyPodcastEntryMeta {
             .collect()
     }
 
+    #[getter]
+    fn alternate_enclosures(&self) -> Vec<PyPodcastAlternateEnclosure> {
+        self.inner
+            .alternate_enclosures
+            .iter()
+            .map(|e| PyPodcastAlternateEnclosure::from_core(e.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn location(&self) -> Option<PyPodcastLocation> {
+        self.inner
+            .location
+            .as_ref()
+            .map(|l| PyPodcastLocation::from_core(l.clone()))
+    }
+
+    #[getter]
+    fn social_interact(&self) -> Vec<PyPodcastSocialInteract> {
+        self.inner
+            .social_interact
+            .iter()
+            .map(|s| PyPodcastSocialInteract::from_core(s.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn txt(&self) -> Vec<PyPodcastTxt> {
+        self.inner
+            .txt
+            .iter()
+            .map(|t| PyPodcastTxt::from_core(t.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn follow(&self) -> Vec<PyPodcastFollow> {
+        self.inner
+            .follow
+            .iter()
+            .map(|f| PyPodcastFollow::from_core(f.clone()))
+            .collect()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastEntryMeta(transcripts={}, chapters={}, soundbites={}, persons={}, season={}, episode={})",
@@ -1086,5 +1180,349 @@ impl PyPodcastChat {
             "PodcastChat(server='{}', protocol='{}')",
             self.inner.server, self.inner.protocol
         )
+    }
+}
+
+#[pyclass(name = "PodcastLocation", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastLocation {
+    inner: CorePodcastLocation,
+}
+
+impl PyPodcastLocation {
+    pub fn from_core(core: CorePodcastLocation) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastLocation {
+    #[getter]
+    fn name(&self) -> &str {
+        &self.inner.name
+    }
+
+    #[getter]
+    fn geo(&self) -> Option<&str> {
+        self.inner.geo.as_deref()
+    }
+
+    #[getter]
+    fn osm(&self) -> Option<&str> {
+        self.inner.osm.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PodcastLocation(name='{}')", &self.inner.name)
+    }
+}
+
+#[pyclass(name = "PodcastTxt", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastTxt {
+    inner: CorePodcastTxt,
+}
+
+impl PyPodcastTxt {
+    pub fn from_core(core: CorePodcastTxt) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastTxt {
+    #[getter]
+    fn purpose(&self) -> Option<&str> {
+        self.inner.purpose.as_deref()
+    }
+
+    #[getter]
+    fn value(&self) -> &str {
+        &self.inner.value
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastTxt(purpose='{}', value='{}')",
+            self.inner.purpose.as_deref().unwrap_or("none"),
+            &self.inner.value
+        )
+    }
+}
+
+#[pyclass(
+    name = "PodcastUpdateFrequency",
+    module = "feedparser_rs",
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyPodcastUpdateFrequency {
+    inner: CorePodcastUpdateFrequency,
+}
+
+impl PyPodcastUpdateFrequency {
+    pub fn from_core(core: CorePodcastUpdateFrequency) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastUpdateFrequency {
+    #[getter]
+    fn rrule(&self) -> Option<&str> {
+        self.inner.rrule.as_deref()
+    }
+
+    #[getter]
+    fn complete(&self) -> Option<bool> {
+        self.inner.complete
+    }
+
+    #[getter]
+    fn dtstart(&self) -> Option<&str> {
+        self.inner.dtstart.as_deref()
+    }
+
+    #[getter]
+    fn label(&self) -> Option<&str> {
+        self.inner.label.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastUpdateFrequency(rrule='{}')",
+            self.inner.rrule.as_deref().unwrap_or("none")
+        )
+    }
+}
+
+#[pyclass(name = "PodcastFollow", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastFollow {
+    inner: CorePodcastFollow,
+}
+
+impl PyPodcastFollow {
+    pub fn from_core(core: CorePodcastFollow) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastFollow {
+    #[getter]
+    fn url(&self) -> &str {
+        &self.inner.url
+    }
+
+    #[getter]
+    fn platform(&self) -> Option<&str> {
+        self.inner.platform.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PodcastFollow(url='{}')", &self.inner.url)
+    }
+}
+
+#[pyclass(
+    name = "PodcastSocialInteract",
+    module = "feedparser_rs",
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyPodcastSocialInteract {
+    inner: CorePodcastSocialInteract,
+}
+
+impl PyPodcastSocialInteract {
+    pub fn from_core(core: CorePodcastSocialInteract) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastSocialInteract {
+    #[getter]
+    fn uri(&self) -> &str {
+        &self.inner.uri
+    }
+
+    #[getter]
+    fn protocol(&self) -> Option<&str> {
+        self.inner.protocol.as_deref()
+    }
+
+    #[getter]
+    fn account_id(&self) -> Option<&str> {
+        self.inner.account_id.as_deref()
+    }
+
+    #[getter]
+    fn account_url(&self) -> Option<&str> {
+        self.inner.account_url.as_deref()
+    }
+
+    #[getter]
+    fn priority(&self) -> Option<u32> {
+        self.inner.priority
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PodcastSocialInteract(uri='{}')", &self.inner.uri)
+    }
+}
+
+#[pyclass(
+    name = "PodcastAlternateEnclosure",
+    module = "feedparser_rs",
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyPodcastAlternateEnclosure {
+    inner: CorePodcastAlternateEnclosure,
+}
+
+impl PyPodcastAlternateEnclosure {
+    pub fn from_core(core: CorePodcastAlternateEnclosure) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastAlternateEnclosure {
+    #[getter]
+    #[pyo3(name = "type")]
+    fn type_(&self) -> &str {
+        &self.inner.type_
+    }
+
+    #[getter]
+    fn length(&self) -> Option<u64> {
+        self.inner.length
+    }
+
+    #[getter]
+    fn bitrate(&self) -> Option<f64> {
+        self.inner.bitrate
+    }
+
+    #[getter]
+    fn height(&self) -> Option<u32> {
+        self.inner.height
+    }
+
+    #[getter]
+    fn lang(&self) -> Option<&str> {
+        self.inner.lang.as_deref()
+    }
+
+    #[getter]
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
+    }
+
+    #[getter]
+    fn rel(&self) -> Option<&str> {
+        self.inner.rel.as_deref()
+    }
+
+    #[getter]
+    fn codecs(&self) -> Option<&str> {
+        self.inner.codecs.as_deref()
+    }
+
+    #[getter]
+    #[pyo3(name = "default")]
+    fn is_default(&self) -> Option<bool> {
+        self.inner.default
+    }
+
+    #[getter]
+    fn sources(&self) -> Vec<PyPodcastAlternateEnclosureSource> {
+        self.inner
+            .sources
+            .iter()
+            .map(|s| PyPodcastAlternateEnclosureSource::from_core(s.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn integrity(&self) -> Option<PyPodcastIntegrity> {
+        self.inner
+            .integrity
+            .as_ref()
+            .map(|i| PyPodcastIntegrity::from_core(i.clone()))
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastAlternateEnclosure(type='{}', sources={})",
+            &self.inner.type_,
+            self.inner.sources.len()
+        )
+    }
+}
+
+#[pyclass(
+    name = "PodcastAlternateEnclosureSource",
+    module = "feedparser_rs",
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyPodcastAlternateEnclosureSource {
+    inner: CorePodcastAlternateEnclosureSource,
+}
+
+impl PyPodcastAlternateEnclosureSource {
+    pub fn from_core(core: CorePodcastAlternateEnclosureSource) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastAlternateEnclosureSource {
+    #[getter]
+    fn uri(&self) -> &str {
+        &self.inner.uri
+    }
+
+    #[getter]
+    fn content_type(&self) -> Option<&str> {
+        self.inner.content_type.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PodcastAlternateEnclosureSource(uri='{}')", &self.inner.uri)
+    }
+}
+
+#[pyclass(name = "PodcastIntegrity", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastIntegrity {
+    inner: CorePodcastIntegrity,
+}
+
+impl PyPodcastIntegrity {
+    pub fn from_core(core: CorePodcastIntegrity) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastIntegrity {
+    #[getter]
+    #[pyo3(name = "type")]
+    fn type_(&self) -> &str {
+        &self.inner.type_
+    }
+
+    #[getter]
+    fn value(&self) -> &str {
+        &self.inner.value
+    }
+
+    fn __repr__(&self) -> String {
+        format!("PodcastIntegrity(type='{}')", &self.inner.type_)
     }
 }

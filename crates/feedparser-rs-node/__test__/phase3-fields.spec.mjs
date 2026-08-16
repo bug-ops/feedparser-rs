@@ -603,6 +603,152 @@ describe('Field Bindings', () => {
     });
   });
 
+  describe('Podcast podroll/location/txt/updateFrequency/follow/alternateEnclosure/socialInteract', () => {
+    it('should parse podcast:podroll/location/txt/updateFrequency/follow at feed level', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:location geo="geo:37.786971,-122.399677" osm="R113314">San Francisco</podcast:location>
+            <podcast:podroll>
+              <podcast:remoteItem feedGuid="abc123" feedUrl="https://example.com/feed.xml" title="Example Podcast"/>
+              <podcast:remoteItem feedGuid="def456" medium="podcast"/>
+            </podcast:podroll>
+            <podcast:txt purpose="verify">abc123verify</podcast:txt>
+            <podcast:txt>plain text record</podcast:txt>
+            <podcast:updateFrequency rrule="FREQ=WEEKLY" dtstart="2023-01-01T00:00:00Z" complete="false">weekly</podcast:updateFrequency>
+            <podcast:follow url="https://mastodon.social/@podcast" platform="activitypub"/>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const podcast = feed.feed.podcast;
+
+      assert.strictEqual(podcast.location.name, 'San Francisco');
+      assert.strictEqual(podcast.location.geo, 'geo:37.786971,-122.399677');
+      assert.strictEqual(podcast.location.osm, 'R113314');
+
+      assert.strictEqual(podcast.podroll.length, 2);
+      assert.strictEqual(podcast.podroll[0].feedGuid, 'abc123');
+      assert.strictEqual(podcast.podroll[0].feedUrl, 'https://example.com/feed.xml');
+      assert.strictEqual(podcast.podroll[0].title, 'Example Podcast');
+      assert.strictEqual(podcast.podroll[1].feedGuid, 'def456');
+      assert.strictEqual(podcast.podroll[1].medium, 'podcast');
+
+      assert.strictEqual(podcast.txt.length, 2);
+      assert.strictEqual(podcast.txt[0].purpose, 'verify');
+      assert.strictEqual(podcast.txt[0].value, 'abc123verify');
+      assert.strictEqual(podcast.txt[1].purpose, undefined);
+      assert.strictEqual(podcast.txt[1].value, 'plain text record');
+
+      assert.strictEqual(podcast.updateFrequency.rrule, 'FREQ=WEEKLY');
+      assert.strictEqual(podcast.updateFrequency.dtstart, '2023-01-01T00:00:00Z');
+      assert.strictEqual(podcast.updateFrequency.complete, false);
+      assert.strictEqual(podcast.updateFrequency.label, 'weekly');
+
+      assert.strictEqual(podcast.follow.length, 1);
+      assert.strictEqual(podcast.follow[0].url, 'https://mastodon.social/@podcast');
+      assert.strictEqual(podcast.follow[0].platform, 'activitypub');
+    });
+
+    it('should default podroll/location/txt/updateFrequency/follow at feed level when absent', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <title>Feed</title>
+            <podcast:guid>abc-123-def</podcast:guid>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const podcast = feed.feed.podcast;
+
+      assert.strictEqual(podcast.location, undefined);
+      assert.strictEqual(podcast.podroll.length, 0);
+      assert.strictEqual(podcast.txt.length, 0);
+      assert.strictEqual(podcast.updateFrequency, undefined);
+      assert.strictEqual(podcast.follow.length, 0);
+    });
+
+    it('should parse podcast:alternateEnclosure/location/socialInteract/txt/follow at entry level', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <item>
+              <title>Episode 1</title>
+              <podcast:alternateEnclosure type="audio/mpeg" length="12345" bitrate="128" default="true">
+                <podcast:source uri="https://example.com/ep1.mp3"/>
+                <podcast:source uri="https://cdn.example.com/ep1.mp3" contentType="audio/mpeg"/>
+                <podcast:integrity type="sri">sha256-abc123==</podcast:integrity>
+              </podcast:alternateEnclosure>
+              <podcast:location geo="geo:40.7128,-74.0060">New York</podcast:location>
+              <podcast:socialInteract uri="https://mastodon.social/@host/status/1" protocol="activitypub" accountId="@host@mastodon.social" priority="1"/>
+              <podcast:txt purpose="license">MIT</podcast:txt>
+              <podcast:follow url="https://twitter.com/podcast" platform="twitter"/>
+            </item>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const podcast = feed.entries[0].podcast;
+
+      const [ae] = podcast.alternateEnclosures;
+      assert.strictEqual(podcast.alternateEnclosures.length, 1);
+      assert.strictEqual(ae.type, 'audio/mpeg');
+      // File size round-trips exactly for ordinary values, though it is stored as f64
+      // (napi has no FromNapiValue for u64); see PodcastAlternateEnclosure.length doc comment.
+      assert.strictEqual(ae.length, 12345);
+      assert.strictEqual(ae.bitrate, 128);
+      assert.strictEqual(ae.default, true);
+      assert.strictEqual(ae.sources.length, 2);
+      assert.strictEqual(ae.sources[0].uri, 'https://example.com/ep1.mp3');
+      assert.strictEqual(ae.sources[1].uri, 'https://cdn.example.com/ep1.mp3');
+      assert.strictEqual(ae.sources[1].contentType, 'audio/mpeg');
+      assert.strictEqual(ae.integrity.type, 'sri');
+      assert.strictEqual(ae.integrity.value, 'sha256-abc123==');
+
+      assert.strictEqual(podcast.location.name, 'New York');
+      assert.strictEqual(podcast.location.geo, 'geo:40.7128,-74.0060');
+      assert.strictEqual(podcast.location.osm, undefined);
+
+      assert.strictEqual(podcast.socialInteract.length, 1);
+      const [si] = podcast.socialInteract;
+      assert.strictEqual(si.uri, 'https://mastodon.social/@host/status/1');
+      assert.strictEqual(si.protocol, 'activitypub');
+      assert.strictEqual(si.accountId, '@host@mastodon.social');
+      assert.strictEqual(si.priority, 1);
+
+      assert.strictEqual(podcast.txt.length, 1);
+      assert.strictEqual(podcast.txt[0].purpose, 'license');
+      assert.strictEqual(podcast.txt[0].value, 'MIT');
+
+      assert.strictEqual(podcast.follow.length, 1);
+      assert.strictEqual(podcast.follow[0].url, 'https://twitter.com/podcast');
+      assert.strictEqual(podcast.follow[0].platform, 'twitter');
+    });
+
+    it('should default alternateEnclosures/location/socialInteract/txt/follow at entry level when absent', () => {
+      const xml = `<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+          <channel>
+            <item>
+              <title>Episode 1</title>
+              <podcast:season number="3">Season Three</podcast:season>
+            </item>
+          </channel>
+        </rss>`;
+
+      const feed = parse(xml);
+      const podcast = feed.entries[0].podcast;
+
+      assert.strictEqual(podcast.alternateEnclosures.length, 0);
+      assert.strictEqual(podcast.location, undefined);
+      assert.strictEqual(podcast.socialInteract.length, 0);
+      assert.strictEqual(podcast.txt.length, 0);
+      assert.strictEqual(podcast.follow.length, 0);
+    });
+  });
+
   describe('Combined namespaces', () => {
     it('should parse feed with multiple namespace extensions', () => {
       const xml = `<?xml version="1.0"?>

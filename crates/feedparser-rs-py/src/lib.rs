@@ -44,6 +44,14 @@ fn _feedparser_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<types::podcast::PyPodcastValueTimeSplit>()?;
     m.add_class::<types::podcast::PyPodcastRemoteItem>()?;
     m.add_class::<types::podcast::PyPodcastChat>()?;
+    m.add_class::<types::podcast::PyPodcastLocation>()?;
+    m.add_class::<types::podcast::PyPodcastTxt>()?;
+    m.add_class::<types::podcast::PyPodcastUpdateFrequency>()?;
+    m.add_class::<types::podcast::PyPodcastFollow>()?;
+    m.add_class::<types::podcast::PyPodcastSocialInteract>()?;
+    m.add_class::<types::podcast::PyPodcastAlternateEnclosure>()?;
+    m.add_class::<types::podcast::PyPodcastAlternateEnclosureSource>()?;
+    m.add_class::<types::podcast::PyPodcastIntegrity>()?;
     m.add_class::<types::thread::PyInReplyTo>()?;
     m.add_class::<types::common::PyCloud>()?;
     m.add_class::<types::common::PyTextInput>()?;

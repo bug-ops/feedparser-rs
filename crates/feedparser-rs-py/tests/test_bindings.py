@@ -465,6 +465,156 @@ def test_podcast_value_time_split_self_closing_dropped():
     assert len(result.feed.podcast.value.recipients) == 1
 
 
+def test_podcast_podroll_location_txt_update_frequency_follow_feed_level():
+    """Test Podcast 2.0 podroll/location/txt/updateFrequency/follow at feed level"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:location geo="geo:37.786971,-122.399677" osm="R113314">San Francisco</podcast:location>
+            <podcast:podroll>
+                <podcast:remoteItem feedGuid="abc123" feedUrl="https://example.com/feed.xml" title="Example Podcast"/>
+                <podcast:remoteItem feedGuid="def456" medium="podcast"/>
+            </podcast:podroll>
+            <podcast:txt purpose="verify">abc123verify</podcast:txt>
+            <podcast:txt>plain text record</podcast:txt>
+            <podcast:updateFrequency rrule="FREQ=WEEKLY" dtstart="2023-01-01T00:00:00Z" complete="false">weekly</podcast:updateFrequency>
+            <podcast:follow url="https://mastodon.social/@podcast" platform="activitypub"/>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    podcast = result.feed.podcast
+
+    assert podcast.location.name == "San Francisco"
+    assert podcast.location.geo == "geo:37.786971,-122.399677"
+    assert podcast.location.osm == "R113314"
+
+    assert len(podcast.podroll) == 2
+    assert podcast.podroll[0].feed_guid == "abc123"
+    assert podcast.podroll[0].feed_url == "https://example.com/feed.xml"
+    assert podcast.podroll[0].title == "Example Podcast"
+    assert podcast.podroll[1].feed_guid == "def456"
+    assert podcast.podroll[1].medium == "podcast"
+
+    assert len(podcast.txt) == 2
+    assert podcast.txt[0].purpose == "verify"
+    assert podcast.txt[0].value == "abc123verify"
+    assert podcast.txt[1].purpose is None
+    assert podcast.txt[1].value == "plain text record"
+
+    assert podcast.update_frequency.rrule == "FREQ=WEEKLY"
+    assert podcast.update_frequency.dtstart == "2023-01-01T00:00:00Z"
+    assert podcast.update_frequency.complete is False
+    assert podcast.update_frequency.label == "weekly"
+
+    assert len(podcast.follow) == 1
+    assert podcast.follow[0].url == "https://mastodon.social/@podcast"
+    assert podcast.follow[0].platform == "activitypub"
+
+
+def test_podcast_podroll_location_txt_update_frequency_follow_feed_level_absent():
+    """Test podroll/location/txt/update_frequency/follow default when absent at feed level"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:guid>abc-123-def</podcast:guid>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    podcast = result.feed.podcast
+
+    assert podcast.location is None
+    assert podcast.podroll == []
+    assert podcast.txt == []
+    assert podcast.update_frequency is None
+    assert podcast.follow == []
+
+
+def test_podcast_alternate_enclosure_location_social_interact_txt_follow_entry_level():
+    """Test Podcast 2.0 alternateEnclosure/location/socialInteract/txt/follow at entry level"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <item>
+                <title>Episode 1</title>
+                <podcast:alternateEnclosure type="audio/mpeg" length="12345" bitrate="128" default="true">
+                    <podcast:source uri="https://example.com/ep1.mp3"/>
+                    <podcast:source uri="https://cdn.example.com/ep1.mp3" contentType="audio/mpeg"/>
+                    <podcast:integrity type="sri">sha256-abc123==</podcast:integrity>
+                </podcast:alternateEnclosure>
+                <podcast:location geo="geo:40.7128,-74.0060">New York</podcast:location>
+                <podcast:socialInteract uri="https://mastodon.social/@host/status/1" protocol="activitypub" accountId="@host@mastodon.social" priority="1"/>
+                <podcast:txt purpose="license">MIT</podcast:txt>
+                <podcast:follow url="https://twitter.com/podcast" platform="twitter"/>
+            </item>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    podcast = result.entries[0].podcast
+
+    assert len(podcast.alternate_enclosures) == 1
+    ae = podcast.alternate_enclosures[0]
+    assert ae.type == "audio/mpeg"
+    assert ae.length == 12345
+    assert ae.bitrate == 128.0
+    assert ae.default is True
+    assert len(ae.sources) == 2
+    assert ae.sources[0].uri == "https://example.com/ep1.mp3"
+    assert ae.sources[1].uri == "https://cdn.example.com/ep1.mp3"
+    assert ae.sources[1].content_type == "audio/mpeg"
+    assert ae.integrity.type == "sri"
+    assert ae.integrity.value == "sha256-abc123=="
+
+    assert podcast.location.name == "New York"
+    assert podcast.location.geo == "geo:40.7128,-74.0060"
+    assert podcast.location.osm is None
+
+    assert len(podcast.social_interact) == 1
+    si = podcast.social_interact[0]
+    assert si.uri == "https://mastodon.social/@host/status/1"
+    assert si.protocol == "activitypub"
+    assert si.account_id == "@host@mastodon.social"
+    assert si.priority == 1
+
+    assert len(podcast.txt) == 1
+    assert podcast.txt[0].purpose == "license"
+    assert podcast.txt[0].value == "MIT"
+
+    assert len(podcast.follow) == 1
+    assert podcast.follow[0].url == "https://twitter.com/podcast"
+    assert podcast.follow[0].platform == "twitter"
+
+
+def test_podcast_alternate_enclosure_location_social_interact_txt_follow_entry_level_absent():
+    """Test alternate_enclosures/location/social_interact/txt/follow default when absent at entry level"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <item>
+                <title>Episode 1</title>
+                <podcast:season number="3">Season Three</podcast:season>
+            </item>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    podcast = result.entries[0].podcast
+
+    assert podcast.alternate_enclosures == []
+    assert podcast.location is None
+    assert podcast.social_interact == []
+    assert podcast.txt == []
+    assert podcast.follow == []
+
+
 def test_podcast_chapters():
     """Test Podcast 2.0 chapters"""
     xml = b"""<?xml version="1.0"?>
