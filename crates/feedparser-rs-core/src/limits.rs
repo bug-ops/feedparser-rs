@@ -194,6 +194,21 @@ pub struct ParserLimits {
     ///
     /// Default: 20
     pub max_podcast_follow: usize,
+
+    /// Maximum number of chat references per feed or entry
+    ///
+    /// Podcast 2.0 chat elements pointing to chat rooms/servers.
+    ///
+    /// Default: 20
+    pub max_podcast_chat: usize,
+
+    /// Maximum number of value time splits per `podcast:value` element
+    ///
+    /// Podcast 2.0 valueTimeSplit elements for routing payments over time
+    /// ranges. Prevents `DoS` from feeds with excessive split lists.
+    ///
+    /// Default: 20
+    pub max_podcast_value_time_splits: usize,
 }
 
 impl Default for ParserLimits {
@@ -228,6 +243,8 @@ impl Default for ParserLimits {
             max_podcast_social_interact: 20,
             max_podcast_txt: 20,
             max_podcast_follow: 20,
+            max_podcast_chat: 20,
+            max_podcast_value_time_splits: 20,
         }
     }
 }
@@ -274,6 +291,8 @@ impl ParserLimits {
             max_podcast_social_interact: 5,
             max_podcast_txt: 5,
             max_podcast_follow: 5,
+            max_podcast_chat: 5,
+            max_podcast_value_time_splits: 5,
         }
     }
 
@@ -318,6 +337,8 @@ impl ParserLimits {
             max_podcast_social_interact: 100,
             max_podcast_txt: 100,
             max_podcast_follow: 100,
+            max_podcast_chat: 100,
+            max_podcast_value_time_splits: 50,
         }
     }
 
@@ -558,6 +579,59 @@ mod tests {
         // Exceeds limit
         let result =
             limits.check_collection_size(21, limits.max_value_recipients, "value_recipients");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(LimitError::CollectionTooLarge { .. })));
+    }
+
+    #[test]
+    fn test_max_podcast_chat_tiers() {
+        assert_eq!(ParserLimits::default().max_podcast_chat, 20);
+        assert_eq!(ParserLimits::strict().max_podcast_chat, 5);
+        assert_eq!(ParserLimits::permissive().max_podcast_chat, 100);
+        assert!(ParserLimits::strict().max_podcast_chat < ParserLimits::default().max_podcast_chat);
+        assert!(
+            ParserLimits::permissive().max_podcast_chat > ParserLimits::default().max_podcast_chat
+        );
+    }
+
+    #[test]
+    fn test_podcast_chat_limit_enforcement() {
+        let limits = ParserLimits::default();
+        assert!(
+            limits
+                .check_collection_size(19, limits.max_podcast_chat, "chat")
+                .is_ok()
+        );
+        let result = limits.check_collection_size(20, limits.max_podcast_chat, "chat");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(LimitError::CollectionTooLarge { .. })));
+    }
+
+    #[test]
+    fn test_max_podcast_value_time_splits_tiers() {
+        assert_eq!(ParserLimits::default().max_podcast_value_time_splits, 20);
+        assert_eq!(ParserLimits::strict().max_podcast_value_time_splits, 5);
+        assert_eq!(ParserLimits::permissive().max_podcast_value_time_splits, 50);
+        assert!(
+            ParserLimits::strict().max_podcast_value_time_splits
+                < ParserLimits::default().max_podcast_value_time_splits
+        );
+        assert!(
+            ParserLimits::permissive().max_podcast_value_time_splits
+                > ParserLimits::default().max_podcast_value_time_splits
+        );
+    }
+
+    #[test]
+    fn test_podcast_value_time_splits_limit_enforcement() {
+        let limits = ParserLimits::default();
+        assert!(
+            limits
+                .check_collection_size(19, limits.max_podcast_value_time_splits, "time_splits")
+                .is_ok()
+        );
+        let result =
+            limits.check_collection_size(20, limits.max_podcast_value_time_splits, "time_splits");
         assert!(result.is_err());
         assert!(matches!(result, Err(LimitError::CollectionTooLarge { .. })));
     }

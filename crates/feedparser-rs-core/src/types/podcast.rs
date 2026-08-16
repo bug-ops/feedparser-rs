@@ -189,6 +189,11 @@ pub struct PodcastMeta {
     pub update_frequency: Option<PodcastUpdateFrequency>,
     /// Follow links (podcast:follow)
     pub follow: Vec<PodcastFollow>,
+    /// Chat room references (podcast:chat)
+    pub chat: Vec<PodcastChat>,
+    /// Whether the podcast uses Podping for update notifications
+    /// (podcast:podping `usesPodping` attribute)
+    pub podping_uses_podping: Option<bool>,
 }
 
 /// Podcast 2.0 value element for monetization
@@ -223,12 +228,14 @@ pub struct PodcastMeta {
 ///             fee: Some(false),
 ///         },
 ///     ],
+///     time_splits: vec![],
 /// };
 ///
 /// assert_eq!(value.type_, "lightning");
 /// assert_eq!(value.recipients.len(), 2);
 /// ```
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
 pub struct PodcastValue {
     /// Payment type (type attribute): "lightning", "hive", etc.
     pub type_: String,
@@ -240,6 +247,13 @@ pub struct PodcastValue {
     pub suggested: Option<String>,
     /// List of payment recipients with split percentages
     pub recipients: Vec<PodcastValueRecipient>,
+    /// Time-bounded payment splits for pre-recorded remote content
+    /// (podcast:valueTimeSplit)
+    ///
+    /// Populated only from channel-level `<podcast:value>` in this release;
+    /// item-level `<podcast:value>` is not yet parsed (tracked in a
+    /// follow-up issue).
+    pub time_splits: Vec<PodcastValueTimeSplit>,
 }
 
 /// Value recipient for payment splitting
@@ -288,6 +302,68 @@ pub struct PodcastValueRecipient {
     ///
     /// Fee recipients are paid before regular splits are calculated.
     pub fee: Option<bool>,
+}
+
+/// Podcast 2.0 value time split for pre-recorded remote content
+///
+/// Represents a `<podcast:valueTimeSplit>` element, which routes
+/// value-for-value payments for a specific time range of an episode to its
+/// own set of recipients and/or to a remote item (e.g. a licensed music
+/// track).
+///
+/// Populated only from channel-level `<podcast:value>` in this release;
+/// item-level `<podcast:value>` is not yet parsed (tracked in a follow-up
+/// issue).
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::PodcastValueTimeSplit;
+///
+/// let split = PodcastValueTimeSplit {
+///     start_time: 60.0,
+///     duration: 30.0,
+///     ..Default::default()
+/// };
+///
+/// assert_eq!(split.start_time, 60.0);
+/// assert_eq!(split.remote_percentage, 100.0);
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+pub struct PodcastValueTimeSplit {
+    /// Start time in seconds within the episode (startTime attribute)
+    pub start_time: f64,
+    /// Duration in seconds of this split (duration attribute)
+    pub duration: f64,
+    /// Start time within the remote item, in seconds (remoteStartTime attribute)
+    ///
+    /// Defaults to `0.0` when absent or unparseable.
+    pub remote_start_time: f64,
+    /// Percentage of the payment routed to this split (remotePercentage attribute)
+    ///
+    /// Defaults to `100.0` per the podcast namespace spec when absent or
+    /// unparseable, and is clamped to the 0.0-100.0 range.
+    pub remote_percentage: f64,
+    /// Payment recipients for this split (podcast:valueRecipient children)
+    pub recipients: Vec<PodcastValueRecipient>,
+    /// Remote item this split routes payment to, if any (podcast:remoteItem child)
+    ///
+    /// Only the first `podcast:remoteItem` encountered in the split is kept.
+    pub remote_item: Option<PodcastRemoteItem>,
+}
+
+impl Default for PodcastValueTimeSplit {
+    fn default() -> Self {
+        Self {
+            start_time: 0.0,
+            duration: 0.0,
+            remote_start_time: 0.0,
+            remote_percentage: 100.0,
+            recipients: Vec::new(),
+            remote_item: None,
+        }
+    }
 }
 
 /// Podcast 2.0 transcript
@@ -627,6 +703,39 @@ pub struct PodcastFollow {
     pub platform: Option<String>,
 }
 
+/// Podcast 2.0 chat room reference
+///
+/// Points to a chat server/room associated with the podcast or episode
+/// (podcast:chat), e.g. Matrix or XMPP.
+///
+/// Namespace: `https://podcastindex.org/namespace/1.0`
+///
+/// # Examples
+///
+/// ```
+/// use feedparser_rs::PodcastChat;
+///
+/// let chat = PodcastChat {
+///     server: "matrix.example.com".to_string(),
+///     protocol: "matrix".to_string(),
+///     account_id: Some("@podcast:example.com".to_string()),
+///     space: None,
+/// };
+///
+/// assert_eq!(chat.server, "matrix.example.com");
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PodcastChat {
+    /// Chat server address (server attribute, required)
+    pub server: String,
+    /// Chat protocol (protocol attribute, required): "matrix", "xmpp", etc.
+    pub protocol: String,
+    /// Account identifier on the chat server (accountId attribute)
+    pub account_id: Option<String>,
+    /// Space identifier, for protocols that group rooms (space attribute)
+    pub space: Option<String>,
+}
+
 /// Podcast 2.0 metadata for episodes
 ///
 /// Container for entry-level podcast metadata.
@@ -667,6 +776,8 @@ pub struct PodcastEntryMeta {
     pub txt: Vec<PodcastTxt>,
     /// Follow links (podcast:follow)
     pub follow: Vec<PodcastFollow>,
+    /// Chat room references (podcast:chat)
+    pub chat: Vec<PodcastChat>,
 }
 
 /// Parse iTunes explicit flag from various string representations
@@ -820,6 +931,8 @@ mod tests {
         assert!(meta.txt.is_empty());
         assert!(meta.update_frequency.is_none());
         assert!(meta.follow.is_empty());
+        assert!(meta.chat.is_empty());
+        assert!(meta.podping_uses_podping.is_none());
     }
 
     #[test]
@@ -830,6 +943,27 @@ mod tests {
         assert!(meta.social_interact.is_empty());
         assert!(meta.txt.is_empty());
         assert!(meta.follow.is_empty());
+        assert!(meta.chat.is_empty());
+    }
+
+    #[test]
+    fn test_podcast_chat_default() {
+        let chat = PodcastChat::default();
+        assert!(chat.server.is_empty());
+        assert!(chat.protocol.is_empty());
+        assert!(chat.account_id.is_none());
+        assert!(chat.space.is_none());
+    }
+
+    #[test]
+    fn test_podcast_value_time_split_default() {
+        let split = PodcastValueTimeSplit::default();
+        assert!((split.start_time - 0.0).abs() < f64::EPSILON);
+        assert!((split.duration - 0.0).abs() < f64::EPSILON);
+        assert!((split.remote_start_time - 0.0).abs() < f64::EPSILON);
+        assert!((split.remote_percentage - 100.0).abs() < f64::EPSILON);
+        assert!(split.recipients.is_empty());
+        assert!(split.remote_item.is_none());
     }
 
     #[test]
@@ -1007,6 +1141,7 @@ mod tests {
         assert!(value.method.is_empty());
         assert!(value.suggested.is_none());
         assert!(value.recipients.is_empty());
+        assert!(value.time_splits.is_empty());
     }
 
     #[test]
@@ -1033,6 +1168,7 @@ mod tests {
                     fee: Some(false),
                 },
             ],
+            time_splits: vec![],
         };
 
         assert_eq!(value.type_, "lightning");
@@ -1091,6 +1227,7 @@ mod tests {
             method: "keysend".to_string(),
             suggested: None,
             recipients: Vec::new(),
+            time_splits: vec![],
         };
 
         // Add multiple recipients
@@ -1121,6 +1258,7 @@ mod tests {
                 split: 100,
                 fee: Some(false),
             }],
+            time_splits: vec![],
         };
 
         assert_eq!(value.type_, "hive");
@@ -1137,6 +1275,7 @@ mod tests {
             method: "keysend".to_string(),
             suggested: Some("0.00000005000".to_string()),
             recipients: vec![],
+            time_splits: vec![],
         });
 
         assert!(meta.value.is_some());
@@ -1157,6 +1296,7 @@ mod tests {
                 split: 100,
                 fee: Some(false),
             }],
+            time_splits: vec![],
         };
 
         let cloned = value.clone();

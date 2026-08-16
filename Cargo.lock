@@ -613,6 +613,9 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
+ "quick-xml",
+ "serde_json",
+ "url",
 ]
 
 [[package]]
