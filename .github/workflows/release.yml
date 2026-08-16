@@ -205,18 +205,22 @@ jobs:
         with:
           shared-key: "npm-${{ matrix.target }}"
           workspaces: crates/feedparser-rs-node
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
       - uses: actions/setup-node@v7
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
-          cache-dependency-path: crates/feedparser-rs-node/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: crates/feedparser-rs-node/pnpm-lock.yaml
       - name: Install dependencies
         working-directory: crates/feedparser-rs-node
-        run: npm ci
+        run: pnpm install --frozen-lockfile
       - name: Build
         working-directory: crates/feedparser-rs-node
-        run: npm run build -- --target ${{ matrix.target }}
+        run: pnpm run build -- --target ${{ matrix.target }}
       - name: Test
         if: |
           (matrix.target == 'x86_64-unknown-linux-gnu' && matrix.os == 'ubuntu-latest') ||
@@ -224,7 +228,7 @@ jobs:
           (matrix.target == 'x86_64-pc-windows-msvc' && matrix.os == 'windows-latest') ||
           (matrix.target == 'aarch64-apple-darwin' && matrix.os == 'macos-latest')
         working-directory: crates/feedparser-rs-node
-        run: npm test
+        run: pnpm test
       - uses: actions/upload-artifact@v7
         with:
           name: npm-${{ matrix.target }}
@@ -244,10 +248,16 @@ jobs:
       url: https://www.npmjs.com/package/feedparser-rs
     steps:
       - uses: actions/checkout@v7
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
+          cache-dependency-path: crates/feedparser-rs-node/pnpm-lock.yaml
       - uses: actions/download-artifact@v8
         with:
           path: crates/feedparser-rs-node/artifacts
@@ -259,7 +269,7 @@ jobs:
           # Copy artifacts to root (where napi expects them)
           find artifacts -name "*.node" -exec cp {} . \;
           ls -lh *.node || echo "No .node files found"
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
         working-directory: crates/feedparser-rs-node
       - name: Update npm for trusted publishing
         run: npm install -g npm@latest

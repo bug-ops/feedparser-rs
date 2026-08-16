@@ -213,9 +213,9 @@ jobs:
         with:
           version: 10
 
-      - name: Run npm audit
+      - name: Run pnpm audit
         working-directory: crates/feedparser-rs-node
-        run: npm audit --audit-level=high
+        run: pnpm audit --audit-level=high
 
   # Cross-platform Rust tests
   test-rust:
