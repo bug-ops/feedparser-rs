@@ -967,8 +967,6 @@ fn parse_entry(
         namespaces,
         bozo: false,
         bozo_reason: None,
-        has_explicit_link: false,
-        guid_is_permalink: None,
     };
 
     loop {
