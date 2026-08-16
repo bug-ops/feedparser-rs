@@ -723,13 +723,17 @@ pub fn skip_element(
 /// coordinate text (the "bozo" pattern; the caller should OR this into its
 /// own bozo tracking, matching how `GeoRSS` Simple elements are handled).
 ///
-/// Recognizes `gml:Point`/`gml:pos`, `gml:LineString`/`gml:posList`, and
-/// `gml:Polygon` wrapping `gml:exterior`/`gml:LinearRing`/`gml:posList`.
-/// The `srsName` and `srsDimension` attributes on the geometry element
-/// drive axis-order normalization and 3D coordinate handling (see
-/// [`georss::build_gml_geometry`]). Unrecognized nested elements are
-/// skipped tolerantly; malformed coordinate text yields `None` without
-/// aborting the parse.
+/// Recognizes `gml:Point`/`gml:pos`, `gml:LineString`/`gml:posList`,
+/// `gml:Polygon` wrapping `gml:exterior`/`gml:LinearRing`/`gml:posList`,
+/// `gml:MultiSurface` wrapping `gml:surfaceMember`/`gml:Polygon`, and
+/// `gml:Envelope`/`gml:lowerCorner`+`gml:upperCorner`. The `srsName` and
+/// `srsDimension` attributes on the geometry element drive axis-order
+/// normalization and 3D coordinate handling (see
+/// [`georss::build_gml_geometry`] and [`georss::build_gml_envelope`]). For
+/// `gml:Envelope`, `srsDimension` on `gml:lowerCorner`/`gml:upperCorner`
+/// takes precedence over the root element's value.
+/// Unrecognized nested elements are skipped tolerantly; malformed
+/// coordinate text yields `None` without aborting the parse.
 ///
 /// `depth` must already account for the `<georss:where>` start tag itself,
 /// per the depth-accounting convention used throughout this module (the
@@ -754,12 +758,22 @@ pub fn parse_georss_where(
                 } else if let Some((geo_type, end_tag, srs_name, dims)) =
                     gml_geometry_start(&e, limits)
                 {
-                    let (coord_text, bozo) =
-                        find_gml_coord_text(reader, buf, limits, next_depth, &end_tag)?;
-                    had_bozo |= bozo;
-                    geometry = coord_text.and_then(|text| {
-                        georss::build_gml_geometry(geo_type, srs_name, &text, dims)
-                    });
+                    if geo_type == GeoType::Box {
+                        let (corners, bozo, dims) = find_gml_envelope_corners(
+                            reader, buf, limits, next_depth, &end_tag, dims,
+                        )?;
+                        had_bozo |= bozo;
+                        geometry = corners.and_then(|(lower, upper)| {
+                            georss::build_gml_envelope(srs_name, &lower, &upper, dims)
+                        });
+                    } else {
+                        let (coord_text, bozo) =
+                            find_gml_coord_text(reader, buf, limits, next_depth, &end_tag)?;
+                        had_bozo |= bozo;
+                        geometry = coord_text.and_then(|text| {
+                            georss::build_gml_geometry(geo_type, srs_name, &text, dims)
+                        });
+                    }
                 } else {
                     skip_element(reader, buf, limits, next_depth)?;
                 }
@@ -791,7 +805,8 @@ fn gml_geometry_start(
     let geo_type = match local {
         "Point" => GeoType::Point,
         "LineString" => GeoType::Line,
-        "Polygon" => GeoType::Polygon,
+        "Polygon" | "MultiSurface" => GeoType::Polygon,
+        "Envelope" => GeoType::Box,
         _ => return None,
     };
 
@@ -823,6 +838,11 @@ fn gml_attr(start: &BytesStart<'_>, key: &[u8], max_len: usize) -> Option<String
 /// tag, so the caller's depth accounting stays balanced. Returns the
 /// coordinate text (if found) together with whether an entity-resolution
 /// error occurred while reading it.
+///
+/// For `gml:MultiSurface`, this only returns the first `gml:surfaceMember`
+/// with parseable coordinates — `GeoLocation` has no multi-geometry slot, so
+/// subsequent members are parsed (to keep depth accounting balanced) but
+/// their coordinates are discarded.
 fn find_gml_coord_text(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
@@ -863,6 +883,73 @@ fn find_gml_coord_text(
     }
 
     Ok((found, had_bozo))
+}
+
+/// `(lower_corner, upper_corner)` raw coordinate text, whether an
+/// entity-resolution error occurred, and the resolved `srsDimension`.
+type EnvelopeCorners = (Option<(String, String)>, bool, usize);
+
+/// Search a `gml:Envelope` subtree for its `gml:lowerCorner` and
+/// `gml:upperCorner` children, returning their raw coordinate text together
+/// with the resolved `srsDimension`. Unrecognized nested content is skipped
+/// tolerantly. Consumes events up through the matching `end_tag` close tag,
+/// so the caller's depth accounting stays balanced. Returns `(None, _, _)`
+/// if either corner is missing; malformed corner text is validated later by
+/// [`georss::build_gml_envelope`].
+///
+/// Per the GML spec, `srsDimension` may be specified on `gml:lowerCorner`/
+/// `gml:upperCorner` themselves rather than only on the `gml:Envelope` root
+/// — a common real-world placement. A dimension found on either corner
+/// element takes precedence over `root_dims` (the value read from the
+/// `gml:Envelope` start tag).
+fn find_gml_envelope_corners(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+    depth: usize,
+    end_tag: &[u8],
+    root_dims: usize,
+) -> Result<EnvelopeCorners> {
+    let mut lower = None;
+    let mut upper = None;
+    let mut dims = root_dims;
+    let mut had_bozo = false;
+
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                let next_depth = depth + 1;
+                check_depth(next_depth, limits.max_nesting_depth)?;
+                let name = e.name();
+                let local = is_gml_tag(name.as_ref());
+                let corner_dims = gml_attr(&e, b"srsDimension", limits.max_attribute_length)
+                    .and_then(|v| v.trim().parse::<usize>().ok());
+
+                match local {
+                    Some("lowerCorner") if lower.is_none() => {
+                        dims = corner_dims.unwrap_or(dims);
+                        let (text, bozo) = read_text(reader, buf, limits)?;
+                        had_bozo |= bozo;
+                        lower = Some(text);
+                    }
+                    Some("upperCorner") if upper.is_none() => {
+                        dims = corner_dims.unwrap_or(dims);
+                        let (text, bozo) = read_text(reader, buf, limits)?;
+                        had_bozo |= bozo;
+                        upper = Some(text);
+                    }
+                    _ => skip_element(reader, buf, limits, next_depth)?,
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == end_tag => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok((lower.zip(upper), had_bozo, dims))
 }
 
 /// Read xhtml content from the current element, per RFC 4287 §3.1.1.3.
