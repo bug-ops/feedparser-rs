@@ -29,6 +29,22 @@ use super::common::{
     read_xhtml_content_str, skip_element, skip_to_end, skip_to_end_qualified,
     text_construct_from_content,
 };
+use super::context::{EntryCtx, XmlCtx};
+
+/// Feed-tier parse context: XML plumbing plus the read-only xml:base/xml:lang
+/// inherited from the `<feed>` root element.
+///
+/// Never mutates `base` — unlike `EntryCtx`, the feed tier only ever derives
+/// child contexts via `base_ctx.child()` for entries, so `base` is a shared
+/// reference rather than owned.
+struct FeedCtx<'r, 'd, 'p> {
+    /// XML event-loop plumbing (reader, buffer, limits).
+    xml: XmlCtx<'r, 'd>,
+    /// xml:base resolution context inherited from the `<feed>` root element.
+    base: &'p BaseUrlContext,
+    /// xml:lang inherited by elements that don't declare their own.
+    lang: Option<&'p str>,
+}
 
 /// Parse Atom 1.0 feed from raw bytes
 ///
@@ -253,6 +269,28 @@ fn recover_feed_field_error(
     *depth = depth_before;
 }
 
+/// `FeedCtx`-taking wrapper around [`recover_feed_field_error`], so
+/// `dispatch_feed_tag`'s call sites don't each need to spell out
+/// `ctx.xml.reader, ctx.xml.buf` inline.
+fn recover_feed_error(
+    ctx: &mut FeedCtx,
+    tag: &[u8],
+    depth: &mut usize,
+    depth_before: usize,
+    feed: &mut ParsedFeed,
+    err: &FeedError,
+) {
+    recover_feed_field_error(
+        ctx.xml.reader,
+        ctx.xml.buf,
+        tag,
+        depth,
+        depth_before,
+        feed,
+        err,
+    );
+}
+
 /// Parse <feed> element
 fn parse_feed_element(
     reader: &mut Reader<&[u8]>,
@@ -263,9 +301,18 @@ fn parse_feed_element(
     feed_lang: Option<&str>,
 ) -> Result<()> {
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
+    let mut ctx = FeedCtx {
+        xml: XmlCtx {
+            reader,
+            buf: &mut buf,
+            limits,
+        },
+        base: base_ctx,
+        lang: feed_lang,
+    };
 
     loop {
-        match reader.read_event_into(&mut buf) {
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
                 let is_empty = matches!(event, Event::Empty(_));
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
@@ -273,12 +320,10 @@ fn parse_feed_element(
                 };
 
                 *depth += 1;
-                check_depth(*depth, limits.max_nesting_depth)?;
+                check_depth(*depth, ctx.xml.limits.max_nesting_depth)?;
 
                 let element = e.to_owned();
-                if !dispatch_feed_tag(
-                    reader, &mut buf, &element, feed, limits, depth, base_ctx, feed_lang, is_empty,
-                )? {
+                if !dispatch_feed_tag(&mut ctx, &element, feed, depth, is_empty)? {
                     continue;
                 }
                 *depth = depth.saturating_sub(1);
@@ -293,7 +338,7 @@ fn parse_feed_element(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        buf.clear();
+        ctx.xml.buf.clear();
     }
 
     Ok(())
@@ -306,16 +351,11 @@ fn parse_feed_element(
 /// branch's entry-limit-skip path, which has already adjusted `depth` itself —
 /// the caller must `continue` its loop without touching `depth`/`buf` again
 /// (mirrors `parse_feed_entry`'s own return-value convention).
-#[allow(clippy::too_many_arguments)]
 fn dispatch_feed_tag(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
-    base_ctx: &BaseUrlContext,
-    feed_lang: Option<&str>,
     is_empty: bool,
 ) -> Result<bool> {
     // Snapshot of `depth` after entering this element: restored after a caught
@@ -335,10 +375,8 @@ fn dispatch_feed_tag(
         | b"logo")
             if !is_empty =>
         {
-            if let Err(e) =
-                parse_feed_core_text(reader, buf, element, feed, limits, base_ctx, feed_lang)
-            {
-                recover_feed_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_feed_core_text(ctx, element, feed) {
+                recover_feed_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
         // NOTE: not guarded by `!is_empty` here (matches pre-existing behavior), but
@@ -346,27 +384,21 @@ fn dispatch_feed_tag(
         // `Err` below — when `!is_empty` itself, so `recover_feed_field_error`'s drain
         // always has a matching closing tag to find when this arm's `Err` fires.
         tag @ (b"link" | b"category") => {
-            if let Err(e) =
-                parse_feed_link_or_category(reader, buf, element, feed, limits, base_ctx, is_empty)
-            {
-                recover_feed_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_feed_link_or_category(ctx, element, feed, is_empty) {
+                recover_feed_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
         b"author" | b"contributor" if !is_empty => {
-            parse_feed_person(reader, buf, element, feed, limits, depth)?;
+            parse_feed_person(ctx, element, feed, depth)?;
         }
         b"entry" if !is_empty => {
-            if !parse_feed_entry(
-                reader, buf, element, feed, limits, depth, base_ctx, feed_lang,
-            ) {
+            if !parse_feed_entry(ctx, element, feed, depth) {
                 return Ok(false);
             }
         }
         tag => {
-            if let Err(e) =
-                parse_feed_namespace(reader, buf, tag, element, feed, limits, depth, is_empty)
-            {
-                recover_feed_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_feed_namespace(ctx, tag, element, feed, depth, is_empty) {
+                recover_feed_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
     }
@@ -375,66 +407,57 @@ fn dispatch_feed_tag(
 
 /// Parse extension namespace tags at feed level (Dublin Core, Content, Media RSS,
 /// Threading, iTunes, `GeoRSS`/Geo), in order.
-#[allow(clippy::too_many_arguments)]
 fn parse_feed_namespace(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
     is_empty: bool,
 ) -> Result<()> {
     // Check for namespace elements, in order
-    let mut handled = parse_feed_ns_text(reader, buf, tag, feed, limits, *depth, is_empty)?;
+    let mut handled = parse_feed_ns_text(ctx, tag, feed, *depth, is_empty)?;
     if !handled {
-        handled = parse_feed_media(reader, buf, tag, element, feed, limits, *depth, is_empty)?;
+        handled = parse_feed_media(ctx, tag, element, feed, *depth, is_empty)?;
     }
     if !handled {
-        handled = parse_feed_ns_threading(reader, buf, tag, limits, *depth, is_empty)?;
+        handled = parse_feed_ns_threading(ctx, tag, *depth, is_empty)?;
     }
     if !handled {
-        handled =
-            parse_feed_itunes_structured(reader, buf, tag, element, feed, limits, depth, is_empty)?;
+        handled = parse_feed_itunes_structured(ctx, tag, element, feed, depth, is_empty)?;
     }
     if !handled {
-        handled = parse_feed_itunes_text(reader, buf, tag, feed, limits, is_empty)?;
+        handled = parse_feed_itunes_text(ctx, tag, feed, is_empty)?;
     }
     if !handled {
-        handled = parse_feed_geo(reader, buf, tag, feed, limits, *depth, is_empty)?;
+        handled = parse_feed_geo(ctx, tag, feed, *depth, is_empty)?;
     }
 
     if !handled && !is_empty {
-        skip_element(reader, buf, limits, *depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
     }
     Ok(())
 }
 
 /// Parse core text-valued feed elements: title, subtitle/tagline, id, updated/modified,
 /// published/issued, rights/copyright, generator, icon, logo.
-#[allow(clippy::too_many_arguments)]
 fn parse_feed_core_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
-    feed_lang: Option<&str>,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_feed_element
     match element.name().as_ref() {
         b"title" => {
-            let text = parse_text_construct(reader, buf, element, limits, feed_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             feed.feed.set_title(text);
         }
         b"subtitle" | b"tagline" => {
-            let text = parse_text_construct(reader, buf, element, limits, feed_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             feed.feed.set_subtitle(text);
         }
         b"id" => {
-            let (text, bozo) = read_text(reader, buf, limits)?;
+            let (text, bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if bozo {
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in feed id".to_string());
@@ -442,29 +465,29 @@ fn parse_feed_core_text(
             feed.feed.id = Some(text);
         }
         b"updated" | b"modified" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             feed.feed.updated = parse_date(&text);
             feed.feed.updated_str = Some(text);
         }
         b"published" | b"issued" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             feed.feed.published = parse_date(&text);
             feed.feed.published_str = Some(text);
         }
         b"generator" => {
-            let generator = parse_generator(reader, buf, element, limits)?;
+            let generator = parse_generator(ctx.xml.reader, ctx.xml.buf, element, ctx.xml.limits)?;
             feed.feed.set_generator(generator);
         }
         b"icon" => {
-            let url = read_text_str(reader, buf, limits)?;
-            feed.feed.icon = Some(base_ctx.resolve_safe(&url));
+            let url = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            feed.feed.icon = Some(ctx.base.resolve_safe(&url));
         }
         b"logo" => {
-            let url = read_text_str(reader, buf, limits)?;
-            feed.feed.logo = Some(base_ctx.resolve_safe(&url));
+            let url = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            feed.feed.logo = Some(ctx.base.resolve_safe(&url));
         }
         b"rights" | b"copyright" => {
-            let text = parse_text_construct(reader, buf, element, limits, feed_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             feed.feed.set_rights(text);
         }
         _ => {}
@@ -474,21 +497,19 @@ fn parse_feed_core_text(
 
 /// Parse feed-level `<link>` and `<category>` elements.
 fn parse_feed_link_or_category(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
     is_empty: bool,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_feed_element
     match element.name().as_ref() {
         b"link" => {
-            if let Some(mut link) =
-                Link::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
-            {
-                link.href = base_ctx.resolve_safe(&link.href).into();
+            if let Some(mut link) = Link::from_attributes(
+                element.attributes().flatten(),
+                ctx.xml.limits.max_attribute_length,
+            ) {
+                link.href = ctx.base.resolve_safe(&link.href).into();
 
                 if feed.feed.link.is_none() && link.rel.as_deref() == Some("alternate") {
                     feed.feed.link = Some(link.href.to_string());
@@ -501,20 +522,23 @@ fn parse_feed_link_or_category(
                 }
                 feed.feed
                     .links
-                    .try_push_limited(link, limits.max_links_per_feed);
+                    .try_push_limited(link, ctx.xml.limits.max_links_per_feed);
             }
             if !is_empty {
-                skip_to_end(reader, buf, b"link")?;
+                skip_to_end(ctx.xml.reader, ctx.xml.buf, b"link")?;
             }
         }
         b"category" => {
-            if let Some(tag) =
-                Tag::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
-            {
-                feed.feed.tags.try_push_limited(tag, limits.max_tags);
+            if let Some(tag) = Tag::from_attributes(
+                element.attributes().flatten(),
+                ctx.xml.limits.max_attribute_length,
+            ) {
+                feed.feed
+                    .tags
+                    .try_push_limited(tag, ctx.xml.limits.max_tags);
             }
             if !is_empty {
-                skip_to_end(reader, buf, b"category")?;
+                skip_to_end(ctx.xml.reader, ctx.xml.buf, b"category")?;
             }
         }
         _ => {}
@@ -525,30 +549,28 @@ fn parse_feed_link_or_category(
 /// Parse feed-level `<author>` and `<contributor>` elements.
 #[allow(clippy::unnecessary_wraps)]
 fn parse_feed_person(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_feed_element
     match element.name().as_ref() {
         b"author" => {
-            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+            if let Ok(person) = parse_person(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
                 if feed.feed.author.is_none() {
                     feed.feed.set_author(person.clone());
                 }
                 feed.feed
                     .authors
-                    .try_push_limited(person, limits.max_authors);
+                    .try_push_limited(person, ctx.xml.limits.max_authors);
             }
         }
         b"contributor" => {
-            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+            if let Ok(person) = parse_person(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
                 feed.feed
                     .contributors
-                    .try_push_limited(person, limits.max_contributors);
+                    .try_push_limited(person, ctx.xml.limits.max_contributors);
             }
         }
         _ => {}
@@ -564,18 +586,13 @@ fn parse_feed_person(
 /// (`check_entry_limit` returned `Ok(false)`) or because `check_entry_limit`'s
 /// internal `skip_element` itself failed while skipping an over-limit entry
 /// (caught here as bozo instead of propagated, per #463).
-#[allow(clippy::too_many_arguments)]
 fn parse_feed_entry(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
-    base_ctx: &BaseUrlContext,
-    feed_lang: Option<&str>,
 ) -> bool {
-    match feed.check_entry_limit(reader, buf, limits, depth) {
+    match feed.check_entry_limit(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
         Ok(true) => {}
         Ok(false) => return false,
         Err(e) => {
@@ -589,34 +606,30 @@ fn parse_feed_entry(
                 feed.bozo_exception = Some(e.to_string());
             }
             feed.bozo = true;
-            skip_to_end_qualified(reader, buf, b"entry");
+            skip_to_end_qualified(ctx.xml.reader, ctx.xml.buf, b"entry");
             *depth = depth.saturating_sub(1);
             return false;
         }
     }
 
-    let mut entry_ctx = base_ctx.child();
-    if let Some(xml_base) = extract_xml_base(element, limits.max_attribute_length) {
+    let mut entry_ctx = ctx.base.child();
+    if let Some(xml_base) = extract_xml_base(element, ctx.xml.limits.max_attribute_length) {
         entry_ctx.update_base(&xml_base);
     }
 
     // Entry-level xml:lang overrides feed-level; fall back to feed_lang.
-    let entry_lang_owned = extract_xml_lang(element, limits.max_attribute_length);
-    let effective_lang = entry_lang_owned.as_deref().or(feed_lang);
+    let entry_lang_owned = extract_xml_lang(element, ctx.xml.limits.max_attribute_length);
+    let effective_lang = entry_lang_owned.as_deref().or(ctx.lang);
 
-    let mut entry_bozo = false;
     let depth_before = *depth;
     match parse_entry(
-        reader,
-        buf,
-        limits,
+        &mut ctx.xml,
         depth,
         &entry_ctx,
-        &mut entry_bozo,
         effective_lang,
         &feed.namespaces,
     ) {
-        Ok(mut entry) => {
+        Ok((mut entry, entry_bozo)) => {
             if entry_bozo && !feed.bozo {
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in entry field".to_string());
@@ -653,7 +666,7 @@ fn parse_feed_entry(
                 feed.bozo_exception = Some(e.to_string());
             }
             feed.bozo = true;
-            skip_to_end_qualified(reader, buf, b"entry");
+            skip_to_end_qualified(ctx.xml.reader, ctx.xml.buf, b"entry");
             *depth = depth_before;
         }
     }
@@ -664,25 +677,23 @@ fn parse_feed_entry(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_feed_ns_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(dc_element) = is_dc_tag(tag, &feed.namespaces) {
         let dc_elem = dc_element.to_string();
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
         }
         Ok(true)
     } else if is_content_tag(tag).is_some() {
         // Content namespace - typically entry-level
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         Ok(true)
     } else {
@@ -693,14 +704,11 @@ fn parse_feed_ns_text(
 /// Parse Media RSS namespace tags at feed level.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_feed_media(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
@@ -711,27 +719,27 @@ fn parse_feed_media(
         "thumbnail" => {
             if let Some(thumb) = MediaThumbnail::from_attributes(
                 element.attributes().flatten(),
-                limits.max_attribute_length,
+                ctx.xml.limits.max_attribute_length,
             ) {
                 feed.feed
                     .media_thumbnail
-                    .try_push_limited(thumb, limits.max_enclosures);
+                    .try_push_limited(thumb, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
         "content" => {
             if let Some(content) = MediaContent::from_attributes(
                 element.attributes().flatten(),
-                limits.max_attribute_length,
+                ctx.xml.limits.max_attribute_length,
             ) {
                 feed.feed
                     .media_content
-                    .try_push_limited(content, limits.max_enclosures);
+                    .try_push_limited(content, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
         "rating" | "keywords" => {
@@ -743,9 +751,9 @@ fn parse_feed_media(
                     .and_then(|a| {
                         a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             .ok()
-                            .map(|v| truncate_to_length(&v, limits.max_attribute_length))
+                            .map(|v| truncate_to_length(&v, ctx.xml.limits.max_attribute_length))
                     });
-                let text = read_text_str(reader, buf, limits)?;
+                let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                 media_rss::handle_feed_element(
                     media_element,
                     scheme.as_deref(),
@@ -756,7 +764,7 @@ fn parse_feed_media(
         }
         _ => {
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
     }
@@ -767,16 +775,14 @@ fn parse_feed_media(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_feed_ns_threading(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
     if is_thr_tag(tag).is_some() {
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         Ok(true)
     } else {
@@ -787,19 +793,16 @@ fn parse_feed_ns_threading(
 /// Parse structured iTunes namespace tags at feed level: image, category, owner.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_feed_itunes_structured(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
     is_empty: bool,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"image", &feed.namespaces) {
-        if let Some(url) = extract_href_attr(element, limits) {
+        if let Some(url) = extract_href_attr(element, ctx.xml.limits) {
             itunes_feed_meta(&mut feed.feed).image = Some(url.clone().into());
             if feed.feed.image.is_none() {
                 feed.feed.image = Some(Image {
@@ -813,14 +816,16 @@ fn parse_feed_itunes_structured(
             }
         }
         if !is_empty {
-            skip_element(reader, buf, limits, *depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"category", &feed.namespaces) {
-        parse_atom_itunes_category(reader, buf, element, feed, limits, is_empty)?;
+        parse_atom_itunes_category(ctx, element, feed, is_empty)?;
         Ok(true)
     } else if is_itunes_tag(tag, b"owner", &feed.namespaces) && !is_empty {
-        if let Ok(owner) = parse_atom_itunes_owner(reader, buf, limits, depth) {
+        if let Ok(owner) =
+            parse_atom_itunes_owner(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)
+        {
             itunes_feed_meta(&mut feed.feed).owner = Some(owner);
         }
         Ok(true)
@@ -833,37 +838,35 @@ fn parse_feed_itunes_structured(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_feed_itunes_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"author", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         if feed.feed.author.is_none() {
             feed.feed.set_author(Person::from_name(&text));
             feed.feed
                 .authors
-                .try_push_limited(Person::from_name(&text), limits.max_authors);
+                .try_push_limited(Person::from_name(&text), ctx.xml.limits.max_authors);
         }
         itunes_feed_meta(&mut feed.feed).author = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"subtitle", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).subtitle = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"summary", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).summary = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).explicit = parse_explicit(&text);
         Ok(true)
     } else if is_itunes_tag(tag, b"keywords", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).keywords = text
             .split(',')
             .map(|s| s.trim().to_string())
@@ -871,21 +874,21 @@ fn parse_feed_itunes_text(
             .collect();
         Ok(true)
     } else if is_itunes_tag(tag, b"type", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).podcast_type = Some(text);
         Ok(true)
     } else if is_itunes_tag(tag, b"complete", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).complete = Some(text.trim().to_string());
         Ok(true)
     } else if is_itunes_tag(tag, b"new-feed-url", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         if !text.is_empty() {
             itunes_feed_meta(&mut feed.feed).new_feed_url = Some(text.trim().to_string().into());
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"block", &feed.namespaces) && !is_empty {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_feed_meta(&mut feed.feed).block =
             Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
         Ok(true)
@@ -898,32 +901,31 @@ fn parse_feed_itunes_text(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_feed_geo(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     tag: &[u8],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
             if georss_element == "where" {
-                let (loc, _had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+                let (loc, _had_bozo) =
+                    parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut feed.feed.r#where, loc);
                 }
             } else {
                 let georss_elem = georss_element.as_bytes().to_vec();
-                let text = read_text_str(reader, buf, limits)?;
-                georss::handle_feed_element(&georss_elem, &text, &mut feed.feed, limits);
+                let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                georss::handle_feed_element(&georss_elem, &text, &mut feed.feed, ctx.xml.limits);
             }
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
         let geo_elem = geo_element.as_bytes().to_vec();
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             georss::handle_feed_geo_element(&geo_elem, &text, &mut feed.feed);
         }
         Ok(true)
@@ -933,21 +935,29 @@ fn parse_feed_geo(
 }
 
 /// Parse <entry> element
-#[allow(clippy::too_many_arguments)]
+///
+/// Returns `(entry, bozo)`, where `bozo` reflects any unresolved entity
+/// references encountered while reading this entry's text fields.
 fn parse_entry(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    limits: &ParserLimits,
+    xml: &mut XmlCtx,
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
-    bozo: &mut bool,
     entry_lang: Option<&str>,
     namespaces: &HashMap<String, String>,
-) -> Result<Entry> {
+) -> Result<(Entry, bool)> {
     let mut entry = Entry::with_capacity();
+    let mut ctx = EntryCtx {
+        xml: xml.reborrow(),
+        base: base_ctx,
+        lang: entry_lang,
+        namespaces,
+        bozo: false,
+        has_explicit_link: false,
+        guid_is_permalink: None,
+    };
 
     loop {
-        match reader.read_event_into(buf) {
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
                 let is_empty = matches!(event, Event::Empty(_));
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
@@ -955,7 +965,7 @@ fn parse_entry(
                 };
 
                 *depth += 1;
-                check_depth(*depth, limits.max_nesting_depth)?;
+                check_depth(*depth, ctx.xml.limits.max_nesting_depth)?;
 
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
@@ -971,33 +981,27 @@ fn parse_entry(
                     | b"summary"
                         if !is_empty =>
                     {
-                        parse_entry_core_text(
-                            reader, buf, &element, &mut entry, limits, base_ctx, entry_lang, bozo,
-                        )?;
+                        parse_entry_core_text(&mut ctx, &element, &mut entry)?;
                     }
                     b"content" => {
-                        parse_entry_content(
-                            reader, buf, &element, &mut entry, limits, base_ctx, entry_lang,
-                            is_empty,
-                        )?;
+                        parse_entry_content(&mut ctx, &element, &mut entry, is_empty)?;
                     }
                     b"link" | b"category" => {
-                        parse_entry_link_or_category(
-                            reader, buf, &element, &mut entry, limits, base_ctx, is_empty,
-                        )?;
+                        parse_entry_link_or_category(&mut ctx, &element, &mut entry, is_empty)?;
                     }
                     b"author" | b"contributor" if !is_empty => {
-                        parse_entry_person(reader, buf, &element, &mut entry, limits, depth)?;
+                        parse_entry_person(&mut ctx, &element, &mut entry, depth)?;
                     }
                     b"source" if !is_empty => {
-                        if let Ok(source) = parse_atom_source(reader, buf, limits, depth) {
+                        if let Ok(source) =
+                            parse_atom_source(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)
+                        {
                             entry.source = Some(source);
                         }
                     }
                     tag => {
                         parse_entry_namespace(
-                            reader, buf, tag, &element, &mut entry, limits, depth, bozo,
-                            entry_lang, base_ctx, namespaces, is_empty,
+                            &mut ctx, tag, &element, &mut entry, depth, is_empty,
                         )?;
                     }
                 }
@@ -1008,106 +1012,85 @@ fn parse_entry(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        buf.clear();
+        ctx.xml.buf.clear();
     }
 
-    Ok(entry)
+    Ok((entry, ctx.bozo))
 }
 
 /// Parse extension namespace tags at entry level (Dublin Core, Content, Media RSS,
 /// Threading, iTunes, `GeoRSS`/Geo), in order.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_namespace(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: &mut usize,
-    bozo: &mut bool,
-    entry_lang: Option<&str>,
-    base_ctx: &BaseUrlContext,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<()> {
-    let mut handled = parse_entry_ns_text(
-        reader, buf, tag, entry, limits, bozo, entry_lang, base_ctx, namespaces, is_empty,
-    )?;
+    let mut handled = parse_entry_ns_text(ctx, tag, entry, is_empty)?;
     if !handled {
-        handled = parse_entry_media(
-            reader, buf, tag, element, entry, limits, depth, bozo, namespaces, is_empty,
-        )?;
+        handled = parse_entry_media(ctx, tag, element, entry, depth, is_empty)?;
     }
     if !handled {
-        handled = parse_entry_ns_threading(
-            reader, buf, tag, element, entry, limits, *depth, bozo, is_empty,
-        )?;
+        handled = parse_entry_ns_threading(ctx, tag, element, entry, *depth, is_empty)?;
     }
     if !handled {
-        handled = parse_entry_itunes(
-            reader, buf, tag, element, entry, limits, *depth, bozo, namespaces, is_empty,
-        )?;
+        handled = parse_entry_itunes(ctx, tag, element, entry, *depth, is_empty)?;
     }
     if !handled {
-        handled = parse_entry_geo(reader, buf, tag, entry, limits, *depth, bozo, is_empty)?;
+        handled = parse_entry_geo(ctx, tag, entry, *depth, is_empty)?;
     }
 
     if !handled && !is_empty {
-        skip_element(reader, buf, limits, *depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
     }
     Ok(())
 }
 
 /// Parse core text-valued entry elements: title, id, updated/modified,
 /// published/issued, created, subtitle/tagline, rights/copyright, summary.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_core_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
-    entry_lang: Option<&str>,
-    bozo: &mut bool,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_entry
     match element.name().as_ref() {
         b"title" => {
-            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             entry.set_title(text);
         }
         b"id" => {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             entry.id = Some(text.into());
         }
         b"updated" | b"modified" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             entry.updated = parse_date(&text);
             entry.updated_str = Some(text);
         }
         b"published" | b"issued" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             entry.published = parse_date(&text);
             entry.published_str = Some(text);
         }
         b"created" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             entry.created = parse_date(&text);
             entry.created_str = Some(text);
         }
         b"subtitle" | b"tagline" => {
-            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             entry.set_subtitle(text);
         }
         b"rights" | b"copyright" => {
-            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             entry.set_rights(text);
         }
         b"summary" => {
-            let text = parse_text_construct(reader, buf, element, limits, entry_lang, base_ctx)?;
+            let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             entry.set_summary(text);
         }
         _ => {}
@@ -1116,49 +1099,42 @@ fn parse_entry_core_text(
 }
 
 /// Parse an entry-level `<content>` element (inline or out-of-line, RFC 4287 §4.1.3.2).
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_content(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
-    entry_lang: Option<&str>,
     is_empty: bool,
 ) -> Result<()> {
     if is_empty {
-        if let Some(content) = parse_content_empty(element, limits, entry_lang, base_ctx) {
+        if let Some(content) = parse_content_empty(element, ctx.xml.limits, ctx.lang, ctx.base) {
             entry
                 .content
-                .try_push_limited(content, limits.max_content_blocks);
+                .try_push_limited(content, ctx.xml.limits.max_content_blocks);
         }
     } else {
-        let content = parse_content(reader, buf, element, limits, entry_lang, base_ctx)?;
+        let content = parse_content(ctx, element)?;
         entry
             .content
-            .try_push_limited(content, limits.max_content_blocks);
+            .try_push_limited(content, ctx.xml.limits.max_content_blocks);
     }
     Ok(())
 }
 
 /// Parse entry-level `<link>` and `<category>` elements.
 fn parse_entry_link_or_category(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
     is_empty: bool,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_entry
     match element.name().as_ref() {
         b"link" => {
-            if let Some(mut link) =
-                Link::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
-            {
-                link.href = base_ctx.resolve_safe(&link.href).into();
+            if let Some(mut link) = Link::from_attributes(
+                element.attributes().flatten(),
+                ctx.xml.limits.max_attribute_length,
+            ) {
+                link.href = ctx.base.resolve_safe(&link.href).into();
 
                 if entry.link.is_none() && link.rel.as_deref() == Some("alternate") {
                     entry.link = Some(link.href.to_string());
@@ -1175,25 +1151,26 @@ fn parse_entry_link_or_category(
                             title: None,
                             duration: None,
                         },
-                        limits.max_enclosures,
+                        ctx.xml.limits.max_enclosures,
                     );
                 }
                 entry
                     .links
-                    .try_push_limited(link, limits.max_links_per_entry);
+                    .try_push_limited(link, ctx.xml.limits.max_links_per_entry);
             }
             if !is_empty {
-                skip_to_end(reader, buf, b"link")?;
+                skip_to_end(ctx.xml.reader, ctx.xml.buf, b"link")?;
             }
         }
         b"category" => {
-            if let Some(tag) =
-                Tag::from_attributes(element.attributes().flatten(), limits.max_attribute_length)
-            {
-                entry.tags.try_push_limited(tag, limits.max_tags);
+            if let Some(tag) = Tag::from_attributes(
+                element.attributes().flatten(),
+                ctx.xml.limits.max_attribute_length,
+            ) {
+                entry.tags.try_push_limited(tag, ctx.xml.limits.max_tags);
             }
             if !is_empty {
-                skip_to_end(reader, buf, b"category")?;
+                skip_to_end(ctx.xml.reader, ctx.xml.buf, b"category")?;
             }
         }
         _ => {}
@@ -1204,28 +1181,28 @@ fn parse_entry_link_or_category(
 /// Parse entry-level `<author>` and `<contributor>` elements.
 #[allow(clippy::unnecessary_wraps)]
 fn parse_entry_person(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: &mut usize,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_entry
     match element.name().as_ref() {
         b"author" => {
-            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+            if let Ok(person) = parse_person(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
                 if entry.author.is_none() {
                     entry.set_author(person.clone());
                 }
-                entry.authors.try_push_limited(person, limits.max_authors);
+                entry
+                    .authors
+                    .try_push_limited(person, ctx.xml.limits.max_authors);
             }
         }
         b"contributor" => {
-            if let Ok(person) = parse_person(reader, buf, limits, depth) {
+            if let Ok(person) = parse_person(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
                 entry
                     .contributors
-                    .try_push_limited(person, limits.max_contributors);
+                    .try_push_limited(person, ctx.xml.limits.max_contributors);
             }
         }
         _ => {}
@@ -1236,33 +1213,26 @@ fn parse_entry_person(
 /// Parse Dublin Core and Content namespace tags at entry level.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_ns_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    bozo: &mut bool,
-    entry_lang: Option<&str>,
-    base_ctx: &BaseUrlContext,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<bool> {
-    if let Some(dc_element) = is_dc_tag(tag, namespaces) {
+    if let Some(dc_element) = is_dc_tag(tag, ctx.namespaces) {
         let dc_elem = dc_element.to_string();
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             dublin_core::handle_entry_element(&dc_elem, &text, entry);
         }
         Ok(true)
     } else if let Some(content_element) = is_content_tag(tag) {
         let content_elem = content_element.to_string();
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
-            content::handle_entry_element(&content_elem, &text, entry, entry_lang, base_ctx.base());
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
+            content::handle_entry_element(&content_elem, &text, entry, ctx.lang, ctx.base.base());
         }
         Ok(true)
     } else {
@@ -1273,59 +1243,24 @@ fn parse_entry_ns_text(
 /// Parse Media RSS namespace tags at entry level.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_media(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: &mut usize,
-    bozo: &mut bool,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<bool> {
-    let Some(media_element) = is_media_tag(tag, namespaces) else {
+    let Some(media_element) = is_media_tag(tag, ctx.namespaces) else {
         return Ok(false);
     };
-    if parse_entry_media_object(
-        reader,
-        buf,
-        media_element,
-        element,
-        entry,
-        limits,
-        depth,
-        bozo,
-        namespaces,
-        is_empty,
-    )? {
+    if parse_entry_media_object(ctx, media_element, element, entry, depth, is_empty)? {
         return Ok(true);
     }
-    if parse_entry_media_meta(
-        reader,
-        buf,
-        media_element,
-        element,
-        entry,
-        limits,
-        *depth,
-        bozo,
-        is_empty,
-    )? {
+    if parse_entry_media_meta(ctx, media_element, element, entry, *depth, is_empty)? {
         return Ok(true);
     }
-    parse_entry_media_text(
-        reader,
-        buf,
-        media_element,
-        element,
-        entry,
-        limits,
-        bozo,
-        is_empty,
-    )?;
+    parse_entry_media_text(ctx, media_element, element, entry, is_empty)?;
     Ok(true)
 }
 
@@ -1333,54 +1268,47 @@ fn parse_entry_media(
 /// thumbnail, content, group.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_media_object(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: &mut usize,
-    bozo: &mut bool,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<bool> {
     match media_element {
         "thumbnail" => {
             if let Some(thumbnail) = MediaThumbnail::from_attributes(
                 element.attributes().flatten(),
-                limits.max_attribute_length,
+                ctx.xml.limits.max_attribute_length,
             ) {
                 entry
                     .media_thumbnail
-                    .try_push_limited(thumbnail, limits.max_enclosures);
+                    .try_push_limited(thumbnail, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, *depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
             }
             Ok(true)
         }
         "content" => {
             if let Some(media) = MediaContent::from_attributes(
                 element.attributes().flatten(),
-                limits.max_attribute_length,
+                ctx.xml.limits.max_attribute_length,
             ) {
                 entry
                     .media_content
-                    .try_push_limited(media, limits.max_enclosures);
+                    .try_push_limited(media, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                parse_atom_media_content_children(
-                    reader, buf, entry, limits, depth, bozo, namespaces,
-                )?;
+                parse_atom_media_content_children(ctx, entry, depth)?;
             }
             Ok(true)
         }
         "group" => {
             if !is_empty {
                 // media:group is a transparent container; promote children to entry
-                parse_atom_media_group(reader, buf, entry, limits, depth, bozo, namespaces)?;
+                parse_atom_media_group(ctx, entry, depth)?;
             }
             Ok(true)
         }
@@ -1391,16 +1319,12 @@ fn parse_entry_media_object(
 /// Parse `media:*` metadata elements: credit, copyright, rating.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_media_meta(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
-    bozo: &mut bool,
     is_empty: bool,
 ) -> Result<bool> {
     match media_element {
@@ -1408,8 +1332,8 @@ fn parse_entry_media_meta(
             let role = attr_raw(element, b"role");
             let scheme = attr_raw(element, b"scheme");
             if !is_empty {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 if !text.is_empty() {
                     entry.media_credit.try_push_limited(
                         MediaCredit {
@@ -1417,7 +1341,7 @@ fn parse_entry_media_meta(
                             scheme,
                             content: text,
                         },
-                        limits.max_links_per_entry,
+                        ctx.xml.limits.max_links_per_entry,
                     );
                 }
             }
@@ -1426,15 +1350,16 @@ fn parse_entry_media_meta(
         "copyright" => {
             let url = attr_raw(element, b"url");
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
             entry.media_copyright = Some(MediaCopyright { url });
             Ok(true)
         }
         "rating" => {
             if !is_empty {
-                let scheme = attr_normalized(element, b"scheme", limits.max_attribute_length);
-                let text = read_text_str(reader, buf, limits)?;
+                let scheme =
+                    attr_normalized(element, b"scheme", ctx.xml.limits.max_attribute_length);
+                let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                 media_rss::handle_entry_rating(scheme.as_deref(), &text, entry);
             }
             Ok(true)
@@ -1445,23 +1370,19 @@ fn parse_entry_media_meta(
 
 /// Parse `media:*` text elements: description, title, keywords; falls back to the
 /// generic Media RSS element handler for anything else.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_media_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
-    bozo: &mut bool,
     is_empty: bool,
 ) -> Result<()> {
     match media_element {
         "description" => {
             let type_attr = attr_raw(element, b"type");
             if !is_empty {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
                 if is_plain && !text.is_empty() {
                     entry.media_description = Some(text.clone());
@@ -1474,8 +1395,8 @@ fn parse_entry_media_text(
         "title" => {
             let type_attr = attr_raw(element, b"type");
             if !is_empty {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
                 if is_plain && !text.is_empty() {
                     entry.media_title = Some(text.clone());
@@ -1487,16 +1408,16 @@ fn parse_entry_media_text(
         }
         "keywords" => {
             if !is_empty {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 media_rss::handle_entry_element("keywords", &text, entry);
             }
         }
         _ => {
             let media_elem = media_element.to_string();
             if !is_empty {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 media_rss::handle_entry_element(&media_elem, &text, entry);
             }
         }
@@ -1507,16 +1428,12 @@ fn parse_entry_media_text(
 /// Parse Atom Threading Extensions (RFC 4685) at entry level: thr, plus Slash/WFW.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_ns_threading(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
-    bozo: &mut bool,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(thr_element) = is_thr_tag(tag) {
@@ -1524,25 +1441,25 @@ fn parse_entry_ns_threading(
             "in-reply-to" => {
                 if let Some(reply) = threading::parse_in_reply_to_from_attrs(
                     element.attributes().flatten(),
-                    limits.max_attribute_length,
+                    ctx.xml.limits.max_attribute_length,
                 ) {
                     // Shares max_links_per_entry limit; split if needed later
                     entry
                         .in_reply_to
-                        .try_push_limited(reply, limits.max_links_per_entry);
+                        .try_push_limited(reply, ctx.xml.limits.max_links_per_entry);
                 }
                 if !is_empty {
-                    skip_element(reader, buf, limits, depth)?;
+                    skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 }
             }
             "total" if !is_empty => {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 threading::handle_total(&text, entry);
             }
             _ => {
                 if !is_empty {
-                    skip_element(reader, buf, limits, depth)?;
+                    skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 }
             }
         }
@@ -1550,16 +1467,16 @@ fn parse_entry_ns_threading(
     } else if let Some(slash_element) = is_slash_tag(tag) {
         let slash_elem = slash_element.to_string();
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             slash::handle_slash_entry_element(&slash_elem, &text, entry);
         }
         Ok(true)
     } else if let Some(wfw_element) = is_wfw_tag(tag) {
         let wfw_elem = wfw_element.to_string();
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             slash::handle_wfw_entry_element(&wfw_elem, &text, entry);
         }
         Ok(true)
@@ -1571,77 +1488,72 @@ fn parse_entry_ns_threading(
 /// Parse iTunes namespace tags at entry level.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_itunes(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     element: &BytesStart<'_>,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
-    bozo: &mut bool,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<bool> {
-    if is_itunes_tag(tag, b"image", namespaces) {
-        if let Some(url) = extract_href_attr(element, limits) {
+    if is_itunes_tag(tag, b"image", ctx.namespaces) {
+        if let Some(url) = extract_href_attr(element, ctx.xml.limits) {
             itunes_entry_meta(entry).image =
-                Some(truncate_to_length(&url, limits.max_attribute_length).into());
+                Some(truncate_to_length(&url, ctx.xml.limits.max_attribute_length).into());
         }
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         Ok(true)
-    } else if is_itunes_tag(tag, b"title", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"title", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).title = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"author", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"author", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         if entry.author.is_none() {
             entry.set_author(Person::from_name(&text));
             entry
                 .authors
-                .try_push_limited(Person::from_name(&text), limits.max_authors);
+                .try_push_limited(Person::from_name(&text), ctx.xml.limits.max_authors);
         }
         itunes_entry_meta(entry).author = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"subtitle", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"subtitle", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).subtitle = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"summary", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"summary", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).summary = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"duration", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"duration", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).duration = if text.is_empty() { None } else { Some(text) };
         Ok(true)
-    } else if is_itunes_tag(tag, b"explicit", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"explicit", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).explicit = parse_explicit(&text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"episode", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"episode", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).episode = text.trim().parse().ok();
         Ok(true)
-    } else if is_itunes_tag(tag, b"season", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"season", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).season = text.trim().parse().ok();
         Ok(true)
-    } else if is_itunes_tag(tag, b"episodeType", namespaces) && !is_empty {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"episodeType", ctx.namespaces) && !is_empty {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).episode_type = Some(text);
         Ok(true)
     } else {
@@ -1652,38 +1564,35 @@ fn parse_entry_itunes(
 /// Parse `GeoRSS` and W3C Geo namespace tags at entry level.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_entry_geo(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
-    bozo: &mut bool,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
             if georss_element == "where" {
-                let (loc, had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
-                *bozo |= had_bozo;
+                let (loc, had_bozo) =
+                    parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
+                ctx.bozo |= had_bozo;
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut entry.r#where, loc);
                 }
             } else {
                 let georss_elem = georss_element.as_bytes().to_vec();
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
-                georss::handle_entry_element(&georss_elem, &text, entry, limits);
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
+                georss::handle_entry_element(&georss_elem, &text, entry, ctx.xml.limits);
             }
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
         let geo_elem = geo_element.as_bytes().to_vec();
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             georss::handle_entry_geo_element(&geo_elem, &text, entry);
         }
         Ok(true)
@@ -1740,11 +1649,12 @@ fn promote_entry_published_to_updated(entry: &mut Entry) {
 }
 
 /// Parse Atom text construct (title, summary, rights, etc.)
+///
+/// Called from both the feed tier (`FeedCtx` has no `namespaces`) and the entry
+/// tier, so it takes a bare `XmlCtx` rather than `EntryCtx`.
 fn parse_text_construct(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    xml: &mut XmlCtx,
     e: &quick_xml::events::BytesStart,
-    limits: &ParserLimits,
     lang: Option<&str>,
     base_ctx: &BaseUrlContext,
 ) -> Result<TextConstruct> {
@@ -1759,7 +1669,7 @@ fn parse_text_construct(
     let mut elem_lang: Option<String> = None;
 
     for attr in e.attributes().flatten() {
-        if attr.value.len() > limits.max_attribute_length {
+        if attr.value.len() > xml.limits.max_attribute_length {
             continue;
         }
         match attr.key.as_ref() {
@@ -1781,8 +1691,8 @@ fn parse_text_construct(
     }
 
     let value = match content_type {
-        TextType::Xhtml => read_xhtml_content_str(reader, buf, limits)?,
-        _ => read_text_str(reader, buf, limits)?,
+        TextType::Xhtml => read_xhtml_content_str(xml.reader, xml.buf, xml.limits)?,
+        _ => read_text_str(xml.reader, xml.buf, xml.limits)?,
     };
 
     // Element-level xml:lang overrides parent lang; empty string clears it (XML spec)
@@ -1875,14 +1785,10 @@ fn parse_generator(
 }
 
 /// Parse <content> element
-fn parse_content(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    e: &quick_xml::events::BytesStart,
-    limits: &ParserLimits,
-    lang: Option<&str>,
-    base_ctx: &BaseUrlContext,
-) -> Result<Content> {
+///
+/// Only called from the entry tier (single call site), so it takes `EntryCtx`
+/// directly rather than a bare `XmlCtx` plus separate `lang`/`base` params.
+fn parse_content(ctx: &mut EntryCtx, e: &quick_xml::events::BytesStart) -> Result<Content> {
     let mut content_type = None;
     let mut is_xhtml = false;
     let mut src = None;
@@ -1890,7 +1796,7 @@ fn parse_content(
     let mut elem_lang: Option<String> = None;
 
     for attr in e.attributes().flatten() {
-        if attr.value.len() > limits.max_attribute_length {
+        if attr.value.len() > ctx.xml.limits.max_attribute_length {
             continue;
         }
         match attr.key.as_ref() {
@@ -1904,7 +1810,7 @@ fn parse_content(
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
-                    elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
+                    elem_base = ctx.base.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
             b"xml:lang" | b"lang" => {
@@ -1924,13 +1830,13 @@ fn parse_content(
     let effective_lang = match &elem_lang {
         Some(l) if l.is_empty() => None,
         Some(l) => Some(l.as_str()),
-        None => lang,
+        None => ctx.lang,
     };
-    let effective_base = elem_base.or_else(|| base_ctx.base().map(ToString::to_string));
+    let effective_base = elem_base.or_else(|| ctx.base.base().map(ToString::to_string));
 
     // RFC 4287 §4.1.3.2: when src is present, content is out-of-line; value is empty.
     if src.is_some() {
-        skip_to_end(reader, buf, b"content")?;
+        skip_to_end(ctx.xml.reader, ctx.xml.buf, b"content")?;
         return Ok(Content {
             value: String::new(),
             content_type,
@@ -1941,9 +1847,9 @@ fn parse_content(
     }
 
     let value = if is_xhtml {
-        read_xhtml_content_str(reader, buf, limits)?
+        read_xhtml_content_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
     } else {
-        read_text_str(reader, buf, limits)?
+        read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
     };
 
     Ok(Content {
@@ -1973,32 +1879,29 @@ fn normalize_atom_content_type(raw: &str) -> String {
 ///
 /// `<media:group>` is a transparent container per the Media RSS spec; its children
 /// are treated as if they appeared directly under the entry element.
-fn parse_atom_media_group(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    entry: &mut Entry,
-    limits: &ParserLimits,
-    depth: &mut usize,
-    bozo: &mut bool,
-    namespaces: &HashMap<String, String>,
-) -> Result<()> {
+///
+/// The `handle_atom_media_group_child` calls below read `ctx.xml.limits` and
+/// `ctx.namespaces` as disjoint fields rather than passing `ctx` itself:
+/// `e` is bound directly from `read_event_into` (no `.to_owned()`), so it holds
+/// a live borrow of `ctx.xml.buf` that a whole-`ctx` borrow would alias.
+fn parse_atom_media_group(ctx: &mut EntryCtx, entry: &mut Entry, depth: &mut usize) -> Result<()> {
     loop {
-        buf.clear();
-        match reader.read_event_into(buf) {
+        ctx.xml.buf.clear();
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(Event::Empty(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                handle_atom_media_group_child(&tag, &e, entry, limits, namespaces);
+                handle_atom_media_group_child(&tag, &e, entry, ctx.xml.limits, ctx.namespaces);
             }
             Ok(Event::Start(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag, namespaces) == Some("title") {
+                if is_media_tag(&tag, ctx.namespaces) == Some("title") {
                     let type_attr = e
                         .attributes()
                         .flatten()
                         .find(|a| a.key.as_ref() == b"type")
                         .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned));
-                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                    *bozo |= had_bozo;
+                    let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                    ctx.bozo |= had_bozo;
                     let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
                     if is_plain && !text.is_empty() {
                         entry.media_title = Some(text.clone());
@@ -2006,14 +1909,14 @@ fn parse_atom_media_group(
                     if entry.title.is_none() && !text.is_empty() {
                         entry.title = Some(text);
                     }
-                } else if is_media_tag(&tag, namespaces) == Some("description") {
+                } else if is_media_tag(&tag, ctx.namespaces) == Some("description") {
                     let type_attr = e
                         .attributes()
                         .flatten()
                         .find(|a| a.key.as_ref() == b"type")
                         .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned));
-                    let (text, had_bozo) = read_text(reader, buf, limits)?;
-                    *bozo |= had_bozo;
+                    let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                    ctx.bozo |= had_bozo;
                     let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
                     if is_plain && !text.is_empty() {
                         entry.media_description = Some(text.clone());
@@ -2022,15 +1925,15 @@ fn parse_atom_media_group(
                         entry.summary = Some(text);
                     }
                 } else {
-                    handle_atom_media_group_child(&tag, &e, entry, limits, namespaces);
+                    handle_atom_media_group_child(&tag, &e, entry, ctx.xml.limits, ctx.namespaces);
                     *depth += 1;
-                    skip_element(reader, buf, limits, *depth)?;
+                    skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
                     *depth = depth.saturating_sub(1);
                 }
             }
             Ok(Event::End(_) | Event::Eof) => break,
             Err(_) => {
-                *bozo = true;
+                ctx.bozo = true;
                 break;
             }
             _ => {}
@@ -2044,51 +1947,47 @@ fn parse_atom_media_group(
 /// Python feedparser collects all `media:thumbnail` elements into `entry.media_thumbnail`
 /// regardless of whether they are nested inside `media:content`.
 fn parse_atom_media_content_children(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: &mut usize,
-    bozo: &mut bool,
-    namespaces: &HashMap<String, String>,
 ) -> Result<()> {
     loop {
-        buf.clear();
-        match reader.read_event_into(buf) {
+        ctx.xml.buf.clear();
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(Event::Empty(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag, namespaces) == Some("thumbnail") {
+                if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let thumbnail = MediaThumbnail::from_attributes(
                         e.attributes().flatten(),
-                        limits.max_attribute_length,
+                        ctx.xml.limits.max_attribute_length,
                     );
                     if let Some(thumbnail) = thumbnail {
                         entry
                             .media_thumbnail
-                            .try_push_limited(thumbnail, limits.max_enclosures);
+                            .try_push_limited(thumbnail, ctx.xml.limits.max_enclosures);
                     }
                 }
             }
             Ok(Event::Start(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag, namespaces) == Some("thumbnail") {
+                if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let thumbnail = MediaThumbnail::from_attributes(
                         e.attributes().flatten(),
-                        limits.max_attribute_length,
+                        ctx.xml.limits.max_attribute_length,
                     );
                     if let Some(thumbnail) = thumbnail {
                         entry
                             .media_thumbnail
-                            .try_push_limited(thumbnail, limits.max_enclosures);
+                            .try_push_limited(thumbnail, ctx.xml.limits.max_enclosures);
                     }
                 }
                 *depth += 1;
-                skip_element(reader, buf, limits, *depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(_) | Event::Eof) => break,
             Err(_) => {
-                *bozo = true;
+                ctx.bozo = true;
                 break;
             }
             _ => {}
@@ -2376,11 +2275,9 @@ fn parse_atom_itunes_owner(
 
 /// Parse `<itunes:category>` with optional nested subcategory.
 fn parse_atom_itunes_category(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut FeedCtx,
     element: &quick_xml::events::BytesStart<'_>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
     let text = element
@@ -2392,7 +2289,7 @@ fn parse_atom_itunes_category(
 
     if text.is_empty() {
         if !is_empty {
-            skip_element(reader, buf, limits, 0)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, 0)?;
         }
         return Ok(());
     }
@@ -2401,8 +2298,8 @@ fn parse_atom_itunes_category(
 
     if !is_empty {
         loop {
-            buf.clear();
-            match reader.read_event_into(buf) {
+            ctx.xml.buf.clear();
+            match ctx.xml.reader.read_event_into(ctx.xml.buf) {
                 Ok(Event::Empty(e))
                     if is_itunes_tag(e.name().as_ref(), b"category", &feed.namespaces) =>
                 {
@@ -2420,7 +2317,7 @@ fn parse_atom_itunes_category(
                         .flatten()
                         .find(|a| a.key.as_ref() == b"text")
                         .and_then(|a| String::from_utf8(a.value.into_owned()).ok());
-                    skip_to_end(reader, buf, b"category")?;
+                    skip_to_end(ctx.xml.reader, ctx.xml.buf, b"category")?;
                 }
                 Ok(Event::End(_) | Event::Eof) => break,
                 Err(e) => return Err(e.into()),
@@ -2435,7 +2332,7 @@ fn parse_atom_itunes_category(
             scheme: Some("http://www.itunes.com/".into()),
             label: None,
         },
-        limits.max_tags,
+        ctx.xml.limits.max_tags,
     );
     if let Some(ref sub) = subcategory {
         feed.feed.tags.try_push_limited(
@@ -2444,7 +2341,7 @@ fn parse_atom_itunes_category(
                 scheme: Some("http://www.itunes.com/".into()),
                 label: None,
             },
-            limits.max_tags,
+            ctx.xml.limits.max_tags,
         );
     }
     let itunes = feed

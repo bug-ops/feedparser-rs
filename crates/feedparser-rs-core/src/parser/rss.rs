@@ -31,6 +31,21 @@ use super::common::{
     podcast_feed_meta, read_text, read_text_str, skip_element, skip_to_end_qualified,
     text_construct_from_content,
 };
+use super::context::{EntryCtx, XmlCtx};
+
+/// Channel-tier parse context: XML plumbing plus the xml:base/xml:lang state
+/// accumulated while parsing `<channel>` children.
+///
+/// `base` is `&mut` (unlike the read-only `FeedCtx`/`RdfCtx` outer tiers) because
+/// `parse_channel_text` mutates it in place when `<link>` establishes the base URL.
+struct ChannelCtx<'r, 'd, 'p> {
+    /// XML event-loop plumbing (reader, buffer, limits).
+    xml: XmlCtx<'r, 'd>,
+    /// xml:base resolution context; mutated when `<link>` sets the channel base URL.
+    base: &'p mut BaseUrlContext,
+    /// xml:lang inherited by elements that don't declare their own.
+    lang: Option<&'p str>,
+}
 
 /// Error message for malformed XML attributes (shared constant)
 const MALFORMED_ATTRIBUTES_ERROR: &str = "Malformed XML attributes";
@@ -278,9 +293,18 @@ fn parse_channel(
     channel_lang: Option<&str>,
 ) -> Result<()> {
     let mut buf = Vec::with_capacity(EVENT_BUFFER_CAPACITY);
+    let mut ctx = ChannelCtx {
+        xml: XmlCtx {
+            reader,
+            buf: &mut buf,
+            limits,
+        },
+        base: base_ctx,
+        lang: channel_lang,
+    };
 
     loop {
-        match reader.read_event_into(&mut buf) {
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
                 let is_empty = matches!(event, Event::Empty(_));
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
@@ -288,7 +312,7 @@ fn parse_channel(
                 };
 
                 *depth += 1;
-                check_depth(*depth, limits.max_nesting_depth)?;
+                check_depth(*depth, ctx.xml.limits.max_nesting_depth)?;
 
                 // NOTE: Allocation here is necessary due to borrow checker constraints.
                 // We need owned tag data to pass &mut buf to helper functions simultaneously.
@@ -301,20 +325,16 @@ fn parse_channel(
                 }
 
                 // Extract xml:lang before matching to avoid borrow issues
-                let item_lang =
-                    extract_xml_lang(e, limits.max_attribute_length).filter(|s| !s.is_empty());
+                let item_lang = extract_xml_lang(e, ctx.xml.limits.max_attribute_length)
+                    .filter(|s| !s.is_empty());
 
                 dispatch_channel_tag(
-                    reader,
-                    &mut buf,
+                    &mut ctx,
                     &tag,
                     &attrs,
                     item_lang.as_deref(),
                     feed,
-                    limits,
                     depth,
-                    base_ctx,
-                    channel_lang,
                     is_empty,
                 );
                 *depth = depth.saturating_sub(1);
@@ -331,7 +351,7 @@ fn parse_channel(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        buf.clear();
+        ctx.xml.buf.clear();
     }
 
     // Post-process: iTunes subtitle/summary always win over <description> (order-independent)
@@ -378,19 +398,36 @@ fn recover_channel_field_error(
     *depth = depth_before;
 }
 
+/// `ChannelCtx`-taking wrapper around [`recover_channel_field_error`], so
+/// `dispatch_channel_tag`'s call sites don't each need to spell out
+/// `ctx.xml.reader, ctx.xml.buf` inline.
+fn recover_channel_error(
+    ctx: &mut ChannelCtx,
+    tag: &[u8],
+    depth: &mut usize,
+    depth_before: usize,
+    feed: &mut ParsedFeed,
+    err: &FeedError,
+) {
+    recover_channel_field_error(
+        ctx.xml.reader,
+        ctx.xml.buf,
+        tag,
+        depth,
+        depth_before,
+        feed,
+        err,
+    );
+}
+
 /// Dispatch a single `<channel>` child element to its handler.
-#[allow(clippy::too_many_arguments)]
 fn dispatch_channel_tag(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     item_lang: Option<&str>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
-    base_ctx: &mut BaseUrlContext,
-    channel_lang: Option<&str>,
     is_empty: bool,
 ) {
     // Snapshot of `depth` on entry: restored after a caught error so a partially
@@ -409,79 +446,65 @@ fn dispatch_channel_tag(
         | b"category"
             if !is_empty =>
         {
-            if let Err(e) = parse_channel_standard(
-                reader,
-                buf,
-                tag,
-                attrs,
-                feed,
-                limits,
-                base_ctx,
-                channel_lang,
-            ) {
-                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_channel_standard(ctx, tag, attrs, feed) {
+                recover_channel_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
-        b"image" if !is_empty => match parse_image(reader, buf, limits, depth) {
-            Ok(image) => feed.feed.image = Some(image),
-            Err(e) => recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e),
-        },
+        b"image" if !is_empty => {
+            match parse_image(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
+                Ok(image) => feed.feed.image = Some(image),
+                Err(e) => recover_channel_error(ctx, tag, depth, depth_before, feed, &e),
+            }
+        }
         b"cloud" => {
             feed.feed.cloud = Some(parse_cloud(attrs));
         }
-        b"textInput" if !is_empty => match parse_text_input(reader, buf, limits) {
-            Ok(ti) => feed.feed.textinput = Some(ti),
-            Err(e) => recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e),
-        },
+        b"textInput" if !is_empty => {
+            match parse_text_input(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits) {
+                Ok(ti) => feed.feed.textinput = Some(ti),
+                Err(e) => recover_channel_error(ctx, tag, depth, depth_before, feed, &e),
+            }
+        }
         b"skipHours" if !is_empty => {
-            if let Err(e) = parse_skip_hours(reader, buf, limits, &mut feed.feed.skiphours) {
-                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_skip_hours(
+                ctx.xml.reader,
+                ctx.xml.buf,
+                ctx.xml.limits,
+                &mut feed.feed.skiphours,
+            ) {
+                recover_channel_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
         b"skipDays" if !is_empty => {
-            if let Err(e) = parse_skip_days(reader, buf, limits, &mut feed.feed.skipdays) {
-                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_skip_days(
+                ctx.xml.reader,
+                ctx.xml.buf,
+                ctx.xml.limits,
+                &mut feed.feed.skipdays,
+            ) {
+                recover_channel_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
         b"item" if !is_empty => {
-            parse_channel_item(
-                item_lang,
-                reader,
-                buf,
-                feed,
-                limits,
-                depth,
-                base_ctx,
-                channel_lang,
-            );
+            parse_channel_item(ctx, item_lang, feed, depth);
         }
         _ => {
-            if let Err(e) =
-                parse_channel_extension(reader, buf, tag, attrs, feed, limits, depth, is_empty)
-            {
-                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            if let Err(e) = parse_channel_extension(ctx, tag, attrs, feed, depth, is_empty) {
+                recover_channel_error(ctx, tag, depth, depth_before, feed, &e);
             }
         }
     }
 }
 
 /// Parse <item> element within channel
-///
-/// Note: Uses 8 parameters instead of a context struct due to borrow checker constraints
-/// with multiple simultaneous `&mut` references during parsing.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_item(
+    ctx: &mut ChannelCtx,
     item_lang: Option<&str>,
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
-    base_ctx: &BaseUrlContext,
-    channel_lang: Option<&str>,
 ) {
-    match feed.check_entry_limit(reader, buf, limits, depth) {
+    match feed.check_entry_limit(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
         Ok(true) => {}
         Ok(false) => return,
         Err(e) => {
@@ -495,21 +518,19 @@ fn parse_channel_item(
                 feed.bozo_exception = Some(e.to_string());
             }
             feed.bozo = true;
-            skip_to_end_qualified(reader, buf, b"item");
+            skip_to_end_qualified(ctx.xml.reader, ctx.xml.buf, b"item");
             *depth = depth.saturating_sub(1);
             return;
         }
     }
 
-    let effective_lang = item_lang.or(channel_lang);
+    let effective_lang = item_lang.or(ctx.lang);
     let depth_before = *depth;
 
     match parse_item(
-        reader,
-        buf,
-        limits,
+        &mut ctx.xml,
         depth,
-        base_ctx,
+        ctx.base,
         effective_lang,
         &feed.namespaces,
     ) {
@@ -548,7 +569,7 @@ fn parse_channel_item(
                 feed.bozo_exception = Some(e.to_string());
             }
             feed.bozo = true;
-            skip_to_end_qualified(reader, buf, b"item");
+            skip_to_end_qualified(ctx.xml.reader, ctx.xml.buf, b"item");
             *depth = depth_before;
         }
     }
@@ -556,14 +577,11 @@ fn parse_channel_item(
 
 /// Parse channel extension elements (iTunes, Podcast, namespaces)
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_extension(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
     is_empty: bool,
 ) -> Result<()> {
@@ -573,9 +591,19 @@ fn parse_channel_extension(
         let mut link_type: Option<String> = None;
         for (key, value) in attrs {
             match key.as_slice() {
-                b"href" => href = truncate_to_length(value, limits.max_attribute_length),
-                b"rel" => rel = Some(truncate_to_length(value, limits.max_attribute_length)),
-                b"type" => link_type = Some(truncate_to_length(value, limits.max_attribute_length)),
+                b"href" => href = truncate_to_length(value, ctx.xml.limits.max_attribute_length),
+                b"rel" => {
+                    rel = Some(truncate_to_length(
+                        value,
+                        ctx.xml.limits.max_attribute_length,
+                    ));
+                }
+                b"type" => {
+                    link_type = Some(truncate_to_length(
+                        value,
+                        ctx.xml.limits.max_attribute_length,
+                    ));
+                }
                 _ => {}
             }
         }
@@ -591,21 +619,21 @@ fn parse_channel_extension(
             }
             feed.feed
                 .links
-                .try_push_limited(link, limits.max_links_per_feed);
+                .try_push_limited(link, ctx.xml.limits.max_links_per_feed);
         }
         return Ok(());
     }
-    let mut handled = parse_channel_itunes(reader, buf, tag, attrs, feed, limits, depth, is_empty)?;
+    let mut handled = parse_channel_itunes(ctx, tag, attrs, feed, depth, is_empty)?;
     if !handled {
-        handled = parse_channel_podcast(reader, buf, tag, attrs, feed, limits, is_empty)?;
+        handled = parse_channel_podcast(ctx, tag, attrs, feed, is_empty)?;
     }
     if !handled {
-        handled = parse_channel_namespace(reader, buf, tag, attrs, feed, limits, *depth, is_empty)?;
+        handled = parse_channel_namespace(ctx, tag, attrs, feed, *depth, is_empty)?;
     }
 
     // Only skip element content if this is NOT an empty element
     if !handled && !is_empty {
-        skip_element(reader, buf, limits, *depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
     }
 
     Ok(())
@@ -642,43 +670,29 @@ fn parse_enclosure(attrs: &[(Vec<u8>, String)], limits: &ParserLimits) -> Option
 
 /// Parse standard RSS 2.0 channel elements
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_standard(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
-    base_ctx: &mut BaseUrlContext,
-    channel_lang: Option<&str>,
 ) -> Result<()> {
-    if parse_channel_text(reader, buf, tag, feed, limits, base_ctx, channel_lang)? {
+    if parse_channel_text(ctx, tag, feed)? {
         return Ok(());
     }
-    if parse_channel_dates(reader, buf, tag, feed, limits)? {
+    if parse_channel_dates(ctx, tag, feed)? {
         return Ok(());
     }
-    parse_channel_people_and_tags(reader, buf, tag, attrs, feed, limits)?;
+    parse_channel_people_and_tags(ctx, tag, attrs, feed)?;
     Ok(())
 }
 
 /// Parse text-valued standard RSS 2.0 channel elements.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
-fn parse_channel_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    tag: &[u8],
-    feed: &mut ParsedFeed,
-    limits: &ParserLimits,
-    base_ctx: &mut BaseUrlContext,
-    channel_lang: Option<&str>,
-) -> Result<bool> {
+fn parse_channel_text(ctx: &mut ChannelCtx, tag: &[u8], feed: &mut ParsedFeed) -> Result<bool> {
     match tag {
         b"title" => {
-            let (text, bozo) = read_text(reader, buf, limits)?;
+            let (text, bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if bozo {
                 feed.bozo = true;
                 feed.bozo_exception = Some("Unresolvable entity in channel title".into());
@@ -689,21 +703,21 @@ fn parse_channel_text(
             feed.feed.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
-                language: channel_lang.map(std::convert::Into::into),
-                base: base_ctx.base().map(String::from),
+                language: ctx.lang.map(std::convert::Into::into),
+                base: ctx.base.base().map(String::from),
             });
         }
         b"link" => {
-            let link_text = read_text_str(reader, buf, limits)?;
+            let link_text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             feed.feed
-                .set_alternate_link(link_text.clone(), limits.max_links_per_feed);
+                .set_alternate_link(link_text.clone(), ctx.xml.limits.max_links_per_feed);
 
-            if base_ctx.base().is_none() {
-                base_ctx.update_base(&link_text);
+            if ctx.base.base().is_none() {
+                ctx.base.update_base(&link_text);
             }
         }
         b"description" => {
-            let (text, bozo) = read_text(reader, buf, limits)?;
+            let (text, bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if bozo {
                 feed.bozo = true;
                 feed.bozo_exception =
@@ -712,21 +726,22 @@ fn parse_channel_text(
             feed.feed.set_subtitle(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
-                language: channel_lang.map(std::convert::Into::into),
-                base: base_ctx.base().map(String::from),
+                language: ctx.lang.map(std::convert::Into::into),
+                base: ctx.base.base().map(String::from),
             });
         }
         b"language" => {
-            feed.feed.language = Some(read_text_str(reader, buf, limits)?.into());
+            feed.feed.language =
+                Some(read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?.into());
         }
         b"copyright" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !text.is_empty() {
                 feed.feed.rights = Some(text);
             }
         }
         b"generator" => {
-            let name = read_text_str(reader, buf, limits)?;
+            let name = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !name.is_empty() {
                 feed.feed.set_generator(crate::types::Generator {
                     name,
@@ -736,10 +751,10 @@ fn parse_channel_text(
             }
         }
         b"ttl" => {
-            feed.feed.ttl = Some(read_text_str(reader, buf, limits)?);
+            feed.feed.ttl = Some(read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?);
         }
         b"docs" => {
-            feed.feed.docs = Some(read_text_str(reader, buf, limits)?);
+            feed.feed.docs = Some(read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?);
         }
         _ => return Ok(false),
     }
@@ -749,16 +764,10 @@ fn parse_channel_text(
 /// Parse date-valued standard RSS 2.0 channel elements: pubDate, lastBuildDate.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-fn parse_channel_dates(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    tag: &[u8],
-    feed: &mut ParsedFeed,
-    limits: &ParserLimits,
-) -> Result<bool> {
+fn parse_channel_dates(ctx: &mut ChannelCtx, tag: &[u8], feed: &mut ParsedFeed) -> Result<bool> {
     match tag {
         b"pubDate" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             match parse_date(&text) {
                 Some(dt) => {
                     feed.feed.published = Some(dt);
@@ -776,7 +785,7 @@ fn parse_channel_dates(
             }
         }
         b"lastBuildDate" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             match parse_date(&text) {
                 Some(dt) => {
                     feed.feed.updated = Some(dt);
@@ -799,29 +808,27 @@ fn parse_channel_dates(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_channel_people_and_tags(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
 ) -> Result<bool> {
     match tag {
         b"managingEditor" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             feed.feed.set_author(parse_rss_person(&text));
             // Preserve raw string in author flat field; author_detail has parsed fields
             feed.feed.author = Some(text.into());
         }
         b"webMaster" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             feed.feed.set_publisher(parse_rss_person(&text));
             // Preserve raw string in publisher flat field; publisher_detail has parsed fields
             feed.feed.publisher = Some(text.into());
         }
         b"category" => {
             let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
-            let term = read_text_str(reader, buf, limits)?;
+            let term = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !term.is_empty() || scheme.is_some() {
                 feed.feed.tags.try_push_limited(
                     Tag {
@@ -829,7 +836,7 @@ fn parse_channel_people_and_tags(
                         scheme,
                         label: None,
                     },
-                    limits.max_tags,
+                    ctx.xml.limits.max_tags,
                 );
             }
         }
@@ -841,40 +848,37 @@ fn parse_channel_people_and_tags(
 /// Parse iTunes namespace tags at channel level
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_itunes(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
     is_empty: bool,
 ) -> Result<bool> {
-    if parse_channel_itunes_structured(reader, buf, tag, attrs, feed, limits, depth, is_empty) {
+    if parse_channel_itunes_structured(ctx, tag, attrs, feed, depth, is_empty) {
         Ok(true)
     } else {
-        parse_channel_itunes_text(reader, buf, tag, feed, limits, is_empty)
+        parse_channel_itunes_text(ctx, tag, feed, is_empty)
     }
 }
 
 /// Parse structured iTunes namespace tags at channel level (owner, category, image).
 ///
 /// Returns `true` if the tag was recognized and handled, `false` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_itunes_structured(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: &mut usize,
     is_empty: bool,
 ) -> bool {
     if is_itunes_tag(tag, b"owner", &feed.namespaces) {
-        if !is_empty && let Ok(owner) = parse_itunes_owner(reader, buf, limits, depth) {
+        if !is_empty
+            && let Ok(owner) =
+                parse_itunes_owner(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)
+        {
             // Promote to publisher_detail if not already set
             if feed.feed.publisher_detail.is_none() {
                 let person = Person {
@@ -889,11 +893,11 @@ fn parse_channel_itunes_structured(
         }
         true
     } else if is_itunes_tag(tag, b"category", &feed.namespaces) {
-        parse_itunes_category(reader, buf, attrs, feed, limits, is_empty);
+        parse_itunes_category(ctx, attrs, feed, is_empty);
         true
     } else if is_itunes_tag(tag, b"image", &feed.namespaces) {
         if let Some(value) = find_attribute(attrs, b"href") {
-            let url = truncate_to_length(value, limits.max_attribute_length);
+            let url = truncate_to_length(value, ctx.xml.limits.max_attribute_length);
             itunes_feed_meta(&mut feed.feed).image = Some(url.clone().into());
             // itunes:image always wins over RSS <image> (order-independent via post-processing
             // in apply_itunes_feed_promotions called after the channel element loop).
@@ -916,16 +920,14 @@ fn parse_channel_itunes_structured(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_channel_itunes_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
     if is_itunes_tag(tag, b"author", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             // Store raw value; author promotion happens in apply_itunes_feed_promotions
             // so that itunes:owner.name priority over itunes:author is order-independent.
             itunes_feed_meta(&mut feed.feed).author = Some(text);
@@ -933,25 +935,25 @@ fn parse_channel_itunes_text(
         Ok(true)
     } else if is_itunes_tag(tag, b"subtitle", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).subtitle = Some(text);
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"summary", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).summary = Some(text);
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"explicit", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).explicit = parse_explicit(&text);
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"keywords", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).keywords = text
                 .split(',')
                 .map(|s| s.trim().to_string())
@@ -961,19 +963,19 @@ fn parse_channel_itunes_text(
         Ok(true)
     } else if is_itunes_tag(tag, b"type", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).podcast_type = Some(text);
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"complete", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).complete = Some(text.trim().to_string());
         }
         Ok(true)
     } else if is_itunes_tag(tag, b"new-feed-url", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !text.is_empty() {
                 itunes_feed_meta(&mut feed.feed).new_feed_url =
                     Some(text.trim().to_string().into());
@@ -982,7 +984,7 @@ fn parse_channel_itunes_text(
         Ok(true)
     } else if is_itunes_tag(tag, b"block", &feed.namespaces) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             itunes_feed_meta(&mut feed.feed).block =
                 Some(u8::from(text.trim().eq_ignore_ascii_case("yes")));
         }
@@ -994,15 +996,13 @@ fn parse_channel_itunes_text(
 
 /// Parse iTunes category with potential subcategory
 fn parse_itunes_category(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) {
     let category_text = find_attribute(attrs, b"text")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
 
     // Parse potential nested subcategory (only if not an empty element)
@@ -1010,7 +1010,7 @@ fn parse_itunes_category(
     if !is_empty {
         let mut nesting = 0;
         loop {
-            match reader.read_event_into(buf) {
+            match ctx.xml.reader.read_event_into(ctx.xml.buf) {
                 Ok(Event::Start(sub_e))
                     if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces) =>
                 {
@@ -1021,8 +1021,12 @@ fn parse_itunes_category(
                                 && let Ok(value) =
                                     attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             {
-                                subcategory_text =
-                                    Some(value.chars().take(limits.max_attribute_length).collect());
+                                subcategory_text = Some(
+                                    value
+                                        .chars()
+                                        .take(ctx.xml.limits.max_attribute_length)
+                                        .collect(),
+                                );
                                 break;
                             }
                         }
@@ -1037,8 +1041,12 @@ fn parse_itunes_category(
                             && let Ok(value) =
                                 attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         {
-                            subcategory_text =
-                                Some(value.chars().take(limits.max_attribute_length).collect());
+                            subcategory_text = Some(
+                                value
+                                    .chars()
+                                    .take(ctx.xml.limits.max_attribute_length)
+                                    .collect(),
+                            );
                             break;
                         }
                     }
@@ -1054,7 +1062,7 @@ fn parse_itunes_category(
                 Ok(Event::Eof) | Err(_) => break,
                 _ => {}
             }
-            buf.clear();
+            ctx.xml.buf.clear();
         }
     }
 
@@ -1064,7 +1072,7 @@ fn parse_itunes_category(
             scheme: Some("http://www.itunes.com/".into()),
             label: None,
         },
-        limits.max_tags,
+        ctx.xml.limits.max_tags,
     );
     if let Some(ref sub) = subcategory_text {
         feed.feed.tags.try_push_limited(
@@ -1073,7 +1081,7 @@ fn parse_itunes_category(
                 scheme: Some("http://www.itunes.com/".into()),
                 label: None,
             },
-            limits.max_tags,
+            ctx.xml.limits.max_tags,
         );
     }
     let itunes = feed
@@ -1091,48 +1099,44 @@ fn parse_itunes_category(
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 #[inline]
 fn parse_channel_podcast(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
-    if parse_channel_podcast_a(reader, buf, tag, attrs, feed, limits, is_empty)?
-        || parse_channel_podcast_b(reader, buf, tag, attrs, feed, limits, is_empty)?
+    if parse_channel_podcast_a(ctx, tag, attrs, feed, is_empty)?
+        || parse_channel_podcast_b(ctx, tag, attrs, feed, is_empty)?
     {
         return Ok(true);
     }
-    parse_channel_podcast_c(reader, buf, tag, attrs, feed, limits, is_empty)
+    parse_channel_podcast_c(ctx, tag, attrs, feed, is_empty)
 }
 
 /// Parse Podcast 2.0 namespace tags at channel level: guid, funding, value.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_channel_podcast_a(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:guid") {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             podcast_feed_meta(&mut feed.feed).guid = Some(text);
         }
         Ok(true)
     } else if tag.starts_with(b"podcast:funding") {
         let url = find_attribute(attrs, b"url")
-            .map(|v| truncate_to_length(v, limits.max_attribute_length))
+            .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
             .unwrap_or_default();
         let message = if is_empty {
             None
         } else {
-            let message_text = read_text_str(reader, buf, limits)?;
+            let message_text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if message_text.is_empty() {
                 None
             } else {
@@ -1145,13 +1149,13 @@ fn parse_channel_podcast_a(
                     url: url.into(),
                     message,
                 },
-                limits.max_podcast_funding,
+                ctx.xml.limits.max_podcast_funding,
             );
         }
         Ok(true)
     } else if tag == b"podcast:value" {
         if !is_empty {
-            parse_podcast_value(reader, buf, attrs, feed, limits)?;
+            parse_podcast_value(ctx, attrs, feed)?;
         }
         Ok(true)
     } else {
@@ -1163,27 +1167,25 @@ fn parse_channel_podcast_a(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_channel_podcast_b(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:person") {
         if !is_empty {
             let role = Some(find_attribute(attrs, b"role").map_or_else(
                 || "host".to_string(),
-                |v| truncate_to_length(v, limits.max_attribute_length),
+                |v| truncate_to_length(v, ctx.xml.limits.max_attribute_length),
             ));
             let group = find_attribute(attrs, b"group")
-                .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
             let img = find_attribute(attrs, b"img")
-                .map(|v| truncate_to_length(v, limits.max_attribute_length));
+                .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
             let href = find_attribute(attrs, b"href")
-                .map(|v| truncate_to_length(v, limits.max_attribute_length));
-            let name = read_text_str(reader, buf, limits)?;
+                .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+            let name = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !name.is_empty() {
                 let person = PodcastPerson {
                     name,
@@ -1194,13 +1196,13 @@ fn parse_channel_podcast_b(
                 };
                 podcast_feed_meta(&mut feed.feed)
                     .persons
-                    .try_push_limited(person, limits.max_podcast_persons);
+                    .try_push_limited(person, ctx.xml.limits.max_podcast_persons);
             }
         }
         Ok(true)
     } else if tag.starts_with(b"podcast:medium") {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !text.is_empty() {
                 podcast_feed_meta(&mut feed.feed).medium = Some(text);
             }
@@ -1209,8 +1211,8 @@ fn parse_channel_podcast_b(
     } else if tag.starts_with(b"podcast:locked") {
         if !is_empty {
             let owner = find_attribute(attrs, b"owner")
-                .map(|v| truncate_to_length(v, limits.max_attribute_length));
-            let text = read_text_str(reader, buf, limits)?;
+                .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             let podcast = podcast_feed_meta(&mut feed.feed);
             if !text.is_empty() {
                 podcast.locked = Some(text);
@@ -1230,33 +1232,31 @@ fn parse_channel_podcast_b(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_channel_podcast_c(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:location") {
-        parse_podcast_channel_location(reader, buf, attrs, feed, limits, is_empty)?;
+        parse_podcast_channel_location(ctx, attrs, feed, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:podroll") {
         if !is_empty {
-            parse_podcast_podroll(reader, buf, feed, limits)?;
+            parse_podcast_podroll(ctx.xml.reader, ctx.xml.buf, feed, ctx.xml.limits)?;
         }
         Ok(true)
     } else if tag.starts_with(b"podcast:txt") {
-        parse_podcast_channel_txt(reader, buf, attrs, feed, limits, is_empty)?;
+        parse_podcast_channel_txt(ctx, attrs, feed, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:updateFrequency") {
-        parse_podcast_update_frequency(reader, buf, attrs, feed, limits, is_empty)?;
+        parse_podcast_update_frequency(ctx, attrs, feed, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:follow") {
-        parse_podcast_channel_follow(attrs, feed, limits);
+        parse_podcast_channel_follow(attrs, feed, ctx.xml.limits);
         Ok(true)
     } else if tag.starts_with(b"podcast:chat") {
-        parse_podcast_channel_chat(attrs, feed, limits);
+        parse_podcast_channel_chat(attrs, feed, ctx.xml.limits);
         Ok(true)
     } else if tag.starts_with(b"podcast:podping") {
         let uses_podping = find_attribute(attrs, b"usesPodping").and_then(|v| {
@@ -1282,80 +1282,69 @@ fn parse_channel_podcast_c(
 
 /// Parse Dublin Core, Content, `GeoRSS`, and Media RSS namespace tags at channel level
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_namespace(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(dc_element) = is_dc_tag(tag, &feed.namespaces) {
         if !is_empty {
             let dc_elem = dc_element.to_string();
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             dublin_core::handle_feed_element(&dc_elem, &text, &mut feed.feed);
         }
         Ok(true)
     } else if let Some(_content_element) = is_content_tag(tag) {
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         Ok(true)
     } else if let Some(media_element) = is_media_tag(tag, &feed.namespaces) {
-        parse_channel_media(
-            reader,
-            buf,
-            media_element,
-            attrs,
-            feed,
-            limits,
-            depth,
-            is_empty,
-        )?;
+        parse_channel_media(ctx, media_element, attrs, feed, depth, is_empty)?;
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
             if georss_element == "where" {
-                let (loc, _had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+                let (loc, _had_bozo) =
+                    parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut feed.feed.r#where, loc);
                 }
             } else {
-                let text = read_text_str(reader, buf, limits)?;
+                let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                 georss::handle_feed_element(
                     georss_element.as_bytes(),
                     &text,
                     &mut feed.feed,
-                    limits,
+                    ctx.xml.limits,
                 );
             }
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             georss::handle_feed_geo_element(geo_element.as_bytes(), &text, &mut feed.feed);
         }
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
         if !is_empty {
-            feed.feed.license = Some(read_text_str(reader, buf, limits)?);
+            feed.feed.license = Some(read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?);
         }
         Ok(true)
     } else if is_thr_tag(tag).is_some() {
         // Atom Threading Extensions at channel level — recognize and skip
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         Ok(true)
     } else if let Some(syn_element) = is_syn_tag(tag) {
         if !is_empty {
             let syn_elem = syn_element.to_string();
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
         }
         Ok(true)
@@ -1365,42 +1354,39 @@ fn parse_channel_namespace(
 }
 
 /// Parse Media RSS namespace elements at channel level.
-#[allow(clippy::too_many_arguments)]
 fn parse_channel_media(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     media_element: &str,
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
 ) -> Result<()> {
     match media_element {
         "thumbnail" => {
-            if let Some(thumb) = build_media_thumbnail(attrs, limits) {
+            if let Some(thumb) = build_media_thumbnail(attrs, ctx.xml.limits) {
                 feed.feed
                     .media_thumbnail
-                    .try_push_limited(thumb, limits.max_enclosures);
+                    .try_push_limited(thumb, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
         "content" => {
-            if let Some(content) = build_media_content(attrs, limits) {
+            if let Some(content) = build_media_content(attrs, ctx.xml.limits) {
                 feed.feed
                     .media_content
-                    .try_push_limited(content, limits.max_enclosures);
+                    .try_push_limited(content, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
         "rating" | "keywords" => {
             if !is_empty {
                 let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
-                let text = read_text_str(reader, buf, limits)?;
+                let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                 media_rss::handle_feed_element(
                     media_element,
                     scheme.as_deref(),
@@ -1411,7 +1397,7 @@ fn parse_channel_media(
         }
         _ => {
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
     }
@@ -1425,9 +1411,7 @@ fn parse_channel_media(
 /// - Second element: `bool` indicating whether attribute parsing errors occurred
 /// - Third element: `bool` indicating whether unresolvable entities were encountered
 fn parse_item(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    limits: &ParserLimits,
+    xml: &mut XmlCtx,
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
     item_lang: Option<&str>,
@@ -1435,12 +1419,18 @@ fn parse_item(
 ) -> Result<(Entry, bool, bool)> {
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
-    let mut has_entity_bozo = false;
-    let mut has_explicit_link = false;
-    let mut guid_is_permalink: Option<bool> = None;
+    let mut ctx = EntryCtx {
+        xml: xml.reborrow(),
+        base: base_ctx,
+        lang: item_lang,
+        namespaces,
+        bozo: false,
+        has_explicit_link: false,
+        guid_is_permalink: None,
+    };
 
     loop {
-        match reader.read_event_into(buf) {
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
                 let is_empty = matches!(event, Event::Empty(_));
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
@@ -1448,7 +1438,7 @@ fn parse_item(
                 };
 
                 *depth += 1;
-                check_depth(*depth, limits.max_nesting_depth)?;
+                check_depth(*depth, ctx.xml.limits.max_nesting_depth)?;
 
                 // NOTE: Allocation here is necessary due to borrow checker constraints.
                 // We need owned tag data to pass &mut buf to helper functions simultaneously.
@@ -1459,22 +1449,7 @@ fn parse_item(
                     has_attr_errors = true;
                 }
 
-                dispatch_item_tag(
-                    reader,
-                    buf,
-                    &tag,
-                    &attrs,
-                    &mut entry,
-                    limits,
-                    *depth,
-                    base_ctx,
-                    item_lang,
-                    &mut has_entity_bozo,
-                    &mut has_explicit_link,
-                    &mut guid_is_permalink,
-                    namespaces,
-                    is_empty,
-                )?;
+                dispatch_item_tag(&mut ctx, &tag, &attrs, &mut entry, *depth, is_empty)?;
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(e)) if e.local_name().as_ref() == b"item" => {
@@ -1484,13 +1459,13 @@ fn parse_item(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        buf.clear();
+        ctx.xml.buf.clear();
     }
 
     // guidislink = isPermaLink AND no explicit <link> element was present in the item.
     // Per Python feedparser semantics: when <link> exists, guid is just an identifier.
-    if let Some(is_permalink) = guid_is_permalink {
-        entry.guidislink = Some(is_permalink && !has_explicit_link);
+    if let Some(is_permalink) = ctx.guid_is_permalink {
+        entry.guidislink = Some(is_permalink && !ctx.has_explicit_link);
         // If an explicit <link> was present, remove the guid-as-link fallback from entry.link
         // only if it was set as fallback (i.e., entry.link equals entry.id). We detect this
         // by checking: if has_explicit_link, entry.link was already overwritten by <link> arm.
@@ -1502,48 +1477,27 @@ fn parse_item(
         entry.author = Some(dc.clone());
     }
 
-    Ok((entry, has_attr_errors, has_entity_bozo))
+    Ok((entry, has_attr_errors, ctx.bozo))
 }
 
 /// Dispatch a single `<item>` child element to its handler.
-#[allow(clippy::too_many_arguments)]
 fn dispatch_item_tag(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
-    base_ctx: &BaseUrlContext,
-    item_lang: Option<&str>,
-    bozo: &mut bool,
-    has_explicit_link: &mut bool,
-    guid_is_permalink: &mut Option<bool>,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<()> {
     // Use full qualified name to distinguish standard RSS tags from namespaced tags
     match tag {
         b"title" | b"link" | b"description" | b"guid" | b"pubDate" | b"author" | b"category"
         | b"comments" => {
-            parse_item_standard(
-                reader,
-                buf,
-                tag,
-                attrs,
-                entry,
-                limits,
-                base_ctx,
-                item_lang,
-                bozo,
-                has_explicit_link,
-                guid_is_permalink,
-            )?;
+            parse_item_standard(ctx, tag, attrs, entry)?;
         }
         b"enclosure" => {
-            if let Some(mut enclosure) = parse_enclosure(attrs, limits) {
-                enclosure.url = base_ctx.resolve_safe(&enclosure.url).into();
+            if let Some(mut enclosure) = parse_enclosure(attrs, ctx.xml.limits) {
+                enclosure.url = ctx.base.resolve_safe(&enclosure.url).into();
                 let link = Link {
                     href: enclosure.url.clone(),
                     rel: Some("enclosure".into()),
@@ -1553,71 +1507,46 @@ fn dispatch_item_tag(
                 };
                 entry
                     .links
-                    .try_push_limited(link, limits.max_links_per_entry);
+                    .try_push_limited(link, ctx.xml.limits.max_links_per_entry);
                 entry
                     .enclosures
-                    .try_push_limited(enclosure, limits.max_enclosures);
+                    .try_push_limited(enclosure, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
         }
         b"source" => {
-            if let Ok(source) = parse_source(reader, buf, attrs, limits) {
+            if let Ok(source) = parse_source(ctx.xml.reader, ctx.xml.buf, attrs, ctx.xml.limits) {
                 entry.source = Some(source);
             }
         }
         _ => {
-            parse_item_extension(
-                reader,
-                buf,
-                tag,
-                attrs,
-                entry,
-                limits,
-                depth,
-                bozo,
-                item_lang,
-                base_ctx.base(),
-                namespaces,
-                is_empty,
-            )?;
+            parse_item_extension(ctx, tag, attrs, entry, depth, is_empty)?;
         }
     }
     Ok(())
 }
 
 /// Parse extension namespace tags at item level (iTunes, Podcast, other namespaces).
-#[allow(clippy::too_many_arguments)]
 fn parse_item_extension(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
-    bozo: &mut bool,
-    item_lang: Option<&str>,
-    base: Option<&str>,
-    namespaces: &HashMap<String, String>,
     is_empty: bool,
 ) -> Result<()> {
-    let mut handled = parse_item_itunes(
-        reader, buf, tag, attrs, entry, limits, is_empty, depth, bozo, namespaces,
-    )?;
+    let mut handled = parse_item_itunes(ctx, tag, attrs, entry, depth, is_empty)?;
     if !handled {
-        handled = parse_item_podcast(reader, buf, tag, attrs, entry, limits, is_empty, depth)?;
+        handled = parse_item_podcast(ctx, tag, attrs, entry, depth, is_empty)?;
     }
     if !handled {
-        handled = parse_item_namespace(
-            reader, buf, tag, attrs, entry, limits, is_empty, depth, bozo, item_lang, base,
-            namespaces,
-        )?;
+        handled = parse_item_namespace(ctx, tag, attrs, entry, depth, is_empty)?;
     }
 
     if !handled && !is_empty {
-        skip_element(reader, buf, limits, depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
     }
 
     Ok(())
@@ -1625,80 +1554,51 @@ fn parse_item_extension(
 
 /// Parse standard RSS 2.0 item elements
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_item_standard(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
-    item_lang: Option<&str>,
-    bozo: &mut bool,
-    has_explicit_link: &mut bool,
-    guid_is_permalink: &mut Option<bool>,
 ) -> Result<()> {
-    if parse_item_text(reader, buf, tag, entry, limits, base_ctx, item_lang, bozo)? {
+    if parse_item_text(ctx, tag, entry)? {
         return Ok(());
     }
-    if parse_item_links(
-        reader,
-        buf,
-        tag,
-        attrs,
-        entry,
-        limits,
-        base_ctx,
-        bozo,
-        has_explicit_link,
-        guid_is_permalink,
-    )? {
+    if parse_item_links(ctx, tag, attrs, entry)? {
         return Ok(());
     }
-    parse_item_meta(reader, buf, tag, attrs, entry, limits, bozo)?;
+    parse_item_meta(ctx, tag, attrs, entry)?;
     Ok(())
 }
 
 /// Parse text-valued standard RSS 2.0 item elements: title, description, comments.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
-fn parse_item_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    tag: &[u8],
-    entry: &mut Entry,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
-    item_lang: Option<&str>,
-    bozo: &mut bool,
-) -> Result<bool> {
+fn parse_item_text(ctx: &mut EntryCtx, tag: &[u8], entry: &mut Entry) -> Result<bool> {
     match tag {
         b"title" => {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             // See feed-level <title> above: no type attribute, so treated as
             // potentially unsafe HTML by default (fail-closed, #438).
             entry.set_title(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
-                language: item_lang.map(std::convert::Into::into),
-                base: base_ctx.base().map(String::from),
+                language: ctx.lang.map(std::convert::Into::into),
+                base: ctx.base.base().map(String::from),
             });
         }
         b"description" => {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             entry.set_summary(TextConstruct {
                 value: text,
                 content_type: TextType::Html,
-                language: item_lang.map(std::convert::Into::into),
-                base: base_ctx.base().map(String::from),
+                language: ctx.lang.map(std::convert::Into::into),
+                base: ctx.base.base().map(String::from),
             });
         }
         b"comments" => {
-            entry.comments = Some(read_text_str(reader, buf, limits)?);
+            entry.comments = Some(read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?);
         }
         _ => return Ok(false),
     }
@@ -1708,23 +1608,16 @@ fn parse_item_text(
 /// Parse link-valued standard RSS 2.0 item elements: link, guid.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-#[allow(clippy::too_many_arguments)]
 fn parse_item_links(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    base_ctx: &BaseUrlContext,
-    bozo: &mut bool,
-    has_explicit_link: &mut bool,
-    guid_is_permalink: &mut Option<bool>,
 ) -> Result<bool> {
     match tag {
         b"link" => {
-            let link_text = read_text_str(reader, buf, limits)?;
-            let resolved_link = base_ctx.resolve_safe(&link_text);
+            let link_text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            let resolved_link = ctx.base.resolve_safe(&link_text);
             entry.link = Some(resolved_link.clone());
             entry.links.try_push_limited(
                 Link {
@@ -1732,25 +1625,25 @@ fn parse_item_links(
                     rel: Some("alternate".into()),
                     ..Default::default()
                 },
-                limits.max_links_per_entry,
+                ctx.xml.limits.max_links_per_entry,
             );
-            *has_explicit_link = true;
+            ctx.has_explicit_link = true;
         }
         b"guid" => {
             // isPermaLink defaults to true per RSS 2.0 spec when attribute is absent
             let is_permalink = find_attribute(attrs, b"isPermaLink")
                 .is_none_or(|v| v.eq_ignore_ascii_case("true"));
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             entry.id = Some(text.clone().into());
             // Defer guidislink computation: need to know if explicit <link> was present.
             // guidislink = isPermaLink AND no explicit <link> element in the item.
             // Order is not guaranteed, so we track in guid_is_permalink and compute after loop.
-            *guid_is_permalink = Some(is_permalink);
+            ctx.guid_is_permalink = Some(is_permalink);
             // Use guid as entry.link fallback when it is a permalink and no <link> present yet.
             // If <link> appears after <guid>, the fallback will be overwritten — that is correct.
             if is_permalink && entry.link.is_none() {
-                let resolved = base_ctx.resolve_safe(&text);
+                let resolved = ctx.base.resolve_safe(&text);
                 entry.link = Some(resolved.clone());
                 entry.links.try_push_limited(
                     Link {
@@ -1758,7 +1651,7 @@ fn parse_item_links(
                         rel: Some("alternate".into()),
                         ..Default::default()
                     },
-                    limits.max_links_per_entry,
+                    ctx.xml.limits.max_links_per_entry,
                 );
             }
         }
@@ -1771,17 +1664,14 @@ fn parse_item_links(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_item_meta(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    bozo: &mut bool,
 ) -> Result<bool> {
     match tag {
         b"pubDate" => {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             let dt = parse_date(&text);
             entry.published = dt;
             entry.published_str = Some(text.clone());
@@ -1791,23 +1681,23 @@ fn parse_item_meta(
             }
         }
         b"author" => {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             entry.set_author(parse_rss_person(&text));
             // Preserve raw string in author flat field; author_detail has parsed fields
             entry.author = Some(text.into());
         }
         b"category" => {
             let scheme = find_attribute(attrs, b"domain").map(|s| s.to_owned().into());
-            let (term, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (term, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             entry.tags.try_push_limited(
                 Tag {
                     term: term.into(),
                     scheme,
                     label: None,
                 },
-                limits.max_tags,
+                ctx.xml.limits.max_tags,
             );
         }
         _ => return Ok(false),
@@ -1818,86 +1708,78 @@ fn parse_item_meta(
 /// Parse iTunes namespace tags at item level
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-///
-/// Note: Uses 9 parameters instead of a context struct due to borrow checker constraints
-/// with multiple simultaneous `&mut` references during parsing.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_item_itunes(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
-    bozo: &mut bool,
-    namespaces: &HashMap<String, String>,
+    is_empty: bool,
 ) -> Result<bool> {
-    if is_itunes_tag(tag, b"title", namespaces) {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    if is_itunes_tag(tag, b"title", ctx.namespaces) {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).title = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"author", namespaces) {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"author", ctx.namespaces) {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         // Promote to entry.author if not already set
         if entry.author.is_none() {
             entry.set_author(Person::from_name(&text));
             entry
                 .authors
-                .try_push_limited(Person::from_name(&text), limits.max_authors);
+                .try_push_limited(Person::from_name(&text), ctx.xml.limits.max_authors);
         }
         itunes_entry_meta(entry).author = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"subtitle", namespaces) {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"subtitle", ctx.namespaces) {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).subtitle = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"summary", namespaces) {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+    } else if is_itunes_tag(tag, b"summary", ctx.namespaces) {
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         itunes_entry_meta(entry).summary = Some(text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"duration", namespaces) {
-        let text = read_text_str(reader, buf, limits)?;
+    } else if is_itunes_tag(tag, b"duration", ctx.namespaces) {
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         let itunes = itunes_entry_meta(entry);
         if !text.is_empty() {
             itunes.duration = Some(text);
         }
         Ok(true)
-    } else if is_itunes_tag(tag, b"explicit", namespaces) {
-        let text = read_text_str(reader, buf, limits)?;
+    } else if is_itunes_tag(tag, b"explicit", ctx.namespaces) {
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_entry_meta(entry).explicit = parse_explicit(&text);
         Ok(true)
-    } else if is_itunes_tag(tag, b"image", namespaces) {
+    } else if is_itunes_tag(tag, b"image", ctx.namespaces) {
         if let Some(value) = find_attribute(attrs, b"href") {
             itunes_entry_meta(entry).image =
-                Some(truncate_to_length(value, limits.max_attribute_length).into());
+                Some(truncate_to_length(value, ctx.xml.limits.max_attribute_length).into());
         }
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         Ok(true)
-    } else if is_itunes_tag(tag, b"episode", namespaces) {
-        let text = read_text_str(reader, buf, limits)?;
+    } else if is_itunes_tag(tag, b"episode", ctx.namespaces) {
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         let itunes = itunes_entry_meta(entry);
         if !text.is_empty() {
             itunes.episode = Some(text);
         }
         Ok(true)
-    } else if is_itunes_tag(tag, b"season", namespaces) {
-        let text = read_text_str(reader, buf, limits)?;
+    } else if is_itunes_tag(tag, b"season", ctx.namespaces) {
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         let itunes = itunes_entry_meta(entry);
         if !text.is_empty() {
             itunes.season = Some(text);
         }
         Ok(true)
-    } else if is_itunes_tag(tag, b"episodeType", namespaces) {
-        let text = read_text_str(reader, buf, limits)?;
+    } else if is_itunes_tag(tag, b"episodeType", ctx.namespaces) {
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         itunes_entry_meta(entry).episode_type = Some(text);
         Ok(true)
     } else {
@@ -1908,25 +1790,19 @@ fn parse_item_itunes(
 /// Parse Podcast 2.0 namespace tags at item level
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-///
-/// Note: Uses 8 parameters instead of a context struct due to borrow checker constraints
-/// with multiple simultaneous `&mut` references during parsing.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_item_podcast(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<bool> {
-    if parse_item_podcast_a(reader, buf, tag, attrs, entry, limits, is_empty, depth)? {
+    if parse_item_podcast_a(ctx, tag, attrs, entry, depth, is_empty)? {
         return Ok(true);
     }
-    parse_item_podcast_b(reader, buf, tag, attrs, entry, limits, is_empty, depth)
+    parse_item_podcast_b(ctx, tag, attrs, entry, depth, is_empty)
 }
 
 /// Parse Podcast 2.0 namespace tags at item level: transcript, person, chapters,
@@ -1934,32 +1810,29 @@ fn parse_item_podcast(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_item_podcast_a(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:transcript") {
-        parse_podcast_transcript(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        parse_podcast_transcript(ctx, attrs, entry, depth, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:person") {
-        parse_podcast_person(reader, buf, attrs, entry, limits)?;
+        parse_podcast_person(ctx, attrs, entry)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:chapters") {
-        parse_podcast_chapters(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        parse_podcast_chapters(ctx, attrs, entry, depth, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:soundbite") {
-        parse_podcast_soundbite(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        parse_podcast_soundbite(ctx, attrs, entry, depth, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:medium") {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if !text.is_empty() {
                 let podcast = entry
                     .podcast
@@ -1971,12 +1844,12 @@ fn parse_item_podcast_a(
     } else if tag.starts_with(b"podcast:season") {
         let value = if is_empty {
             find_attribute(attrs, b"number")
-                .map(|n| truncate_to_length(n, limits.max_attribute_length))
+                .map(|n| truncate_to_length(n, ctx.xml.limits.max_attribute_length))
         } else {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if text.is_empty() {
                 find_attribute(attrs, b"number")
-                    .map(|n| truncate_to_length(n, limits.max_attribute_length))
+                    .map(|n| truncate_to_length(n, ctx.xml.limits.max_attribute_length))
             } else {
                 Some(text)
             }
@@ -1991,12 +1864,12 @@ fn parse_item_podcast_a(
     } else if tag.starts_with(b"podcast:episode") {
         let value = if is_empty {
             find_attribute(attrs, b"number")
-                .map(|n| truncate_to_length(n, limits.max_attribute_length))
+                .map(|n| truncate_to_length(n, ctx.xml.limits.max_attribute_length))
         } else {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if text.is_empty() {
                 find_attribute(attrs, b"number")
-                    .map(|n| truncate_to_length(n, limits.max_attribute_length))
+                    .map(|n| truncate_to_length(n, ctx.xml.limits.max_attribute_length))
             } else {
                 Some(text)
             }
@@ -2018,36 +1891,33 @@ fn parse_item_podcast_a(
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_item_podcast_b(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:alternateEnclosure") {
         if !is_empty {
-            parse_podcast_alternate_enclosure(reader, buf, attrs, entry, limits)?;
+            parse_podcast_alternate_enclosure(ctx, attrs, entry)?;
         }
         Ok(true)
     } else if tag.starts_with(b"podcast:location") {
-        parse_podcast_item_location(reader, buf, attrs, entry, limits, is_empty)?;
+        parse_podcast_item_location(ctx, attrs, entry, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:socialInteract") {
-        parse_podcast_social_interact(reader, buf, attrs, entry, limits, is_empty, depth)?;
+        parse_podcast_social_interact(ctx, attrs, entry, depth, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:txt") {
-        parse_podcast_item_txt(reader, buf, attrs, entry, limits, is_empty)?;
+        parse_podcast_item_txt(ctx, attrs, entry, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"podcast:follow") {
-        parse_podcast_item_follow(attrs, entry, limits);
+        parse_podcast_item_follow(attrs, entry, ctx.xml.limits);
         Ok(true)
     } else if tag.starts_with(b"podcast:chat") {
-        parse_podcast_item_chat(attrs, entry, limits);
+        parse_podcast_item_chat(attrs, entry, ctx.xml.limits);
         Ok(true)
     } else {
         Ok(false)
@@ -2059,23 +1929,21 @@ fn parse_item_podcast_b(
 /// Note: Currently always returns `Ok(())` but uses `Result` return type
 /// for consistency with other parsers and potential future error handling.
 fn parse_podcast_transcript(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<()> {
     let url = find_attribute(attrs, b"url")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
-    let transcript_type =
-        find_attribute(attrs, b"type").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let transcript_type = find_attribute(attrs, b"type")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let language = find_attribute(attrs, b"language")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
-    let rel =
-        find_attribute(attrs, b"rel").map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+    let rel = find_attribute(attrs, b"rel")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
 
     if !url.is_empty() {
         let transcript = PodcastTranscript {
@@ -2086,17 +1954,17 @@ fn parse_podcast_transcript(
         };
         entry
             .podcast_transcripts
-            .try_push_limited(transcript.clone(), limits.max_podcast_transcripts);
+            .try_push_limited(transcript.clone(), ctx.xml.limits.max_podcast_transcripts);
         let podcast = entry
             .podcast
             .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
         podcast
             .transcript
-            .try_push_limited(transcript, limits.max_podcast_transcripts);
+            .try_push_limited(transcript, ctx.xml.limits.max_podcast_transcripts);
     }
 
     if !is_empty {
-        skip_element(reader, buf, limits, depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
     }
 
     Ok(())
@@ -2104,24 +1972,22 @@ fn parse_podcast_transcript(
 
 /// Parse Podcast 2.0 person element
 fn parse_podcast_person(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
 ) -> Result<()> {
     let role = Some(find_attribute(attrs, b"role").map_or_else(
         || "host".to_string(),
-        |v| truncate_to_length(v, limits.max_attribute_length),
+        |v| truncate_to_length(v, ctx.xml.limits.max_attribute_length),
     ));
-    let group =
-        find_attribute(attrs, b"group").map(|v| truncate_to_length(v, limits.max_attribute_length));
-    let img =
-        find_attribute(attrs, b"img").map(|v| truncate_to_length(v, limits.max_attribute_length));
-    let href =
-        find_attribute(attrs, b"href").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let group = find_attribute(attrs, b"group")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+    let img = find_attribute(attrs, b"img")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+    let href = find_attribute(attrs, b"href")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
 
-    let name = read_text_str(reader, buf, limits)?;
+    let name = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
     if !name.is_empty() {
         let person = PodcastPerson {
             name,
@@ -2132,13 +1998,13 @@ fn parse_podcast_person(
         };
         entry
             .podcast_persons
-            .try_push_limited(person.clone(), limits.max_podcast_persons);
+            .try_push_limited(person.clone(), ctx.xml.limits.max_podcast_persons);
         let podcast = entry
             .podcast
             .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
         podcast
             .persons
-            .try_push_limited(person, limits.max_podcast_persons);
+            .try_push_limited(person, ctx.xml.limits.max_podcast_persons);
     }
 
     Ok(())
@@ -2146,19 +2012,17 @@ fn parse_podcast_person(
 
 /// Parse Podcast 2.0 chapters element
 fn parse_podcast_chapters(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<()> {
     let url = find_attribute(attrs, b"url")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
     let type_ = find_attribute(attrs, b"type")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
 
     if !url.is_empty() {
@@ -2172,7 +2036,7 @@ fn parse_podcast_chapters(
     }
 
     if !is_empty {
-        skip_element(reader, buf, limits, depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
     }
 
     Ok(())
@@ -2180,13 +2044,11 @@ fn parse_podcast_chapters(
 
 /// Parse Podcast 2.0 soundbite element
 fn parse_podcast_soundbite(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<()> {
     let start_time = find_attribute(attrs, b"startTime").and_then(|v| v.parse::<f64>().ok());
     let duration = find_attribute(attrs, b"duration").and_then(|v| v.parse::<f64>().ok());
@@ -2195,7 +2057,7 @@ fn parse_podcast_soundbite(
         let title = if is_empty {
             None
         } else {
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             if text.is_empty() { None } else { Some(text) }
         };
 
@@ -2208,10 +2070,10 @@ fn parse_podcast_soundbite(
                 duration,
                 title,
             },
-            limits.max_podcast_soundbites,
+            ctx.xml.limits.max_podcast_soundbites,
         );
     } else if !is_empty {
-        skip_element(reader, buf, limits, depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
     }
 
     Ok(())
@@ -2219,21 +2081,19 @@ fn parse_podcast_soundbite(
 
 /// Parse podcast:location at channel level
 fn parse_podcast_channel_location(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
-    let geo =
-        find_attribute(attrs, b"geo").map(|v| truncate_to_length(v, limits.max_attribute_length));
-    let osm =
-        find_attribute(attrs, b"osm").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let geo = find_attribute(attrs, b"geo")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+    let osm = find_attribute(attrs, b"osm")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let name = if is_empty {
         String::new()
     } else {
-        read_text_str(reader, buf, limits)?
+        read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
     };
     if !name.is_empty() {
         let podcast = feed
@@ -2310,43 +2170,40 @@ fn parse_podcast_podroll(
 
 /// Parse podcast:txt at channel level
 fn parse_podcast_channel_txt(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
     let purpose = find_attribute(attrs, b"purpose")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let value = if is_empty {
         String::new()
     } else {
-        read_text_str(reader, buf, limits)?
+        read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
     };
     if !value.is_empty() {
         let podcast = feed
             .feed
             .podcast
             .get_or_insert_with(|| Box::new(PodcastMeta::default()));
-        podcast
-            .txt
-            .try_push_limited(PodcastTxt { purpose, value }, limits.max_podcast_txt);
+        podcast.txt.try_push_limited(
+            PodcastTxt { purpose, value },
+            ctx.xml.limits.max_podcast_txt,
+        );
     }
     Ok(())
 }
 
 /// Parse podcast:updateFrequency at channel level
 fn parse_podcast_update_frequency(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
-    let rrule =
-        find_attribute(attrs, b"rrule").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let rrule = find_attribute(attrs, b"rrule")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let complete = find_attribute(attrs, b"complete").and_then(|v| {
         if v.eq_ignore_ascii_case("true") {
             Some(true)
@@ -2357,11 +2214,11 @@ fn parse_podcast_update_frequency(
         }
     });
     let dtstart = find_attribute(attrs, b"dtstart")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let label = if is_empty {
         None
     } else {
-        let text = read_text_str(reader, buf, limits)?;
+        let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
         if text.is_empty() { None } else { Some(text) }
     };
     let podcast = feed
@@ -2541,42 +2398,38 @@ fn parse_alternate_enclosure_children(
 
 /// Parse podcast:alternateEnclosure container at item level
 fn parse_podcast_alternate_enclosure(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
 ) -> Result<()> {
-    let Some(mut enc) = parse_alternate_enclosure_attrs(attrs, limits) else {
+    let Some(mut enc) = parse_alternate_enclosure_attrs(attrs, ctx.xml.limits) else {
         return Ok(());
     };
-    parse_alternate_enclosure_children(reader, buf, &mut enc, limits)?;
+    parse_alternate_enclosure_children(ctx.xml.reader, ctx.xml.buf, &mut enc, ctx.xml.limits)?;
     let podcast = entry
         .podcast
         .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
     podcast
         .alternate_enclosures
-        .try_push_limited(enc, limits.max_podcast_alternate_enclosures);
+        .try_push_limited(enc, ctx.xml.limits.max_podcast_alternate_enclosures);
     Ok(())
 }
 
 /// Parse podcast:location at item level
 fn parse_podcast_item_location(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
-    let geo =
-        find_attribute(attrs, b"geo").map(|v| truncate_to_length(v, limits.max_attribute_length));
-    let osm =
-        find_attribute(attrs, b"osm").map(|v| truncate_to_length(v, limits.max_attribute_length));
+    let geo = find_attribute(attrs, b"geo")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+    let osm = find_attribute(attrs, b"osm")
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let name = if is_empty {
         String::new()
     } else {
-        read_text_str(reader, buf, limits)?
+        read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
     };
     if !name.is_empty() {
         let podcast = entry
@@ -2589,33 +2442,31 @@ fn parse_podcast_item_location(
 
 /// Parse podcast:socialInteract at item level
 fn parse_podcast_social_interact(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
+    is_empty: bool,
 ) -> Result<()> {
     let uri = find_attribute(attrs, b"uri")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
     if uri.is_empty() {
         if !is_empty {
-            skip_element(reader, buf, limits, depth)?;
+            skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
         }
         return Ok(());
     }
     let protocol = find_attribute(attrs, b"protocol")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let account_id = find_attribute(attrs, b"accountId")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let account_url = find_attribute(attrs, b"accountUrl")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let priority = find_attribute(attrs, b"priority").and_then(|v| v.parse::<u32>().ok());
 
     if !is_empty {
-        skip_element(reader, buf, limits, depth)?;
+        skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
     }
 
     let podcast = entry
@@ -2629,34 +2480,33 @@ fn parse_podcast_social_interact(
             account_url: account_url.map(Into::into),
             priority,
         },
-        limits.max_podcast_social_interact,
+        ctx.xml.limits.max_podcast_social_interact,
     );
     Ok(())
 }
 
 /// Parse podcast:txt at item level
 fn parse_podcast_item_txt(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
     let purpose = find_attribute(attrs, b"purpose")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
     let value = if is_empty {
         String::new()
     } else {
-        read_text_str(reader, buf, limits)?
+        read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
     };
     if !value.is_empty() {
         let podcast = entry
             .podcast
             .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
-        podcast
-            .txt
-            .try_push_limited(PodcastTxt { purpose, value }, limits.max_podcast_txt);
+        podcast.txt.try_push_limited(
+            PodcastTxt { purpose, value },
+            ctx.xml.limits.max_podcast_txt,
+        );
     }
     Ok(())
 }
@@ -2717,111 +2567,93 @@ fn parse_podcast_item_chat(attrs: &[(Vec<u8>, String)], entry: &mut Entry, limit
 /// Parse Dublin Core, Content, and Media RSS namespace tags at item level
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
-///
-/// Note: Uses 9 parameters instead of a context struct due to borrow checker constraints
-/// with multiple simultaneous `&mut` references during parsing.
 #[inline]
-#[allow(clippy::too_many_arguments)]
 fn parse_item_namespace(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
-    bozo: &mut bool,
-    lang: Option<&str>,
-    base: Option<&str>,
-    namespaces: &HashMap<String, String>,
+    is_empty: bool,
 ) -> Result<bool> {
-    if let Some(dc_element) = is_dc_tag(tag, namespaces) {
+    if let Some(dc_element) = is_dc_tag(tag, ctx.namespaces) {
         let dc_elem = dc_element.to_string();
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         dublin_core::handle_entry_element(&dc_elem, &text, entry);
         Ok(true)
     } else if let Some(content_element) = is_content_tag(tag) {
         let content_elem = content_element.to_string();
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
-        content::handle_entry_element(&content_elem, &text, entry, lang, base);
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
+        content::handle_entry_element(&content_elem, &text, entry, ctx.lang, ctx.base.base());
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
         if georss_element == "where" {
             if !is_empty {
-                let (loc, had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
-                *bozo |= had_bozo;
+                let (loc, had_bozo) =
+                    parse_georss_where(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
+                ctx.bozo |= had_bozo;
                 if let Some(loc) = loc {
                     georss::merge_geometry(&mut entry.r#where, loc);
                 }
             }
         } else {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
-            georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
+            georss::handle_entry_element(georss_element.as_bytes(), &text, entry, ctx.xml.limits);
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
+            let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+            ctx.bozo |= had_bozo;
             georss::handle_entry_geo_element(geo_element.as_bytes(), &text, entry);
         }
         Ok(true)
     } else if let Some(slash_element) = is_slash_tag(tag) {
         let slash_elem = slash_element.to_string();
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         slash::handle_slash_entry_element(&slash_elem, &text, entry);
         Ok(true)
     } else if let Some(wfw_element) = is_wfw_tag(tag) {
         let wfw_elem = wfw_element.to_string();
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
+        let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+        ctx.bozo |= had_bozo;
         slash::handle_wfw_entry_element(&wfw_elem, &text, entry);
         Ok(true)
-    } else if let Some(media_element) = is_media_tag(tag, namespaces) {
-        parse_item_media(
-            reader,
-            buf,
-            media_element,
-            attrs,
-            entry,
-            limits,
-            is_empty,
-            depth,
-            namespaces,
-        )?;
+    } else if let Some(media_element) = is_media_tag(tag, ctx.namespaces) {
+        parse_item_media(ctx, media_element, attrs, entry, depth, is_empty)?;
         Ok(true)
     } else if tag.starts_with(b"creativeCommons:license") || tag == b"license" {
-        entry.license = Some(read_text_str(reader, buf, limits)?);
+        entry.license = Some(read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?);
         Ok(true)
     } else if let Some(thr_element) = is_thr_tag(tag) {
         // Atom Threading Extensions (RFC 4685)
         match thr_element {
             "in-reply-to" => {
-                if let Some(reply) =
-                    threading::parse_in_reply_to_from_collected(attrs, limits.max_attribute_length)
-                {
+                if let Some(reply) = threading::parse_in_reply_to_from_collected(
+                    attrs,
+                    ctx.xml.limits.max_attribute_length,
+                ) {
                     // Shares max_links_per_entry limit; split if needed later
                     entry
                         .in_reply_to
-                        .try_push_limited(reply, limits.max_links_per_entry);
+                        .try_push_limited(reply, ctx.xml.limits.max_links_per_entry);
                 }
                 if !is_empty {
-                    skip_element(reader, buf, limits, depth)?;
+                    skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 }
             }
             "total" if !is_empty => {
-                let (text, had_bozo) = read_text(reader, buf, limits)?;
-                *bozo |= had_bozo;
+                let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
+                ctx.bozo |= had_bozo;
                 threading::handle_total(&text, entry);
             }
             _ => {
                 if !is_empty {
-                    skip_element(reader, buf, limits, depth)?;
+                    skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
                 }
             }
         }
@@ -2832,35 +2664,21 @@ fn parse_item_namespace(
 }
 
 /// Parse Media RSS namespace elements
-#[allow(clippy::too_many_arguments)]
 fn parse_item_media(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
-    is_empty: bool,
     depth: usize,
-    namespaces: &HashMap<String, String>,
+    is_empty: bool,
 ) -> Result<()> {
-    if parse_item_media_object(
-        reader,
-        buf,
-        media_element,
-        attrs,
-        entry,
-        limits,
-        depth,
-        is_empty,
-        namespaces,
-    )? {
+    if parse_item_media_object(ctx, media_element, attrs, entry, depth, is_empty)? {
         return Ok(());
     }
-    if parse_item_media_meta(reader, buf, media_element, attrs, entry, limits, is_empty)? {
+    if parse_item_media_meta(ctx, media_element, attrs, entry, is_empty)? {
         return Ok(());
     }
-    parse_item_media_text(reader, buf, media_element, attrs, entry, limits, is_empty)
+    parse_item_media_text(ctx, media_element, attrs, entry, is_empty)
 }
 
 /// Parse structured `media:*` elements that contain their own child content:
@@ -2870,38 +2688,34 @@ fn parse_item_media(
 /// arm bodies. This must NOT use match guards — the `_` fallback in
 /// [`parse_item_media_text`] performs an unguarded `read_text_str`, so a
 /// self-closing element must never fall through to it (see #433 review notes).
-#[allow(clippy::too_many_arguments)]
 fn parse_item_media_object(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     depth: usize,
     is_empty: bool,
-    namespaces: &HashMap<String, String>,
 ) -> Result<bool> {
     match media_element {
         "thumbnail" => {
-            if let Some(thumb) = build_media_thumbnail(attrs, limits) {
+            if let Some(thumb) = build_media_thumbnail(attrs, ctx.xml.limits) {
                 entry
                     .media_thumbnail
-                    .try_push_limited(thumb, limits.max_enclosures);
+                    .try_push_limited(thumb, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                skip_element(reader, buf, limits, depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)?;
             }
             Ok(true)
         }
         "content" => {
-            if let Some(content) = build_media_content(attrs, limits) {
+            if let Some(content) = build_media_content(attrs, ctx.xml.limits) {
                 entry
                     .media_content
-                    .try_push_limited(content, limits.max_enclosures);
+                    .try_push_limited(content, ctx.xml.limits.max_enclosures);
             }
             if !is_empty {
-                parse_media_content_children(reader, buf, entry, limits, depth, namespaces)?;
+                parse_media_content_children(ctx, entry, depth)?;
             }
             Ok(true)
         }
@@ -2909,7 +2723,7 @@ fn parse_item_media_object(
             // media:group is a transparent container; parse its children as if they
             // were direct siblings of the enclosing item.
             if !is_empty {
-                parse_media_group(reader, buf, entry, limits, depth, namespaces)?;
+                parse_media_group(ctx, entry, depth)?;
             }
             Ok(true)
         }
@@ -2922,19 +2736,17 @@ fn parse_item_media_object(
 /// Every arm returns `Ok(true)` unconditionally; `is_empty` is only tested inside
 /// arm bodies (see [`parse_item_media_object`] for why match guards are unsafe here).
 fn parse_item_media_meta(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<bool> {
     match media_element {
         "rating" => {
             if !is_empty {
                 let scheme = find_attribute(attrs, b"scheme").map(str::to_owned);
-                let text = read_text_str(reader, buf, limits)?;
+                let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                 media_rss::handle_entry_rating(scheme.as_deref(), &text, entry);
             }
             Ok(true)
@@ -2945,7 +2757,7 @@ fn parse_item_media_meta(
             let text = if is_empty {
                 String::new()
             } else {
-                read_text_str(reader, buf, limits)?
+                read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
             };
             if !text.is_empty() {
                 entry.media_credit.try_push_limited(
@@ -2954,7 +2766,7 @@ fn parse_item_media_meta(
                         scheme,
                         content: text,
                     },
-                    limits.max_links_per_entry,
+                    ctx.xml.limits.max_links_per_entry,
                 );
             }
             Ok(true)
@@ -2962,7 +2774,7 @@ fn parse_item_media_meta(
         "copyright" => {
             let url = find_attribute(attrs, b"url").map(str::to_owned);
             if !is_empty {
-                read_text_str(reader, buf, limits)?;
+                read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             }
             entry.media_copyright = Some(MediaCopyright { url });
             Ok(true)
@@ -2978,12 +2790,10 @@ fn parse_item_media_meta(
 /// behavior exactly — see [`parse_item_media_object`] for why the caller must
 /// never let a self-closing structured element reach here.
 fn parse_item_media_text(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut EntryCtx,
     media_element: &str,
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<()> {
     match media_element {
@@ -2992,7 +2802,7 @@ fn parse_item_media_text(
             let text = if is_empty {
                 String::new()
             } else {
-                read_text_str(reader, buf, limits)?
+                read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
             };
             let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
             if is_plain && !text.is_empty() {
@@ -3007,7 +2817,7 @@ fn parse_item_media_text(
             let text = if is_empty {
                 String::new()
             } else {
-                read_text_str(reader, buf, limits)?
+                read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?
             };
             let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
             if is_plain && !text.is_empty() {
@@ -3019,7 +2829,7 @@ fn parse_item_media_text(
         }
         _ => {
             let media_elem = media_element.to_string();
-            let text = read_text_str(reader, buf, limits)?;
+            let text = read_text_str(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
             media_rss::handle_entry_element(&media_elem, &text, entry);
         }
     }
@@ -3030,55 +2840,28 @@ fn parse_item_media_text(
 ///
 /// Per the Media RSS spec, `<media:group>` groups related media objects but has no
 /// semantic meaning of its own; its children are promoted to the parent item level.
-fn parse_media_group(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    entry: &mut Entry,
-    limits: &ParserLimits,
-    depth: usize,
-    namespaces: &HashMap<String, String>,
-) -> Result<()> {
+fn parse_media_group(ctx: &mut EntryCtx, entry: &mut Entry, depth: usize) -> Result<()> {
     let mut inner_depth = depth;
     loop {
-        buf.clear();
-        match reader.read_event_into(buf) {
+        ctx.xml.buf.clear();
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(Event::Start(e)) => {
                 inner_depth += 1;
-                check_depth(inner_depth, limits.max_nesting_depth)?;
+                check_depth(inner_depth, ctx.xml.limits.max_nesting_depth)?;
                 let tag = e.name().as_ref().to_vec();
                 let (attrs, _) = collect_attributes(&e);
-                if let Some(media_element) = is_media_tag(&tag, namespaces) {
-                    parse_item_media(
-                        reader,
-                        buf,
-                        media_element,
-                        &attrs,
-                        entry,
-                        limits,
-                        false,
-                        inner_depth,
-                        namespaces,
-                    )?;
+                if let Some(media_element) = is_media_tag(&tag, ctx.namespaces) {
+                    parse_item_media(ctx, media_element, &attrs, entry, inner_depth, false)?;
                 } else {
-                    skip_element(reader, buf, limits, inner_depth)?;
+                    skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, inner_depth)?;
                 }
                 inner_depth = inner_depth.saturating_sub(1);
             }
             Ok(Event::Empty(e)) => {
                 let tag = e.name().as_ref().to_vec();
                 let (attrs, _) = collect_attributes(&e);
-                if let Some(media_element) = is_media_tag(&tag, namespaces) {
-                    parse_item_media(
-                        reader,
-                        buf,
-                        media_element,
-                        &attrs,
-                        entry,
-                        limits,
-                        true,
-                        inner_depth,
-                        namespaces,
-                    )?;
+                if let Some(media_element) = is_media_tag(&tag, ctx.namespaces) {
+                    parse_item_media(ctx, media_element, &attrs, entry, inner_depth, true)?;
                 }
             }
             Ok(Event::End(_) | Event::Eof) | Err(_) => break,
@@ -3092,26 +2875,19 @@ fn parse_media_group(
 ///
 /// Python feedparser collects all `media:thumbnail` elements into `entry.media_thumbnail`
 /// regardless of whether they are top-level or nested inside `media:content`.
-fn parse_media_content_children(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
-    entry: &mut Entry,
-    limits: &ParserLimits,
-    depth: usize,
-    namespaces: &HashMap<String, String>,
-) -> Result<()> {
+fn parse_media_content_children(ctx: &mut EntryCtx, entry: &mut Entry, depth: usize) -> Result<()> {
     let mut inner_depth = depth;
     loop {
-        buf.clear();
-        match reader.read_event_into(buf) {
+        ctx.xml.buf.clear();
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(Event::Start(e)) => {
                 inner_depth += 1;
-                check_depth(inner_depth, limits.max_nesting_depth)?;
+                check_depth(inner_depth, ctx.xml.limits.max_nesting_depth)?;
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag, namespaces) == Some("thumbnail") {
+                if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let (attrs, _) = collect_attributes(&e);
                     let url = find_attribute(&attrs, b"url")
-                        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
                         .unwrap_or_default();
                     let width = find_attribute(&attrs, b"width").map(str::to_owned);
                     let height = find_attribute(&attrs, b"height").map(str::to_owned);
@@ -3124,19 +2900,19 @@ fn parse_media_content_children(
                                 height,
                                 time,
                             },
-                            limits.max_enclosures,
+                            ctx.xml.limits.max_enclosures,
                         );
                     }
                 }
-                skip_element(reader, buf, limits, inner_depth)?;
+                skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, inner_depth)?;
                 inner_depth = inner_depth.saturating_sub(1);
             }
             Ok(Event::Empty(e)) => {
                 let tag = e.name().as_ref().to_vec();
-                if is_media_tag(&tag, namespaces) == Some("thumbnail") {
+                if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let (attrs, _) = collect_attributes(&e);
                     let url = find_attribute(&attrs, b"url")
-                        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+                        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
                         .unwrap_or_default();
                     let width = find_attribute(&attrs, b"width").map(str::to_owned);
                     let height = find_attribute(&attrs, b"height").map(str::to_owned);
@@ -3149,7 +2925,7 @@ fn parse_media_content_children(
                                 height,
                                 time,
                             },
-                            limits.max_enclosures,
+                            ctx.xml.limits.max_enclosures,
                         );
                     }
                 }
@@ -3431,10 +3207,8 @@ fn parse_value_recipient_attrs(
 /// The caller passes `is_empty` so this returns `Ok(None)` immediately without
 /// touching the reader in that case.
 fn parse_podcast_value_time_split(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut XmlCtx,
     attrs: &[(Vec<u8>, String)],
-    limits: &ParserLimits,
     is_empty: bool,
 ) -> Result<Option<PodcastValueTimeSplit>> {
     if is_empty {
@@ -3461,20 +3235,20 @@ fn parse_podcast_value_time_split(
     let mut remote_item = None;
 
     loop {
-        match reader.read_event_into(buf) {
+        match ctx.reader.read_event_into(ctx.buf) {
             Ok(Event::Start(e) | Event::Empty(e)) => {
                 let child_tag = e.name();
                 if child_tag.as_ref().starts_with(b"podcast:valueRecipient") {
                     let (recipient_attrs, _) = collect_attributes(&e);
                     recipients.try_push_limited(
-                        parse_value_recipient_attrs(&recipient_attrs, limits),
-                        limits.max_value_recipients,
+                        parse_value_recipient_attrs(&recipient_attrs, ctx.limits),
+                        ctx.limits.max_value_recipients,
                     );
                 } else if remote_item.is_none()
                     && child_tag.as_ref().starts_with(b"podcast:remoteItem")
                 {
                     let (item_attrs, _) = collect_attributes(&e);
-                    remote_item = Some(parse_remote_item_attrs(&item_attrs, limits));
+                    remote_item = Some(parse_remote_item_attrs(&item_attrs, ctx.limits));
                 }
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"podcast:valueTimeSplit" => break,
@@ -3482,7 +3256,7 @@ fn parse_podcast_value_time_split(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        buf.clear();
+        ctx.buf.clear();
     }
 
     Ok(match (start_time, duration) {
@@ -3503,26 +3277,24 @@ fn parse_podcast_value_time_split(
 /// Parses value-for-value payment information including payment type, method,
 /// suggested amount, nested valueRecipient elements, and valueTimeSplit elements.
 fn parse_podcast_value(
-    reader: &mut Reader<&[u8]>,
-    buf: &mut Vec<u8>,
+    ctx: &mut ChannelCtx,
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
-    limits: &ParserLimits,
 ) -> Result<()> {
     let type_ = find_attribute(attrs, b"type")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
     let method = find_attribute(attrs, b"method")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
         .unwrap_or_default();
     let suggested = find_attribute(attrs, b"suggested")
-        .map(|v| truncate_to_length(v, limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
 
     let mut recipients = Vec::with_capacity(2);
     let mut time_splits = Vec::with_capacity(2);
 
     loop {
-        match reader.read_event_into(buf) {
+        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
                 let is_empty = matches!(event, Event::Empty(_));
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
@@ -3536,14 +3308,15 @@ fn parse_podcast_value(
 
                 if tag.starts_with(b"podcast:valueRecipient") {
                     recipients.try_push_limited(
-                        parse_value_recipient_attrs(&child_attrs, limits),
-                        limits.max_value_recipients,
+                        parse_value_recipient_attrs(&child_attrs, ctx.xml.limits),
+                        ctx.xml.limits.max_value_recipients,
                     );
                 } else if tag.starts_with(b"podcast:valueTimeSplit")
                     && let Some(split) =
-                        parse_podcast_value_time_split(reader, buf, &child_attrs, limits, is_empty)?
+                        parse_podcast_value_time_split(&mut ctx.xml, &child_attrs, is_empty)?
                 {
-                    time_splits.try_push_limited(split, limits.max_podcast_value_time_splits);
+                    time_splits
+                        .try_push_limited(split, ctx.xml.limits.max_podcast_value_time_splits);
                 }
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"podcast:value" => break,
@@ -3551,7 +3324,7 @@ fn parse_podcast_value(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        buf.clear();
+        ctx.xml.buf.clear();
     }
 
     let podcast = feed

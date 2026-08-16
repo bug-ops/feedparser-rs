@@ -1,4 +1,12 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used, clippy::panic))]
+// Regression guard for issue #456/#460: parser helpers were refactored to keep
+// every function under clippy's default 7-argument threshold via XmlCtx/EntryCtx/*Ctx
+// context structs. `forbid` (not `deny`) so a future `#[allow(clippy::too_many_arguments)]`
+// can't silently opt back out. A crate-level attribute (not a Cargo.toml lints table
+// entry) so `[lints] workspace = true` keeps inheriting the full workspace rust+clippy
+// lint sets unmodified — this crate has no proc-macro-generated `#[allow(clippy::all)]`
+// (unlike feedparser-rs-node's `#[napi]`), so `forbid` is safe here.
+#![forbid(clippy::too_many_arguments)]
 
 //! # feedparser-rs: High-performance RSS/Atom/JSON Feed parser
 //!

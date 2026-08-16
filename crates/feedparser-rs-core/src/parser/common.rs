@@ -81,69 +81,6 @@ pub fn new_text_buffer() -> String {
     String::with_capacity(TEXT_BUFFER_CAPACITY)
 }
 
-/// Context for parsing operations
-///
-/// Bundles together common parsing state to reduce function parameter count.
-/// Future use: Will be adopted when refactoring parsers to reduce parameter passing
-#[allow(dead_code)]
-pub struct ParseContext<'a> {
-    /// XML reader
-    pub reader: Reader<&'a [u8]>,
-    /// Reusable buffer for XML events
-    pub buf: Vec<u8>,
-    /// Parser limits for validation
-    pub limits: ParserLimits,
-    /// Current nesting depth
-    pub depth: usize,
-}
-
-impl<'a> ParseContext<'a> {
-    /// Create a new parse context from raw data
-    #[allow(dead_code)]
-    pub fn new(data: &'a [u8], limits: ParserLimits) -> Result<Self> {
-        limits
-            .check_feed_size(data.len())
-            .map_err(|e| FeedError::InvalidFormat(e.to_string()))?;
-
-        let reader = Reader::from_reader(data);
-
-        Ok(Self {
-            reader,
-            buf: Vec::with_capacity(EVENT_BUFFER_CAPACITY),
-            limits,
-            depth: 1, // Start at 1 for root element
-        })
-    }
-
-    /// Check and increment depth, returning error if limit exceeded
-    #[inline]
-    #[allow(dead_code)]
-    pub fn check_depth(&mut self) -> Result<()> {
-        self.depth += 1;
-        if self.depth > self.limits.max_nesting_depth {
-            return Err(FeedError::InvalidFormat(format!(
-                "XML nesting depth {} exceeds maximum {}",
-                self.depth, self.limits.max_nesting_depth
-            )));
-        }
-        Ok(())
-    }
-
-    /// Decrement depth safely
-    #[inline]
-    #[allow(dead_code)]
-    pub const fn decrement_depth(&mut self) {
-        self.depth = self.depth.saturating_sub(1);
-    }
-
-    /// Clear the buffer
-    #[inline]
-    #[allow(dead_code)]
-    pub fn clear_buf(&mut self) {
-        self.buf.clear();
-    }
-}
-
 /// Initialize a `ParsedFeed` with common setup for any format
 #[inline]
 pub fn init_feed(version: FeedVersion, max_entries: usize) -> ParsedFeed {
