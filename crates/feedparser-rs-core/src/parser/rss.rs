@@ -1418,6 +1418,21 @@ fn parse_channel_media(
     Ok(())
 }
 
+/// RSS 2.0-only guid/link fallback bookkeeping, local to [`parse_item`].
+///
+/// Tracks whether an explicit `<link>` was seen and the `isPermaLink` value
+/// of `<guid>` (if `<guid>` was seen), so `guidislink` can be computed once
+/// the whole `<item>` has been parsed, regardless of element order. Atom and
+/// RSS 1.0 have no equivalent guid-fallback rule, so this state lives here
+/// rather than on the shared [`EntryCtx`].
+#[derive(Default)]
+struct RssGuidCtx {
+    /// Whether an explicit `<link>` element was seen in the item.
+    has_explicit_link: bool,
+    /// The `isPermaLink` attribute of `<guid>`, if `<guid>` was seen.
+    guid_is_permalink: Option<bool>,
+}
+
 /// Parse <item> element (entry)
 ///
 /// Returns a tuple where:
@@ -1435,6 +1450,7 @@ fn parse_item(
 ) -> Result<(Entry, bool, bool, Option<&'static str>)> {
     let mut entry = Entry::with_capacity();
     let mut has_attr_errors = false;
+    let mut guid_ctx = RssGuidCtx::default();
     let mut ctx = EntryCtx {
         xml: xml.reborrow(),
         base: base_ctx,
@@ -1442,8 +1458,6 @@ fn parse_item(
         namespaces,
         bozo: false,
         bozo_reason: None,
-        has_explicit_link: false,
-        guid_is_permalink: None,
     };
 
     loop {
@@ -1466,7 +1480,15 @@ fn parse_item(
                     has_attr_errors = true;
                 }
 
-                dispatch_item_tag(&mut ctx, &tag, &attrs, &mut entry, *depth, is_empty)?;
+                dispatch_item_tag(
+                    &mut ctx,
+                    &mut guid_ctx,
+                    &tag,
+                    &attrs,
+                    &mut entry,
+                    *depth,
+                    is_empty,
+                )?;
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(e)) if e.local_name().as_ref() == b"item" => {
@@ -1481,8 +1503,8 @@ fn parse_item(
 
     // guidislink = isPermaLink AND no explicit <link> element was present in the item.
     // Per Python feedparser semantics: when <link> exists, guid is just an identifier.
-    if let Some(is_permalink) = ctx.guid_is_permalink {
-        entry.guidislink = Some(is_permalink && !ctx.has_explicit_link);
+    if let Some(is_permalink) = guid_ctx.guid_is_permalink {
+        entry.guidislink = Some(is_permalink && !guid_ctx.has_explicit_link);
         // If an explicit <link> was present, remove the guid-as-link fallback from entry.link
         // only if it was set as fallback (i.e., entry.link equals entry.id). We detect this
         // by checking: if has_explicit_link, entry.link was already overwritten by <link> arm.
@@ -1500,6 +1522,7 @@ fn parse_item(
 /// Dispatch a single `<item>` child element to its handler.
 fn dispatch_item_tag(
     ctx: &mut EntryCtx,
+    guid_ctx: &mut RssGuidCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
@@ -1510,7 +1533,7 @@ fn dispatch_item_tag(
     match tag {
         b"title" | b"link" | b"description" | b"guid" | b"pubDate" | b"author" | b"category"
         | b"comments" => {
-            parse_item_standard(ctx, tag, attrs, entry)?;
+            parse_item_standard(ctx, guid_ctx, tag, attrs, entry)?;
         }
         b"enclosure" => {
             if let Some(mut enclosure) = parse_enclosure(attrs, ctx.xml.limits) {
@@ -1573,6 +1596,7 @@ fn parse_item_extension(
 #[inline]
 fn parse_item_standard(
     ctx: &mut EntryCtx,
+    guid_ctx: &mut RssGuidCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
@@ -1580,7 +1604,7 @@ fn parse_item_standard(
     if parse_item_text(ctx, tag, entry)? {
         return Ok(());
     }
-    if parse_item_links(ctx, tag, attrs, entry)? {
+    if parse_item_links(ctx, guid_ctx, tag, attrs, entry)? {
         return Ok(());
     }
     parse_item_meta(ctx, tag, attrs, entry)?;
@@ -1627,6 +1651,7 @@ fn parse_item_text(ctx: &mut EntryCtx, tag: &[u8], entry: &mut Entry) -> Result<
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 fn parse_item_links(
     ctx: &mut EntryCtx,
+    guid_ctx: &mut RssGuidCtx,
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     entry: &mut Entry,
@@ -1644,7 +1669,7 @@ fn parse_item_links(
                 },
                 ctx.xml.limits.max_links_per_entry,
             );
-            ctx.has_explicit_link = true;
+            guid_ctx.has_explicit_link = true;
         }
         b"guid" => {
             // isPermaLink defaults to true per RSS 2.0 spec when attribute is absent
@@ -1656,7 +1681,7 @@ fn parse_item_links(
             // Defer guidislink computation: need to know if explicit <link> was present.
             // guidislink = isPermaLink AND no explicit <link> element in the item.
             // Order is not guaranteed, so we track in guid_is_permalink and compute after loop.
-            ctx.guid_is_permalink = Some(is_permalink);
+            guid_ctx.guid_is_permalink = Some(is_permalink);
             // Use guid as entry.link fallback when it is a permalink and no <link> present yet.
             // If <link> appears after <guid>, the fallback will be overwritten — that is correct.
             if is_permalink && entry.link.is_none() {

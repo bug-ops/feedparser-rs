@@ -70,10 +70,4 @@ pub struct EntryCtx<'r, 'd, 'p> {
     /// which description wins; the GML message always takes precedence over
     /// the generic fallback when both occurred, regardless of document order.
     pub bozo_reason: Option<&'static str>,
-    /// RSS 2.0 only: whether an explicit `<link>` element was seen (unused
-    /// by Atom and RSS 1.0, which have no equivalent guid-fallback rule).
-    pub has_explicit_link: bool,
-    /// RSS 2.0 only: the `isPermaLink` attribute of `<guid>`, if present
-    /// (unused by Atom and RSS 1.0).
-    pub guid_is_permalink: Option<bool>,
 }
