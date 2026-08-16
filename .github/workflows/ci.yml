@@ -547,7 +547,7 @@ jobs:
 
   # MSRV check
   msrv:
-    name: Check MSRV (1.88.0)
+    name: Check MSRV (1.91.0)
     needs: [changes, lint-stable, lint-nightly]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -561,10 +561,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install Rust 1.88.0
+      - name: Install Rust 1.91.0
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: "1.88.0"
+          toolchain: "1.91.0"
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2

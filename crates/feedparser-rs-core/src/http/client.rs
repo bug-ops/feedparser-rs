@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn test_custom_timeout() {
-        let timeout = Duration::from_secs(60);
+        let timeout = Duration::from_mins(1);
         let client = FeedHttpClient::new().unwrap().with_timeout(timeout);
         assert_eq!(client.timeout, timeout);
     }
@@ -547,7 +547,7 @@ mod tests {
         // `Duration::MAX` would overflow `Instant::now() + timeout` inside
         // reqwest's blocking wait and panic; it must be clamped instead.
         let client = FeedHttpClient::new().unwrap().with_timeout(Duration::MAX);
-        assert_eq!(client.timeout, Duration::from_secs(3600));
+        assert_eq!(client.timeout, Duration::from_hours(1));
     }
 
     #[test]

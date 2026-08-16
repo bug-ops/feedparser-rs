@@ -237,12 +237,12 @@ const IPV4_COMPATIBLE_PREFIX: [u16; 6] = [0, 0, 0, 0, 0, 0];
 
 /// Extracts the IPv4 address embedded in the low 32 bits of a segment array.
 const fn embedded_ipv4(segments: [u16; 8]) -> Ipv4Addr {
-    Ipv4Addr::new(
+    Ipv4Addr::from_octets([
         (segments[6] >> 8) as u8,
         (segments[6] & 0xFF) as u8,
         (segments[7] >> 8) as u8,
         (segments[7] & 0xFF) as u8,
-    )
+    ])
 }
 
 /// Validates an IPv6 address to prevent SSRF.
@@ -469,13 +469,13 @@ mod tests {
     #[test]
     #[cfg(feature = "http")]
     fn test_validate_ip_addr_rejects_metadata() {
-        assert!(validate_ip_addr(IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254))).is_err());
+        assert!(validate_ip_addr(IpAddr::V4(Ipv4Addr::from_octets([169, 254, 169, 254]))).is_err());
     }
 
     #[test]
     #[cfg(feature = "http")]
     fn test_validate_ip_addr_accepts_public() {
-        assert!(validate_ip_addr(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))).is_ok());
+        assert!(validate_ip_addr(IpAddr::V4(Ipv4Addr::from_octets([8, 8, 8, 8]))).is_ok());
     }
 
     #[test]
@@ -580,39 +580,39 @@ mod tests {
 
     #[test]
     fn test_validate_ipv4_rejects_multicast_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(224, 0, 0, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(239, 255, 255, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(223, 255, 255, 255)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([224, 0, 0, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([239, 255, 255, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([223, 255, 255, 255])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv4_rejects_reserved_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(240, 0, 0, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(255, 255, 255, 254)).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([240, 0, 0, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([255, 255, 255, 254])).is_err());
     }
 
     #[test]
     fn test_validate_ipv4_rejects_ietf_protocol_assignment_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(192, 0, 0, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 0, 0, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(191, 255, 255, 255)).is_ok());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 0, 1, 0)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 0, 0, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 0, 0, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([191, 255, 255, 255])).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 0, 1, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv4_rejects_6to4_relay_anycast_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 99, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 99, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 98, 255)).is_ok());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 88, 100, 0)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 88, 99, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 88, 99, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 88, 98, 255])).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 88, 100, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv4_rejects_benchmarking_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(198, 18, 0, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(198, 19, 255, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(198, 17, 255, 255)).is_ok());
-        assert!(validate_ipv4(Ipv4Addr::new(198, 20, 0, 0)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([198, 18, 0, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([198, 19, 255, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([198, 17, 255, 255])).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([198, 20, 0, 0])).is_ok());
     }
 
     // --- #453/#474: IANA special-purpose IPv6 ranges ---
@@ -623,32 +623,40 @@ mod tests {
         // sub-range previously enumerated individually (Teredo, ORCHIDv2,
         // deprecated ORCHID, DRIP, PCP/TURN/DNS-SD anycast, benchmarking,
         // AMT, AS112-v6) is covered here instead of by dedicated tests.
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 0, 0, 0, 0, 0, 0, 0])).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x2001, 0x01ff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x2000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_ok()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0200, 0, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 0x0200, 0, 0, 0, 0, 0, 0])).is_ok());
         // 2001:1:: itself (no anycast suffix) is unassigned within 2001::/23
         // and must now be blocked, not just 2001:1::1/2/3 (see #474).
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 1)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 2)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 1, 0, 0, 0, 0, 0, 3)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 2, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 3, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 4, 0x0112, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0010, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0020, 0, 0, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0030, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 1, 0, 0, 0, 0, 0, 0])).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 1, 0, 0, 0, 0, 0, 1])).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 1, 0, 0, 0, 0, 0, 2])).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 1, 0, 0, 0, 0, 0, 3])).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 2, 0, 0, 0, 0, 0, 0])).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 3, 0, 0, 0, 0, 0, 0])).is_err());
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([0x2001, 4, 0x0112, 0, 0, 0, 0, 0])).is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([0x2001, 0x0010, 0, 0, 0, 0, 0, 0])).is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([0x2001, 0x0020, 0, 0, 0, 0, 0, 0])).is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([0x2001, 0x0030, 0, 0, 0, 0, 0, 0])).is_err()
+        );
     }
 
     #[test]
@@ -656,145 +664,169 @@ mod tests {
         // 2001:db8::/32 is a separate top-level IANA allocation, not a
         // sub-range of 2001::/23 above (segments[1] = 0x0db8 falls outside
         // the block's 0x0000-0x01ff mask).
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0db8, 0, 0, 0, 0, 0, 0)).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([0x2001, 0x0db8, 0, 0, 0, 0, 0, 0])).is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x2001, 0x0db8, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x2001, 0x0db7, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_ok()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2001, 0x0db9, 0, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2001, 0x0db9, 0, 0, 0, 0, 0, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv6_rejects_discard_only_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x0100, 0, 0, 0, 0, 0, 0, 0])).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x0100, 0, 0, 0, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x00ff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_ok()
         );
         // 0x0100:0:0:1::/64 is the RFC 9780 Dummy IPv6 Prefix (see #471),
         // contiguous with the discard-only prefix above; blocked too.
-        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 1, 0, 0, 0, 0)).is_err());
-        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 2, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x0100, 0, 0, 1, 0, 0, 0, 0])).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x0100, 0, 0, 2, 0, 0, 0, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv6_rejects_nat64_local_use_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x0064, 0xff9b, 1, 0, 0, 0, 0, 0)).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([0x0064, 0xff9b, 1, 0, 0, 0, 0, 0])).is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x0064, 0xff9b, 1, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x0064, 0xff9b, 0, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_ok()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x0064, 0xff9b, 2, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x0064, 0xff9b, 2, 0, 0, 0, 0, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv6_allows_6to4_deliberately_out_of_scope() {
         // 2002::/16 (RFC 3056) is deliberately not blocked; see the comment
         // in `validate_ipv6`. Pinned here as a regression guard.
-        assert!(validate_ipv6(Ipv6Addr::new(0x2002, 0, 0, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2002, 0x0a00, 0x0001, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x2002, 0, 0, 0, 0, 0, 0, 0])).is_ok());
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([
+                0x2002, 0x0a00, 0x0001, 0, 0, 0, 0, 0
+            ]))
+            .is_ok()
+        );
     }
 
     // --- #462: IANA AS112/AMT/PCP anycast sub-ranges ---
 
     #[test]
     fn test_validate_ipv4_rejects_as112_v4_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 196, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 196, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 195, 255)).is_ok());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 31, 197, 0)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 31, 196, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 31, 196, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 31, 195, 255])).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 31, 197, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv4_rejects_amt_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 193, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 193, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 192, 255)).is_ok());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 52, 194, 0)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 52, 193, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 52, 193, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 52, 192, 255])).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 52, 194, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv4_rejects_direct_delegation_as112_boundaries() {
-        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 48, 0)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 48, 255)).is_err());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 47, 255)).is_ok());
-        assert!(validate_ipv4(Ipv4Addr::new(192, 175, 49, 0)).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 175, 48, 0])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 175, 48, 255])).is_err());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 175, 47, 255])).is_ok());
+        assert!(validate_ipv4(Ipv4Addr::from_octets([192, 175, 49, 0])).is_ok());
     }
 
     // --- #471: stale assertions + remaining IANA IPv6 special-purpose gaps ---
 
     #[test]
     fn test_validate_ipv6_rejects_dummy_prefix_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 1, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x0100, 0, 0, 1, 0, 0, 0, 0])).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x0100, 0, 0, 1, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x0100, 0, 0, 2, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x0100, 0, 0, 2, 0, 0, 0, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv6_rejects_documentation_3fff_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x3fff, 0, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x3fff, 0, 0, 0, 0, 0, 0, 0])).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x3fff, 0x0fff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x3fff, 0x1000, 0, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x3ffe, 0xffff, 0, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x3fff, 0x1000, 0, 0, 0, 0, 0, 0])).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x3ffe, 0xffff, 0, 0, 0, 0, 0, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv6_rejects_segment_routing_5f00_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x5f00, 0, 0, 0, 0, 0, 0, 0)).is_err());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x5f00, 0, 0, 0, 0, 0, 0, 0])).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
+            validate_ipv6(Ipv6Addr::from_segments([
                 0x5f00, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            ]))
             .is_err()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x5eff, 0xffff, 0, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x5f01, 0, 0, 0, 0, 0, 0, 0)).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x5eff, 0xffff, 0, 0, 0, 0, 0, 0])).is_ok());
+        assert!(validate_ipv6(Ipv6Addr::from_segments([0x5f01, 0, 0, 0, 0, 0, 0, 0])).is_ok());
     }
 
     #[test]
     fn test_validate_ipv6_rejects_direct_delegation_as112_boundaries() {
-        assert!(validate_ipv6(Ipv6Addr::new(0x2620, 0x004f, 0x8000, 0, 0, 0, 0, 0)).is_err());
         assert!(
-            validate_ipv6(Ipv6Addr::new(
-                0x2620, 0x004f, 0x8000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
-            ))
+            validate_ipv6(Ipv6Addr::from_segments([
+                0x2620, 0x004f, 0x8000, 0, 0, 0, 0, 0
+            ]))
             .is_err()
         );
-        assert!(validate_ipv6(Ipv6Addr::new(0x2620, 0x004f, 0x7fff, 0, 0, 0, 0, 0)).is_ok());
-        assert!(validate_ipv6(Ipv6Addr::new(0x2620, 0x004f, 0x8001, 0, 0, 0, 0, 0)).is_ok());
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([
+                0x2620, 0x004f, 0x8000, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff
+            ]))
+            .is_err()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([
+                0x2620, 0x004f, 0x7fff, 0, 0, 0, 0, 0
+            ]))
+            .is_ok()
+        );
+        assert!(
+            validate_ipv6(Ipv6Addr::from_segments([
+                0x2620, 0x004f, 0x8001, 0, 0, 0, 0, 0
+            ]))
+            .is_ok()
+        );
     }
 }

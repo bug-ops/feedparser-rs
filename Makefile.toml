@@ -296,10 +296,10 @@ script = "pnpm run test:coverage"
 # ============================================================================
 
 [tasks.msrv-check]
-description = "Check build with Minimum Supported Rust Version (1.88.0)"
-toolchain = "1.88.0"
+description = "Check build with Minimum Supported Rust Version (1.91.0)"
+toolchain = "1.91.0"
 command = "cargo"
-args = ["check", "--all-features", "--workspace", "--exclude", "feedparser-rs-py"]
+args = ["check", "--all-features", "--all-targets", "--workspace"]
 
 # ============================================================================
 # Utility Tasks
