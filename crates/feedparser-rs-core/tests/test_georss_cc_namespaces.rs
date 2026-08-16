@@ -8,6 +8,7 @@
 
 use feedparser_rs::namespace::georss::GeoType;
 use feedparser_rs::parse;
+use std::fmt::Write as _;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // GeoRSS integration tests
@@ -458,4 +459,587 @@ fn test_issue_355_georss_extended_attrs_fixture() {
     assert_eq!(geo3.coordinates[0], (40.0, -74.0));
     assert_eq!(geo3.feature_name.as_deref(), Some("Reverse Order"));
     assert_eq!(geo3.elev, Some(500.0));
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Issue #454: GeoRSS GML profile (gml:Point/LineString/Polygon, srsName)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_issue_454_gml_point_epsg4326_short_form() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="EPSG:4326">
+                        <gml:pos>45.256 -71.92</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    assert_eq!(geo.srs_name.as_deref(), Some("EPSG:4326"));
+}
+
+#[test]
+fn test_issue_454_gml_point_epsg4326_urn_form() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="urn:ogc:def:crs:EPSG::4326">
+                        <gml:pos>45.256 -71.92</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    assert_eq!(geo.srs_name.as_deref(), Some("urn:ogc:def:crs:EPSG::4326"));
+}
+
+#[test]
+fn test_issue_454_gml_point_no_srs_name_defaults_wgs84() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point>
+                        <gml:pos>45.256 -71.92</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    assert!(geo.srs_name.is_none());
+}
+
+#[test]
+fn test_issue_454_gml_linestring() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Line Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsName="EPSG:4326">
+                        <gml:posList>45.256 -71.92 46.0 -72.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Line);
+    assert_eq!(geo.coordinates, vec![(45.256, -71.92), (46.0, -72.0)]);
+}
+
+#[test]
+fn test_issue_454_gml_polygon_via_exterior_linear_ring() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Polygon Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Polygon srsName="EPSG:4326">
+                        <gml:exterior>
+                            <gml:LinearRing>
+                                <gml:posList>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</gml:posList>
+                            </gml:LinearRing>
+                        </gml:exterior>
+                    </gml:Polygon>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Polygon);
+    assert_eq!(geo.coordinates.len(), 4);
+    assert_eq!(geo.coordinates[0], (45.0, -71.0));
+    assert_eq!(geo.coordinates[3], (45.0, -71.0));
+}
+
+#[test]
+fn test_issue_454_gml_point_projected_crs_axis_swap() {
+    // EPSG:3857 (Web Mercator) is a projected, non-geographic CRS: raw pos
+    // order is (x, y) i.e. (lon-like, lat-like), so it must be swapped to
+    // match this crate's (lat, lon) `GeoLocation::coordinates` convention.
+    // Real EPSG:3857 values are meters, not degrees — must not be rejected
+    // by lat/lon-range validation (issue #454 follow-up finding S5).
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="EPSG:3857">
+                        <gml:pos>-8004866.0 5675670.0</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (5_675_670.0, -8_004_866.0));
+    assert_eq!(geo.srs_name.as_deref(), Some("EPSG:3857"));
+}
+
+#[test]
+fn test_issue_454_gml_srs_name_gml2_fragment_form() {
+    // Classic GML 2 srsName form: "...epsg.xml#3857" (fragment, not colon-separated).
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="http://www.opengis.net/gml/srs/epsg.xml#3857">
+                        <gml:pos>-8004866.0 5675670.0</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (5_675_670.0, -8_004_866.0));
+}
+
+#[test]
+fn test_issue_454_gml_crs84_lon_lat_order() {
+    // OGC:CRS84 is WGS84 with (lon, lat) axis order — the opposite of EPSG:4326.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="urn:ogc:def:crs:OGC:1.3:CRS84">
+                        <gml:pos>-71.92 45.256</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+}
+
+#[test]
+fn test_issue_454_gml_srs_dimension_3_drops_elevation() {
+    // C1: srsDimension="3" must chunk gml:posList by 3 and drop the
+    // elevation component per tuple, not misalign it into the next
+    // tuple's latitude.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Line Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsName="EPSG:4326" srsDimension="3">
+                        <gml:posList>45.0 -71.0 10.0 46.0 -72.0 20.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates, vec![(45.0, -71.0), (46.0, -72.0)]);
+}
+
+#[test]
+fn test_issue_454_gml_comma_separated_pos() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="EPSG:4326">
+                        <gml:pos>45.256,-71.92</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+}
+
+#[test]
+fn test_issue_454_gml_pos_entity_error_sets_bozo() {
+    // S3: an unresolvable entity inside gml:pos must set bozo, matching the
+    // equivalent georss:point Simple-profile behavior.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="EPSG:4326">
+                        <gml:pos>45.0 &bogus; -71.0</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(feed.bozo, "unresolvable entity in gml:pos must set bozo");
+}
+
+#[test]
+fn test_issue_454_gml_malformed_pos_no_panic() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>GML Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="EPSG:4326">
+                        <gml:pos>not numbers</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(
+        feed.entries[0].r#where.is_none(),
+        "malformed gml:pos text must produce None, not panic"
+    );
+}
+
+#[test]
+fn test_issue_454_gml_missing_pos_no_panic() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Empty Geometry Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsName="EPSG:4326"/>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    assert!(
+        feed.entries[0].r#where.is_none(),
+        "geometry without gml:pos must produce None, not panic"
+    );
+}
+
+#[test]
+fn test_issue_454_gml_point_at_feed_level() {
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <georss:where>
+                <gml:Point srsName="EPSG:4326">
+                    <gml:pos>51.5074 -0.1278</gml:pos>
+                </gml:Point>
+            </georss:where>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed
+        .feed
+        .r#where
+        .as_ref()
+        .expect("feed.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert_eq!(geo.coordinates[0], (51.5074, -0.1278));
+    assert_eq!(geo.srs_name.as_deref(), Some("EPSG:4326"));
+}
+
+#[test]
+fn test_issue_454_gml_point_in_atom_entry() {
+    let xml = br#"<?xml version="1.0" encoding="UTF-8"?>
+    <feed xmlns="http://www.w3.org/2005/Atom"
+          xmlns:georss="http://www.georss.org/georss"
+          xmlns:gml="http://www.opengis.net/gml">
+      <title>GML Atom Test</title>
+      <id>urn:uuid:test</id>
+      <updated>2024-01-01T00:00:00Z</updated>
+      <entry>
+        <id>urn:uuid:entry-1</id>
+        <title>Entry with GML point</title>
+        <link href="https://example.com/entry-1"/>
+        <updated>2024-01-01T00:00:00Z</updated>
+        <georss:where>
+            <gml:Point srsName="EPSG:4326">
+                <gml:pos>45.256 -71.92</gml:pos>
+            </gml:Point>
+        </georss:where>
+      </entry>
+    </feed>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    assert_eq!(geo.srs_name.as_deref(), Some("EPSG:4326"));
+}
+
+#[test]
+fn test_issue_454_gml_point_in_rss10_item() {
+    let xml = br#"<?xml version="1.0"?>
+    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+             xmlns="http://purl.org/rss/1.0/"
+             xmlns:georss="http://www.georss.org/georss"
+             xmlns:gml="http://www.opengis.net/gml">
+        <channel rdf:about="http://example.com/">
+            <title>GML RSS 1.0 Feed</title>
+            <link>http://example.com</link>
+            <description>Feed with a GML point item</description>
+        </channel>
+        <item rdf:about="http://example.com/article1">
+            <title>Article with location</title>
+            <link>http://example.com/article1</link>
+            <georss:where>
+                <gml:Point srsName="EPSG:4326">
+                    <gml:pos>45.256 -71.92</gml:pos>
+                </gml:Point>
+            </georss:where>
+        </item>
+    </rdf:RDF>"#;
+
+    let feed = parse(xml).expect("parse failed");
+    assert!(!feed.bozo, "valid feed must not set bozo");
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.geo_type, GeoType::Point);
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    assert_eq!(geo.srs_name.as_deref(), Some("EPSG:4326"));
+}
+
+#[test]
+fn test_issue_454_georss_simple_point_srs_name_still_none() {
+    // Regression: GeoRSS Simple parsing must not start setting srs_name.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0" xmlns:georss="http://www.georss.org/georss">
+        <channel>
+            <title>Geo Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Location Post</title>
+                <link>http://example.com/1</link>
+                <georss:point>45.256 -71.92</georss:point>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+    assert!(geo.srs_name.is_none());
+}
+
+#[test]
+fn test_issue_454_gml_deeply_nested_sets_bozo_no_panic() {
+    // Adversarial input: nest wrapper elements inside gml:Polygon past
+    // max_nesting_depth so the GML tree-walk's recursive coordinate search
+    // (find_gml_coord_text) must hit check_depth and bail out via bozo,
+    // rather than recursing unboundedly or panicking.
+    let mut xml = String::from(
+        r#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Deeply Nested GML</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Polygon srsName="EPSG:4326">
+                        <gml:exterior>"#,
+    );
+
+    for i in 0..150 {
+        write!(&mut xml, "<gml:wrap{i}>").unwrap();
+    }
+    xml.push_str("<gml:posList>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</gml:posList>");
+    for i in (0..150).rev() {
+        write!(&mut xml, "</gml:wrap{i}>").unwrap();
+    }
+
+    xml.push_str(
+        r"
+                        </gml:exterior>
+                    </gml:Polygon>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>",
+    );
+
+    let feed = parse(xml.as_bytes()).expect("should handle deep GML nesting without panicking");
+
+    // The item that hit the depth limit is dropped entirely (matches the
+    // existing depth-limit error-handling contract), but the parse itself
+    // must complete without panicking and must flag bozo.
+    assert!(
+        feed.bozo,
+        "should set bozo flag for excessive GML nesting depth"
+    );
+    assert!(feed.entries.is_empty());
 }

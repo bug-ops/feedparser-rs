@@ -6,7 +6,10 @@
 use crate::{
     ParserLimits,
     error::{FeedError, Result},
-    namespace::namespaces as ns_uris,
+    namespace::{
+        georss::{self, GeoLocation, GeoType},
+        namespaces as ns_uris,
+    },
     types::{
         Entry, FeedMeta, FeedVersion, ItunesEntryMeta, ItunesFeedMeta, MediaContent,
         MediaThumbnail, ParsedFeed, PodcastMeta,
@@ -15,7 +18,7 @@ use crate::{
 };
 use quick_xml::{
     Reader,
-    events::{BytesRef, Event},
+    events::{BytesRef, BytesStart, Event},
 };
 use std::{collections::HashMap, io::Write as _};
 
@@ -366,6 +369,22 @@ pub fn is_georss_tag(name: &[u8]) -> Option<&str> {
     extract_ns_local_name(name, b"georss:")
 }
 
+/// Check if element is a GML (Geography Markup Language) namespaced tag
+///
+/// Used to recognize `gml:Point`, `gml:LineString`, `gml:pos`, etc. nested
+/// inside `georss:where` for the `GeoRSS` GML profile.
+///
+/// # Examples
+///
+/// ```ignore
+/// assert_eq!(is_gml_tag(b"gml:Point"), Some("Point"));
+/// assert_eq!(is_gml_tag(b"georss:point"), None);
+/// ```
+#[inline]
+pub fn is_gml_tag(name: &[u8]) -> Option<&str> {
+    extract_ns_local_name(name, b"gml:")
+}
+
 /// Check if element is a W3C Basic Geo namespaced tag
 ///
 /// # Examples
@@ -696,6 +715,154 @@ pub fn skip_element(
     }
 
     Ok(())
+}
+
+/// Parse a `<georss:where>` element (`GeoRSS` GML profile) and return the
+/// geometry it contains (or `None` if no recognized geometry was found)
+/// together with whether an entity-resolution error occurred in the
+/// coordinate text (the "bozo" pattern; the caller should OR this into its
+/// own bozo tracking, matching how `GeoRSS` Simple elements are handled).
+///
+/// Recognizes `gml:Point`/`gml:pos`, `gml:LineString`/`gml:posList`, and
+/// `gml:Polygon` wrapping `gml:exterior`/`gml:LinearRing`/`gml:posList`.
+/// The `srsName` and `srsDimension` attributes on the geometry element
+/// drive axis-order normalization and 3D coordinate handling (see
+/// [`georss::build_gml_geometry`]). Unrecognized nested elements are
+/// skipped tolerantly; malformed coordinate text yields `None` without
+/// aborting the parse.
+///
+/// `depth` must already account for the `<georss:where>` start tag itself,
+/// per the depth-accounting convention used throughout this module (the
+/// caller increments depth before dispatching).
+pub fn parse_georss_where(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+    depth: usize,
+) -> Result<(Option<GeoLocation>, bool)> {
+    let mut geometry = None;
+    let mut had_bozo = false;
+
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                let next_depth = depth + 1;
+                check_depth(next_depth, limits.max_nesting_depth)?;
+
+                if geometry.is_some() {
+                    skip_element(reader, buf, limits, next_depth)?;
+                } else if let Some((geo_type, end_tag, srs_name, dims)) =
+                    gml_geometry_start(&e, limits)
+                {
+                    let (coord_text, bozo) =
+                        find_gml_coord_text(reader, buf, limits, next_depth, &end_tag)?;
+                    had_bozo |= bozo;
+                    geometry = coord_text.and_then(|text| {
+                        georss::build_gml_geometry(geo_type, srs_name, &text, dims)
+                    });
+                } else {
+                    skip_element(reader, buf, limits, next_depth)?;
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == b"where" => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok((geometry, had_bozo))
+}
+
+/// Extract the geometry type, matching end-tag local name, `srsName`, and
+/// `srsDimension` (default `2`, non-numeric falls back to `2`) from a
+/// `<gml:Point>`/`<gml:LineString>`/`<gml:Polygon>` start tag. Attribute
+/// names are matched case-insensitively (real-world feeds vary), and
+/// `srsName` is trimmed (XML attribute-value normalization of a
+/// line-wrapped attribute does not strip leading/trailing whitespace).
+/// Returns `None` for any other element (the caller should skip it).
+fn gml_geometry_start(
+    start: &BytesStart<'_>,
+    limits: &ParserLimits,
+) -> Option<(GeoType, Vec<u8>, Option<String>, usize)> {
+    let name = start.name();
+    let local = is_gml_tag(name.as_ref())?;
+    let geo_type = match local {
+        "Point" => GeoType::Point,
+        "LineString" => GeoType::Line,
+        "Polygon" => GeoType::Polygon,
+        _ => return None,
+    };
+
+    let srs_name = gml_attr(start, b"srsName", limits.max_attribute_length)
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty());
+    let dims = gml_attr(start, b"srsDimension", limits.max_attribute_length)
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(2);
+
+    Some((geo_type, local.as_bytes().to_vec(), srs_name, dims))
+}
+
+/// Read an attribute's normalized value by case-insensitive key match.
+fn gml_attr(start: &BytesStart<'_>, key: &[u8], max_len: usize) -> Option<String> {
+    start
+        .attributes()
+        .flatten()
+        .find(|a| a.key.as_ref().eq_ignore_ascii_case(key))
+        .filter(|a| a.value.len() <= max_len)
+        .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok())
+        .map(|v| v.to_string())
+}
+
+/// Recursively search a GML geometry subtree for the first `gml:pos` or
+/// `gml:posList` element, transparently descending through wrapper
+/// elements (e.g. `gml:exterior`/`gml:LinearRing`) or skipping unrecognized
+/// nested content. Consumes events up through the matching `end_tag` close
+/// tag, so the caller's depth accounting stays balanced. Returns the
+/// coordinate text (if found) together with whether an entity-resolution
+/// error occurred while reading it.
+fn find_gml_coord_text(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    limits: &ParserLimits,
+    depth: usize,
+    end_tag: &[u8],
+) -> Result<(Option<String>, bool)> {
+    let mut found = None;
+    let mut had_bozo = false;
+
+    loop {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) => {
+                let next_depth = depth + 1;
+                check_depth(next_depth, limits.max_nesting_depth)?;
+                let name = e.name();
+                let local = is_gml_tag(name.as_ref()).map(str::to_owned);
+
+                if found.is_none() && matches!(local.as_deref(), Some("pos" | "posList")) {
+                    let (text, bozo) = read_text(reader, buf, limits)?;
+                    had_bozo |= bozo;
+                    found = Some(text);
+                } else if let Some(local) = local {
+                    let (inner, bozo) =
+                        find_gml_coord_text(reader, buf, limits, next_depth, local.as_bytes())?;
+                    had_bozo |= bozo;
+                    found = found.or(inner);
+                } else {
+                    skip_element(reader, buf, limits, next_depth)?;
+                }
+            }
+            Ok(Event::End(e)) if e.local_name().as_ref() == end_tag => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(e.into()),
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok((found, had_bozo))
 }
 
 /// Read xhtml content from the current element, per RFC 4287 §3.1.1.3.

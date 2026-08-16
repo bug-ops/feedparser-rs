@@ -25,8 +25,8 @@ use super::common::{
     EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
     is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
-    itunes_entry_meta, itunes_feed_meta, read_text, read_text_str, read_xhtml_content_str,
-    skip_element, skip_to_end, text_construct_from_content,
+    itunes_entry_meta, itunes_feed_meta, parse_georss_where, read_text, read_text_str,
+    read_xhtml_content_str, skip_element, skip_to_end, text_construct_from_content,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -323,7 +323,7 @@ fn parse_feed_namespace(
         handled = parse_feed_itunes_text(reader, buf, tag, feed, limits, is_empty)?;
     }
     if !handled {
-        handled = parse_feed_geo(reader, buf, tag, feed, limits, is_empty)?;
+        handled = parse_feed_geo(reader, buf, tag, feed, limits, *depth, is_empty)?;
     }
 
     if !handled && !is_empty {
@@ -793,13 +793,21 @@ fn parse_feed_geo(
     tag: &[u8],
     feed: &mut ParsedFeed,
     limits: &ParserLimits,
+    depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(georss_element) = is_georss_tag(tag) {
-        let georss_elem = georss_element.as_bytes().to_vec();
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
-            georss::handle_feed_element(&georss_elem, &text, &mut feed.feed, limits);
+            if georss_element == "where" {
+                let (loc, _had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+                if let Some(loc) = loc {
+                    georss::merge_geometry(&mut feed.feed.r#where, loc);
+                }
+            } else {
+                let georss_elem = georss_element.as_bytes().to_vec();
+                let text = read_text_str(reader, buf, limits)?;
+                georss::handle_feed_element(&georss_elem, &text, &mut feed.feed, limits);
+            }
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
@@ -932,7 +940,7 @@ fn parse_entry_namespace(
         )?;
     }
     if !handled {
-        handled = parse_entry_geo(reader, buf, tag, entry, limits, bozo, is_empty)?;
+        handled = parse_entry_geo(reader, buf, tag, entry, limits, *depth, bozo, is_empty)?;
     }
 
     if !handled && !is_empty {
@@ -1534,21 +1542,31 @@ fn parse_entry_itunes(
 /// Parse `GeoRSS` and W3C Geo namespace tags at entry level.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
+#[allow(clippy::too_many_arguments)]
 fn parse_entry_geo(
     reader: &mut Reader<&[u8]>,
     buf: &mut Vec<u8>,
     tag: &[u8],
     entry: &mut Entry,
     limits: &ParserLimits,
+    depth: usize,
     bozo: &mut bool,
     is_empty: bool,
 ) -> Result<bool> {
     if let Some(georss_element) = is_georss_tag(tag) {
-        let georss_elem = georss_element.as_bytes().to_vec();
         if !is_empty {
-            let (text, had_bozo) = read_text(reader, buf, limits)?;
-            *bozo |= had_bozo;
-            georss::handle_entry_element(&georss_elem, &text, entry, limits);
+            if georss_element == "where" {
+                let (loc, had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+                *bozo |= had_bozo;
+                if let Some(loc) = loc {
+                    georss::merge_geometry(&mut entry.r#where, loc);
+                }
+            } else {
+                let georss_elem = georss_element.as_bytes().to_vec();
+                let (text, had_bozo) = read_text(reader, buf, limits)?;
+                *bozo |= had_bozo;
+                georss::handle_entry_element(&georss_elem, &text, entry, limits);
+            }
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {

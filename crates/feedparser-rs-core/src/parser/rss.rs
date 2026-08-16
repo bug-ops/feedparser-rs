@@ -27,8 +27,8 @@ use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, build_media_content, build_media_thumbnail,
     check_depth, extract_namespaces, extract_xml_lang, find_attribute, init_feed, is_content_tag,
     is_dc_tag, is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_syn_tag,
-    is_thr_tag, is_wfw_tag, itunes_entry_meta, itunes_feed_meta, podcast_feed_meta, read_text,
-    read_text_str, skip_element, text_construct_from_content,
+    is_thr_tag, is_wfw_tag, itunes_entry_meta, itunes_feed_meta, parse_georss_where,
+    podcast_feed_meta, read_text, read_text_str, skip_element, text_construct_from_content,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -1227,8 +1227,20 @@ fn parse_channel_namespace(
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
         if !is_empty {
-            let text = read_text_str(reader, buf, limits)?;
-            georss::handle_feed_element(georss_element.as_bytes(), &text, &mut feed.feed, limits);
+            if georss_element == "where" {
+                let (loc, _had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+                if let Some(loc) = loc {
+                    georss::merge_geometry(&mut feed.feed.r#where, loc);
+                }
+            } else {
+                let text = read_text_str(reader, buf, limits)?;
+                georss::handle_feed_element(
+                    georss_element.as_bytes(),
+                    &text,
+                    &mut feed.feed,
+                    limits,
+                );
+            }
         }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
@@ -2525,9 +2537,19 @@ fn parse_item_namespace(
         content::handle_entry_element(&content_elem, &text, entry, lang, base);
         Ok(true)
     } else if let Some(georss_element) = is_georss_tag(tag) {
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
-        georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
+        if georss_element == "where" {
+            if !is_empty {
+                let (loc, had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+                *bozo |= had_bozo;
+                if let Some(loc) = loc {
+                    georss::merge_geometry(&mut entry.r#where, loc);
+                }
+            }
+        } else {
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            georss::handle_entry_element(georss_element.as_bytes(), &text, entry, limits);
+        }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(tag) {
         if !is_empty {

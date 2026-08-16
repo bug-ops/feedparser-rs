@@ -24,7 +24,7 @@ use quick_xml::{
 use super::common::{
     EVENT_BUFFER_CAPACITY, LimitedCollectionExt, check_depth, extract_namespaces, extract_xml_base,
     extract_xml_lang, init_feed, is_content_tag, is_dc_tag, is_geo_tag, is_georss_tag, is_syn_tag,
-    is_thr_tag, read_text, read_text_str, skip_element,
+    is_thr_tag, parse_georss_where, read_text, read_text_str, skip_element,
 };
 
 /// Parse RSS 1.0 (RDF) feed from raw bytes
@@ -451,9 +451,16 @@ fn parse_rss10_channel_namespace(
         let text = read_text_str(reader, buf, limits)?;
         syndication::handle_feed_element(&syn_elem, &text, &mut feed.feed);
     } else if let Some(georss_element) = is_georss_tag(full_name) {
-        let georss_elem = georss_element.to_string();
-        let text = read_text_str(reader, buf, limits)?;
-        georss::handle_feed_element(georss_elem.as_bytes(), &text, &mut feed.feed, limits);
+        if georss_element == "where" {
+            let (loc, _had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+            if let Some(loc) = loc {
+                georss::merge_geometry(&mut feed.feed.r#where, loc);
+            }
+        } else {
+            let georss_elem = georss_element.to_string();
+            let text = read_text_str(reader, buf, limits)?;
+            georss::handle_feed_element(georss_elem.as_bytes(), &text, &mut feed.feed, limits);
+        }
     } else if let Some(geo_element) = is_geo_tag(full_name) {
         let geo_elem = geo_element.to_string();
         let text = read_text_str(reader, buf, limits)?;
@@ -693,10 +700,18 @@ fn parse_rss10_item_ns_geo_thr(
     bozo: &mut bool,
 ) -> Result<bool> {
     if let Some(georss_element) = is_georss_tag(full_name) {
-        let georss_elem = georss_element.to_string();
-        let (text, had_bozo) = read_text(reader, buf, limits)?;
-        *bozo |= had_bozo;
-        georss::handle_entry_element(georss_elem.as_bytes(), &text, entry, limits);
+        if georss_element == "where" {
+            let (loc, had_bozo) = parse_georss_where(reader, buf, limits, depth)?;
+            *bozo |= had_bozo;
+            if let Some(loc) = loc {
+                georss::merge_geometry(&mut entry.r#where, loc);
+            }
+        } else {
+            let georss_elem = georss_element.to_string();
+            let (text, had_bozo) = read_text(reader, buf, limits)?;
+            *bozo |= had_bozo;
+            georss::handle_entry_element(georss_elem.as_bytes(), &text, entry, limits);
+        }
         Ok(true)
     } else if let Some(geo_element) = is_geo_tag(full_name) {
         let geo_elem = geo_element.to_string();
