@@ -1,6 +1,6 @@
 {
   "name": "feedparser-rs",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "description": "High-performance RSS/Atom/JSON Feed parser for Node.js",
   "main": "index.js",
   "types": "index.d.ts",
@@ -47,8 +47,8 @@
     "prepublishOnly": "napi prepublish -t npm"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.5",
-    "@napi-rs/cli": "^3.7.4",
+    "@biomejs/biome": "^2.5.8",
+    "@napi-rs/cli": "^3.8.6",
     "c8": "^12.0.0"
   },
   "pnpm": {

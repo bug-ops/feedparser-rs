@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-17
+
 ### Security
 
 - Close an SSRF protection bypass in `FeedHttpClient` (CWE-918, #436): HTTP redirects (`Location` headers) are now re-validated against the same SSRF checks as the initial request, and DNS resolution results are re-checked at connect time via a custom resolver, closing a DNS-rebinding gap where a domain resolving to a public IP at validation time could be repointed to a private/loopback/link-local/metadata address before the connection was made. Also consolidated `util::base_url::is_safe_url` to reuse the same validation rules as `http::validation::validate_url` instead of a separate, weaker, duplicated implementation.
@@ -609,7 +611,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...v0.6.0
 [0.5.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.5...v0.5.6
 [0.5.5]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.3...v0.5.4

@@ -23,7 +23,7 @@ default = ["http"]
 http = ["feedparser-rs/http"]
 
 [build-dependencies]
-napi-build = "2.3"
+napi-build = "2.4"
 
 [dev-dependencies]
 quick-xml = { workspace = true }
