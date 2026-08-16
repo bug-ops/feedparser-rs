@@ -1265,3 +1265,438 @@ fn test_issue_461_gml_multi_surface_multiple_members_uses_first_only() {
     assert_eq!(geo.coordinates[0], (45.0, -71.0));
     assert_eq!(geo.coordinates[3], (45.0, -71.0));
 }
+
+#[test]
+fn test_issue_470_gml_pos_list_srs_dimension_on_element() {
+    // srsDimension placed on gml:posList itself (the canonical GML
+    // placement, and what real-world WFS/GeoServer/INSPIRE producers emit)
+    // must be honored even though the gml:LineString root carries none.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D LineString Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString>
+                        <gml:posList srsDimension="3">45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_470_gml_pos_srs_dimension_on_root_only() {
+    // Regression check: srsDimension on the geometry root element (no
+    // per-element override) must still work after threading dims through
+    // find_gml_coord_text.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point srsDimension="3">
+                        <gml:pos>45.256 -71.92 100.0</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+}
+
+#[test]
+fn test_issue_470_gml_pos_list_srs_dimension_element_takes_precedence() {
+    // When srsDimension appears on both the root element and gml:posList,
+    // the per-element value must win.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Conflicting Dimension Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsDimension="2">
+                        <gml:posList srsDimension="3">45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_470_gml_pos_list_srs_dimension_defaults_to_2d() {
+    // Neither root nor gml:posList specify srsDimension: default to 2D.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>2D LineString Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString>
+                        <gml:posList>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_470_gml_pos_srs_dimension_element_only_no_root() {
+    // gml:pos carries srsDimension with no dims anywhere on the root.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D Point Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Point>
+                        <gml:pos srsDimension="3">45.256 -71.92 100.0</gml:pos>
+                    </gml:Point>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(geo.coordinates[0], (45.256, -71.92));
+}
+
+#[test]
+fn test_issue_470_gml_polygon_exterior_linear_ring_pos_list_srs_dimension() {
+    // srsDimension on the nested gml:posList must survive threading through
+    // the gml:exterior/gml:LinearRing wrapper recursion.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D Polygon Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Polygon>
+                        <gml:exterior>
+                            <gml:LinearRing>
+                                <gml:posList srsDimension="3">45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                            </gml:LinearRing>
+                        </gml:exterior>
+                    </gml:Polygon>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_470_gml_polygon_linear_ring_srs_dimension_on_wrapper() {
+    // srsDimension declared on the gml:LinearRing wrapper itself (not on
+    // posList, not on the geometry root) must still be honored.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D Polygon Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:Polygon>
+                        <gml:exterior>
+                            <gml:LinearRing srsDimension="3">
+                                <gml:posList>45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                            </gml:LinearRing>
+                        </gml:exterior>
+                    </gml:Polygon>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_470_gml_multi_surface_srs_dimension_on_innermost_pos_list() {
+    // Deepest nesting from #461 (MultiSurface > surfaceMember > Polygon >
+    // exterior > LinearRing > posList) with srsDimension on the innermost
+    // posList must still resolve through every recursion level.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>3D MultiSurface Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:MultiSurface>
+                        <gml:surfaceMember>
+                            <gml:Polygon>
+                                <gml:exterior>
+                                    <gml:LinearRing>
+                                        <gml:posList srsDimension="3">45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                                    </gml:LinearRing>
+                                </gml:exterior>
+                            </gml:Polygon>
+                        </gml:surfaceMember>
+                    </gml:MultiSurface>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
+
+#[test]
+fn test_issue_470_gml_pos_list_invalid_element_srs_dimension_falls_back_to_root() {
+    // Out-of-range element-level srsDimension (only 2 and 3 are valid per
+    // GML) must not silently override a valid root-level value -- it must
+    // fall back to the inherited dims, not collapse to 2D.
+    for invalid in ["0", "1", "4"] {
+        let xml = format!(
+            r#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Invalid Dimension Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsDimension="3">
+                        <gml:posList srsDimension="{invalid}">45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#
+        );
+
+        let feed = parse(xml.as_bytes()).unwrap();
+        assert!(
+            !feed.bozo,
+            "invalid srsDimension={invalid} must not set bozo"
+        );
+        let geo = feed.entries[0]
+            .r#where
+            .as_ref()
+            .expect("entry.where should be set");
+        assert_eq!(
+            geo.coordinates,
+            vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)],
+            "invalid srsDimension={invalid} must fall back to root dims=3, not clobber it"
+        );
+    }
+}
+
+#[test]
+fn test_issue_470_gml_pos_list_malformed_element_srs_dimension_falls_back_to_root() {
+    // Non-numeric element-level srsDimension must not panic and must fall
+    // back to the inherited (root) dims.
+    for malformed in ["abc", "3.5", "-3"] {
+        let xml = format!(
+            r#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>Malformed Dimension Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:LineString srsDimension="3">
+                        <gml:posList srsDimension="{malformed}">45.0 -71.0 5.0 46.0 -71.0 5.0 46.0 -72.0 5.0 45.0 -71.0 5.0</gml:posList>
+                    </gml:LineString>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#
+        );
+
+        let feed = parse(xml.as_bytes()).expect("must not panic on malformed srsDimension");
+        assert!(
+            !feed.bozo,
+            "malformed srsDimension={malformed} must not set bozo"
+        );
+        let geo = feed.entries[0]
+            .r#where
+            .as_ref()
+            .expect("entry.where should be set");
+        assert_eq!(
+            geo.coordinates,
+            vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)],
+            "malformed srsDimension={malformed} must fall back to root dims=3"
+        );
+    }
+}
+
+#[test]
+fn test_issue_470_gml_multi_surface_empty_first_member_srs_dimension_does_not_leak_to_sibling() {
+    // Regression for a dims-leak found during review: the first
+    // gml:surfaceMember's gml:Polygon declares srsDimension="3" but has no
+    // actual coordinate text (an empty gml:LinearRing). That must not leak
+    // dims=3 into the *sibling* gml:surfaceMember, whose plain 2D posList
+    // carries no override of its own. Before the fix, the leaked dims=3
+    // made the second member's 8-number posList fail the "len % dims == 0"
+    // check (8 is not a multiple of 3), silently producing no geometry at
+    // all (entry.where == None) with bozo still false.
+    let xml = br#"<?xml version="1.0"?>
+    <rss version="2.0"
+         xmlns:georss="http://www.georss.org/georss"
+         xmlns:gml="http://www.opengis.net/gml">
+        <channel>
+            <title>GML Feed</title>
+            <link>http://example.com</link>
+            <item>
+                <title>MultiSurface Leak Post</title>
+                <link>http://example.com/1</link>
+                <georss:where>
+                    <gml:MultiSurface>
+                        <gml:surfaceMember>
+                            <gml:Polygon srsDimension="3">
+                                <gml:exterior>
+                                    <gml:LinearRing>
+                                    </gml:LinearRing>
+                                </gml:exterior>
+                            </gml:Polygon>
+                        </gml:surfaceMember>
+                        <gml:surfaceMember>
+                            <gml:Polygon>
+                                <gml:exterior>
+                                    <gml:LinearRing>
+                                        <gml:posList>45.0 -71.0 46.0 -71.0 46.0 -72.0 45.0 -71.0</gml:posList>
+                                    </gml:LinearRing>
+                                </gml:exterior>
+                            </gml:Polygon>
+                        </gml:surfaceMember>
+                    </gml:MultiSurface>
+                </georss:where>
+            </item>
+        </channel>
+    </rss>"#;
+
+    let feed = parse(xml).unwrap();
+    assert!(!feed.bozo);
+    let geo = feed.entries[0]
+        .r#where
+        .as_ref()
+        .expect("entry.where should be set -- dims must not leak from the empty first member");
+    assert_eq!(
+        geo.coordinates,
+        vec![(45.0, -71.0), (46.0, -71.0), (46.0, -72.0), (45.0, -71.0)]
+    );
+}
