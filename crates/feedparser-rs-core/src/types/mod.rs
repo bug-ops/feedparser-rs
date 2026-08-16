@@ -16,10 +16,11 @@ pub use feed::{FeedMeta, ParsedFeed};
 pub use generics::{FromAttributes, LimitedCollectionExt, ParseFrom};
 pub use podcast::{
     ItunesCategory, ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, PodcastAlternateEnclosure,
-    PodcastAlternateEnclosureSource, PodcastChapters, PodcastEntryMeta, PodcastFollow,
+    PodcastAlternateEnclosureSource, PodcastChapters, PodcastChat, PodcastEntryMeta, PodcastFollow,
     PodcastFunding, PodcastIntegrity, PodcastLocation, PodcastMeta, PodcastPerson,
     PodcastRemoteItem, PodcastSocialInteract, PodcastSoundbite, PodcastTranscript, PodcastTxt,
-    PodcastUpdateFrequency, PodcastValue, PodcastValueRecipient, parse_explicit,
+    PodcastUpdateFrequency, PodcastValue, PodcastValueRecipient, PodcastValueTimeSplit,
+    parse_explicit,
 };
 pub use thread::InReplyTo;
 pub use version::FeedVersion;

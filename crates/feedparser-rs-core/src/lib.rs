@@ -191,9 +191,9 @@ pub use types::{
     Cloud, Content, Email, Enclosure, Entry, FeedMeta, FeedVersion, Generator, Image, InReplyTo,
     ItunesCategory, ItunesEntryMeta, ItunesFeedMeta, ItunesOwner, LimitedCollectionExt, Link,
     MediaContent, MediaCopyright, MediaCredit, MediaRating, MediaThumbnail, MimeType, ParsedFeed,
-    Person, PodcastChapters, PodcastEntryMeta, PodcastFunding, PodcastMeta, PodcastPerson,
-    PodcastSoundbite, PodcastTranscript, PodcastValue, PodcastValueRecipient, Source, Tag,
-    TextConstruct, TextInput, TextType, Url, parse_explicit,
+    Person, PodcastChapters, PodcastChat, PodcastEntryMeta, PodcastFunding, PodcastMeta,
+    PodcastPerson, PodcastSoundbite, PodcastTranscript, PodcastValue, PodcastValueRecipient,
+    PodcastValueTimeSplit, Source, Tag, TextConstruct, TextInput, TextType, Url, parse_explicit,
 };
 
 pub use namespace::syndication::{SyndicationMeta, UpdatePeriod};

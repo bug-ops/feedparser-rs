@@ -35,14 +35,25 @@ pub fn convert_feed_error(err: FeedError) -> Error {
 mod tests {
     use super::*;
 
+    fn mismatched_end_tag_error() -> quick_xml::Error {
+        let mut reader = quick_xml::Reader::from_str("<a></b>");
+        loop {
+            match reader.read_event() {
+                Ok(quick_xml::events::Event::Eof) => unreachable!("input must produce an error"),
+                Ok(_) => {}
+                Err(e) => return e,
+            }
+        }
+    }
+
     #[test]
     fn maps_format_and_input_errors_to_invalid_arg() {
         let cases = [
-            FeedError::XmlError("bad xml".to_string()),
+            FeedError::XmlError(mismatched_end_tag_error()),
             FeedError::InvalidFormat("not a feed".to_string()),
             FeedError::EncodingError("bad charset".to_string()),
-            FeedError::JsonError("bad json".to_string()),
-            FeedError::UrlError("bad url".to_string()),
+            FeedError::JsonError(serde_json::from_str::<u8>("x").expect_err("must fail")),
+            FeedError::UrlError(url::ParseError::EmptyHost),
         ];
         for case in cases {
             assert_eq!(convert_feed_error(case).status, Status::InvalidArg);
@@ -52,7 +63,7 @@ mod tests {
     #[test]
     fn maps_io_and_unknown_errors_to_generic_failure() {
         let cases = [
-            FeedError::IoError("disk full".to_string()),
+            FeedError::IoError(std::io::Error::other("disk full")),
             FeedError::Http {
                 message: "timeout".to_string(),
             },
@@ -65,7 +76,7 @@ mod tests {
 
     #[test]
     fn preserves_error_message() {
-        let err = convert_feed_error(FeedError::XmlError("unexpected EOF".to_string()));
-        assert!(err.reason.contains("unexpected EOF"));
+        let err = convert_feed_error(FeedError::XmlError(mismatched_end_tag_error()));
+        assert!(err.reason.contains("ill-formed document"));
     }
 }

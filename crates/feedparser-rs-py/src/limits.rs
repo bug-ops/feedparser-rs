@@ -137,6 +137,8 @@ impl PyParserLimits {
             max_podcast_social_interact: 10,             // Use default
             max_podcast_txt: 20,                         // Use default
             max_podcast_follow: 10,                      // Use default
+            max_podcast_chat: 20,
+            max_podcast_value_time_splits: 20,
         }
     }
 }
