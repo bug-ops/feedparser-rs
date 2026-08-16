@@ -625,7 +625,7 @@ fn parse_channel_extension(
     }
     let mut handled = parse_channel_itunes(ctx, tag, attrs, feed, depth, is_empty)?;
     if !handled {
-        handled = parse_channel_podcast(ctx, tag, attrs, feed, is_empty)?;
+        handled = parse_channel_podcast(ctx, tag, attrs, feed, *depth, is_empty)?;
     }
     if !handled {
         handled = parse_channel_namespace(ctx, tag, attrs, feed, *depth, is_empty)?;
@@ -1103,9 +1103,10 @@ fn parse_channel_podcast(
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
+    depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
-    if parse_channel_podcast_a(ctx, tag, attrs, feed, is_empty)?
+    if parse_channel_podcast_a(ctx, tag, attrs, feed, depth, is_empty)?
         || parse_channel_podcast_b(ctx, tag, attrs, feed, is_empty)?
     {
         return Ok(true);
@@ -1121,6 +1122,7 @@ fn parse_channel_podcast_a(
     tag: &[u8],
     attrs: &[(Vec<u8>, String)],
     feed: &mut ParsedFeed,
+    depth: usize,
     is_empty: bool,
 ) -> Result<bool> {
     if tag.starts_with(b"podcast:guid") {
@@ -1155,7 +1157,7 @@ fn parse_channel_podcast_a(
         Ok(true)
     } else if tag == b"podcast:value" {
         if !is_empty {
-            parse_podcast_value(ctx, attrs, feed)?;
+            parse_podcast_value(ctx, attrs, feed, depth)?;
         }
         Ok(true)
     } else {
@@ -1887,7 +1889,7 @@ fn parse_item_podcast_a(
 }
 
 /// Parse Podcast 2.0 namespace tags at item level: alternateEnclosure, location,
-/// socialInteract, txt, follow, chat.
+/// socialInteract, txt, follow, chat, value.
 ///
 /// Returns `Ok(true)` if the tag was recognized and handled, `Ok(false)` if not recognized.
 #[inline]
@@ -1918,6 +1920,11 @@ fn parse_item_podcast_b(
         Ok(true)
     } else if tag.starts_with(b"podcast:chat") {
         parse_podcast_item_chat(attrs, entry, ctx.xml.limits);
+        Ok(true)
+    } else if tag == b"podcast:value" {
+        if !is_empty {
+            parse_item_podcast_value(ctx, attrs, entry, depth)?;
+        }
         Ok(true)
     } else {
         Ok(false)
@@ -3210,6 +3217,7 @@ fn parse_podcast_value_time_split(
     ctx: &mut XmlCtx,
     attrs: &[(Vec<u8>, String)],
     is_empty: bool,
+    depth: usize,
 ) -> Result<Option<PodcastValueTimeSplit>> {
     if is_empty {
         return Ok(None);
@@ -3236,10 +3244,17 @@ fn parse_podcast_value_time_split(
 
     loop {
         match ctx.reader.read_event_into(ctx.buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => {
+            Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
+                let is_empty_child = matches!(event, Event::Empty(_));
+                let (Event::Start(e) | Event::Empty(e)) = &event else {
+                    unreachable!()
+                };
                 let child_tag = e.name();
+                let next_depth = depth + 1;
+                check_depth(next_depth, ctx.limits.max_nesting_depth)?;
+
                 if child_tag.as_ref().starts_with(b"podcast:valueRecipient") {
-                    let (recipient_attrs, _) = collect_attributes(&e);
+                    let (recipient_attrs, _) = collect_attributes(e);
                     recipients.try_push_limited(
                         parse_value_recipient_attrs(&recipient_attrs, ctx.limits),
                         ctx.limits.max_value_recipients,
@@ -3247,8 +3262,10 @@ fn parse_podcast_value_time_split(
                 } else if remote_item.is_none()
                     && child_tag.as_ref().starts_with(b"podcast:remoteItem")
                 {
-                    let (item_attrs, _) = collect_attributes(&e);
+                    let (item_attrs, _) = collect_attributes(e);
                     remote_item = Some(parse_remote_item_attrs(&item_attrs, ctx.limits));
+                } else if !is_empty_child {
+                    skip_element(ctx.reader, ctx.buf, ctx.limits, next_depth)?;
                 }
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"podcast:valueTimeSplit" => break,
@@ -3272,29 +3289,33 @@ fn parse_podcast_value_time_split(
     })
 }
 
-/// Parse Podcast 2.0 value element from <podcast:value> element
+/// Parse a `<podcast:value>` element's attributes and children into a [`PodcastValue`]
 ///
-/// Parses value-for-value payment information including payment type, method,
-/// suggested amount, nested valueRecipient elements, and valueTimeSplit elements.
-fn parse_podcast_value(
-    ctx: &mut ChannelCtx,
+/// Shared by channel-level and item-level `podcast:value` parsing. Consumes events up to
+/// and including the matching `</podcast:value>`, an `Eof`, or a propagated read/depth
+/// error — whichever comes first. `depth` is the nesting depth of the `<podcast:value>`
+/// element itself; children (recognized or not) are checked and, if unrecognized, skipped
+/// at `depth + 1`, matching the `parse_image`/`parse_georss_where` convention used
+/// elsewhere in this parser.
+fn parse_podcast_value_content(
+    ctx: &mut XmlCtx,
     attrs: &[(Vec<u8>, String)],
-    feed: &mut ParsedFeed,
-) -> Result<()> {
+    depth: usize,
+) -> Result<PodcastValue> {
     let type_ = find_attribute(attrs, b"type")
-        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.limits.max_attribute_length))
         .unwrap_or_default();
     let method = find_attribute(attrs, b"method")
-        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length))
+        .map(|v| truncate_to_length(v, ctx.limits.max_attribute_length))
         .unwrap_or_default();
     let suggested = find_attribute(attrs, b"suggested")
-        .map(|v| truncate_to_length(v, ctx.xml.limits.max_attribute_length));
+        .map(|v| truncate_to_length(v, ctx.limits.max_attribute_length));
 
     let mut recipients = Vec::with_capacity(2);
     let mut time_splits = Vec::with_capacity(2);
 
     loop {
-        match ctx.xml.reader.read_event_into(ctx.xml.buf) {
+        match ctx.reader.read_event_into(ctx.buf) {
             Ok(event @ (Event::Start(_) | Event::Empty(_))) => {
                 let is_empty = matches!(event, Event::Empty(_));
                 let (Event::Start(e) | Event::Empty(e)) = &event else {
@@ -3306,17 +3327,23 @@ fn parse_podcast_value(
                 let tag = e.name().as_ref().to_vec();
                 let (child_attrs, _) = collect_attributes(e);
 
+                let next_depth = depth + 1;
+                check_depth(next_depth, ctx.limits.max_nesting_depth)?;
+
                 if tag.starts_with(b"podcast:valueRecipient") {
                     recipients.try_push_limited(
-                        parse_value_recipient_attrs(&child_attrs, ctx.xml.limits),
-                        ctx.xml.limits.max_value_recipients,
+                        parse_value_recipient_attrs(&child_attrs, ctx.limits),
+                        ctx.limits.max_value_recipients,
                     );
-                } else if tag.starts_with(b"podcast:valueTimeSplit")
-                    && let Some(split) =
-                        parse_podcast_value_time_split(&mut ctx.xml, &child_attrs, is_empty)?
-                {
-                    time_splits
-                        .try_push_limited(split, ctx.xml.limits.max_podcast_value_time_splits);
+                } else if tag.starts_with(b"podcast:valueTimeSplit") {
+                    if let Some(split) =
+                        parse_podcast_value_time_split(ctx, &child_attrs, is_empty, next_depth)?
+                    {
+                        time_splits
+                            .try_push_limited(split, ctx.limits.max_podcast_value_time_splits);
+                    }
+                } else if !is_empty {
+                    skip_element(ctx.reader, ctx.buf, ctx.limits, next_depth)?;
                 }
             }
             Ok(Event::End(e)) if e.name().as_ref() == b"podcast:value" => break,
@@ -3324,21 +3351,52 @@ fn parse_podcast_value(
             Err(e) => return Err(e.into()),
             _ => {}
         }
-        ctx.xml.buf.clear();
+        ctx.buf.clear();
     }
 
-    let podcast = feed
-        .feed
-        .podcast
-        .get_or_insert_with(|| Box::new(PodcastMeta::default()));
-    podcast.value = Some(PodcastValue {
+    Ok(PodcastValue {
         type_,
         method,
         suggested,
         recipients,
         time_splits,
-    });
+    })
+}
 
+/// Parse Podcast 2.0 value element from channel-level <podcast:value> element
+///
+/// Parses value-for-value payment information including payment type, method,
+/// suggested amount, nested valueRecipient elements, and valueTimeSplit elements.
+fn parse_podcast_value(
+    ctx: &mut ChannelCtx,
+    attrs: &[(Vec<u8>, String)],
+    feed: &mut ParsedFeed,
+    depth: usize,
+) -> Result<()> {
+    let value = parse_podcast_value_content(&mut ctx.xml, attrs, depth)?;
+    let podcast = feed
+        .feed
+        .podcast
+        .get_or_insert_with(|| Box::new(PodcastMeta::default()));
+    podcast.value = Some(value);
+    Ok(())
+}
+
+/// Parse Podcast 2.0 value element from item-level <podcast:value> element
+///
+/// Mirrors [`parse_podcast_value`] but stores the result on the entry's
+/// [`PodcastEntryMeta`] instead of the feed-level [`PodcastMeta`].
+fn parse_item_podcast_value(
+    ctx: &mut EntryCtx,
+    attrs: &[(Vec<u8>, String)],
+    entry: &mut Entry,
+    depth: usize,
+) -> Result<()> {
+    let value = parse_podcast_value_content(&mut ctx.xml, attrs, depth)?;
+    let podcast = entry
+        .podcast
+        .get_or_insert_with(|| Box::new(PodcastEntryMeta::default()));
+    podcast.value = Some(value);
     Ok(())
 }
 
@@ -7073,5 +7131,400 @@ mod tests {
         assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
         let value = feed.feed.podcast.as_ref().unwrap().value.as_ref().unwrap();
         assert_eq!(value.recipients.len(), 2);
+    }
+
+    // --- item-level podcast:value / podcast:valueTimeSplit (issue #466) ---
+
+    #[test]
+    fn test_podcast_value_item_lightning() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend" suggested="0.00000005000">
+                        <podcast:valueRecipient
+                            name="Host"
+                            type="node"
+                            address="03ae9f91a0cb8ff43840e3c322c4c61f019d8c1c3cea15a25cfc425ac605e61a4a"
+                            split="90"
+                            fee="false"/>
+                        <podcast:valueRecipient
+                            name="Producer"
+                            type="node"
+                            address="02d5c1bf8b940dc9cadca86d1b0a3c37fbe39cee4c7e839e33bef9174531d27f52"
+                            split="10"
+                            fee="false"/>
+                    </podcast:value>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+        assert_eq!(feed.entries.len(), 1);
+
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("entry podcast should be Some");
+        let value = podcast.value.as_ref().expect("value should be Some");
+
+        assert_eq!(value.type_, "lightning");
+        assert_eq!(value.method, "keysend");
+        assert_eq!(value.suggested.as_deref(), Some("0.00000005000"));
+        assert_eq!(value.recipients.len(), 2);
+        assert_eq!(value.recipients[0].name.as_deref(), Some("Host"));
+        assert_eq!(value.recipients[0].split, 90);
+        assert_eq!(value.recipients[1].name.as_deref(), Some("Producer"));
+        assert_eq!(value.recipients[1].split, 10);
+
+        // Channel-level podcast metadata is untouched by item-level parsing.
+        assert!(feed.feed.podcast.is_none_or(|p| p.value.is_none()));
+    }
+
+    #[test]
+    fn test_podcast_value_item_time_split_with_remote_item() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">
+                        <podcast:valueTimeSplit startTime="10" duration="20" remoteStartTime="5" remotePercentage="50">
+                            <podcast:remoteItem itemGuid="abc123"/>
+                        </podcast:valueTimeSplit>
+                        <podcast:valueRecipient type="node" address="addr1" split="100"/>
+                    </podcast:value>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+
+        let value = feed.entries[0]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry value should be Some");
+
+        assert_eq!(value.time_splits.len(), 1);
+        let split = &value.time_splits[0];
+        assert!((split.start_time - 10.0).abs() < f64::EPSILON);
+        assert!((split.duration - 20.0).abs() < f64::EPSILON);
+        assert!((split.remote_start_time - 5.0).abs() < f64::EPSILON);
+        assert!((split.remote_percentage - 50.0).abs() < f64::EPSILON);
+        let remote_item = split
+            .remote_item
+            .as_ref()
+            .expect("remote_item should be Some");
+        assert_eq!(remote_item.item_guid.as_deref(), Some("abc123"));
+
+        assert_eq!(value.recipients.len(), 1);
+        assert_eq!(value.recipients[0].address, "addr1");
+    }
+
+    #[test]
+    fn test_podcast_value_item_time_split_missing_start_time_dropped() {
+        // Malformed valueTimeSplit (missing required startTime) must not panic
+        // or set bozo — it is simply dropped, matching channel-level tolerance.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">
+                        <podcast:valueTimeSplit duration="30">
+                            <podcast:valueRecipient type="node" address="addr1" split="100"/>
+                        </podcast:valueTimeSplit>
+                    </podcast:value>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+
+        let value = feed.entries[0]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry value should be Some");
+        assert!(value.time_splits.is_empty());
+        assert_eq!(value.type_, "lightning");
+    }
+
+    #[test]
+    fn test_podcast_value_item_respects_limits() {
+        let mut xml = String::from(
+            r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">"#,
+        );
+        for i in 0..25 {
+            use std::fmt::Write;
+            let _ = write!(
+                xml,
+                r#"<podcast:valueRecipient type="node" address="addr_{i}" split="4"/>"#
+            );
+        }
+        xml.push_str("</podcast:value></item></channel></rss>");
+
+        let limits = ParserLimits {
+            max_value_recipients: 5,
+            ..Default::default()
+        };
+        let feed = parse_rss20_with_limits(xml.as_bytes(), limits).unwrap();
+        let value = feed.entries[0]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry value should be Some");
+        assert_eq!(
+            value.recipients.len(),
+            5,
+            "should respect max_value_recipients limit for item-level value"
+        );
+    }
+
+    #[test]
+    fn test_podcast_value_item_time_split_respects_limit() {
+        let mut xml = String::from(
+            r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">"#,
+        );
+        for i in 0..10 {
+            use std::fmt::Write;
+            let _ = write!(
+                xml,
+                r#"<podcast:valueTimeSplit startTime="{i}" duration="10"></podcast:valueTimeSplit>"#
+            );
+        }
+        xml.push_str("</podcast:value></item></channel></rss>");
+
+        let limits = ParserLimits {
+            max_podcast_value_time_splits: 4,
+            ..Default::default()
+        };
+        let feed = parse_rss20_with_limits(xml.as_bytes(), limits).unwrap();
+        let value = feed.entries[0]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry value should be Some");
+        assert_eq!(
+            value.time_splits.len(),
+            4,
+            "should respect max_podcast_value_time_splits limit for item-level value"
+        );
+    }
+
+    #[test]
+    fn test_podcast_value_item_no_leak_between_items() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">
+                        <podcast:valueRecipient type="node" address="addr1" split="100"/>
+                    </podcast:value>
+                </item>
+                <item>
+                    <title>Episode 2</title>
+                    <podcast:value type="hive" method="keysend">
+                        <podcast:valueRecipient type="node" address="addr2" split="50"/>
+                        <podcast:valueRecipient type="node" address="addr3" split="50"/>
+                    </podcast:value>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+        assert_eq!(feed.entries.len(), 2);
+
+        let value1 = feed.entries[0]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry 1 value should be Some");
+        let value2 = feed.entries[1]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry 2 value should be Some");
+
+        assert_eq!(value1.type_, "lightning");
+        assert_eq!(value1.recipients.len(), 1);
+        assert_eq!(value1.recipients[0].address, "addr1");
+
+        assert_eq!(value2.type_, "hive");
+        assert_eq!(value2.recipients.len(), 2);
+        assert_eq!(value2.recipients[0].address, "addr2");
+        assert_eq!(value2.recipients[1].address, "addr3");
+    }
+
+    #[test]
+    fn test_podcast_value_item_absent_is_none() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:season number="2"/>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+        let podcast = feed.entries[0]
+            .podcast
+            .as_deref()
+            .expect("entry podcast should be Some (season was set)");
+        assert!(podcast.value.is_none());
+    }
+
+    #[test]
+    fn test_podcast_value_item_self_closing_is_none() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value/>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+        let podcast = feed.entries[0].podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.value.is_none()));
+    }
+
+    #[test]
+    fn test_podcast_value_item_duplicate_last_wins() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">
+                        <podcast:valueRecipient type="node" address="first" split="100"/>
+                    </podcast:value>
+                    <podcast:value type="hive" method="keysend">
+                        <podcast:valueRecipient type="node" address="second" split="100"/>
+                    </podcast:value>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+        let value = feed.entries[0]
+            .podcast
+            .as_deref()
+            .and_then(|p| p.value.as_ref())
+            .expect("entry value should be Some");
+        assert_eq!(value.type_, "hive", "the last podcast:value should win");
+        assert_eq!(value.recipients[0].address, "second");
+    }
+
+    #[test]
+    fn test_podcast_value_time_split_stray_item_level_ignored() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:valueTimeSplit startTime="1" duration="2"></podcast:valueTimeSplit>
+                </item>
+            </channel>
+        </rss>"#;
+        let feed = parse_rss20(xml).unwrap();
+        assert!(!feed.bozo, "bozo_exception: {:?}", feed.bozo_exception);
+        let podcast = feed.entries[0].podcast.as_deref();
+        assert!(podcast.is_none_or(|p| p.value.is_none()));
+    }
+
+    #[test]
+    fn test_podcast_value_item_deep_nesting_sets_bozo() {
+        // Regression (C1): deeply nested unrecognized children under an item-level
+        // <podcast:value> must be depth-checked and set bozo, exactly like every
+        // other recursive sub-parser in this module (parse_image, parse_georss_where,
+        // etc.) — not silently accepted as an unbounded-nesting bypass.
+        let mut xml = String::from(
+            r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <item>
+                    <title>Episode 1</title>
+                    <podcast:value type="lightning" method="keysend">"#,
+        );
+        for _ in 0..200 {
+            xml.push_str("<x>");
+        }
+        for _ in 0..200 {
+            xml.push_str("</x>");
+        }
+        xml.push_str("</podcast:value></item></channel></rss>");
+
+        let limits = ParserLimits {
+            max_nesting_depth: 100,
+            ..Default::default()
+        };
+        let feed = parse_rss20_with_limits(xml.as_bytes(), limits).unwrap();
+        assert!(
+            feed.bozo,
+            "deep nesting under item-level podcast:value must set bozo"
+        );
+        assert!(
+            feed.bozo_exception
+                .as_deref()
+                .is_some_and(|e| e.contains("nesting depth")),
+            "bozo_exception should mention nesting depth: {:?}",
+            feed.bozo_exception
+        );
+    }
+
+    #[test]
+    fn test_podcast_value_channel_deep_nesting_sets_bozo() {
+        // Companion to the item-level C1 regression test above: the shared
+        // parse_podcast_value_content helper must enforce the same depth limit
+        // regardless of which call site (channel or item) invokes it.
+        let mut xml = String::from(
+            r#"<?xml version="1.0"?>
+        <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+            <channel>
+                <title>Feed</title>
+                <podcast:value type="lightning" method="keysend">"#,
+        );
+        for _ in 0..200 {
+            xml.push_str("<x>");
+        }
+        for _ in 0..200 {
+            xml.push_str("</x>");
+        }
+        xml.push_str("</podcast:value></channel></rss>");
+
+        let limits = ParserLimits {
+            max_nesting_depth: 100,
+            ..Default::default()
+        };
+        let feed = parse_rss20_with_limits(xml.as_bytes(), limits).unwrap();
+        assert!(
+            feed.bozo,
+            "deep nesting under channel-level podcast:value must set bozo"
+        );
+        assert!(
+            feed.bozo_exception
+                .as_deref()
+                .is_some_and(|e| e.contains("nesting depth")),
+            "bozo_exception should mention nesting depth: {:?}",
+            feed.bozo_exception
+        );
     }
 }
