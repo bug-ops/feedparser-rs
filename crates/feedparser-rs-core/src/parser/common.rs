@@ -1192,6 +1192,57 @@ pub fn skip_to_end(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>, tag: &[u8]) ->
     Ok(())
 }
 
+/// Defensive cap on the number of events [`skip_to_end_qualified`] will read while
+/// draining. A malformed document could in principle make `read_event_into` return
+/// `Err` repeatedly without ever advancing to a matching `End` or `Eof`; since that
+/// function must never propagate an error (it is only ever called from an
+/// error-recovery path that already gave up on strict parsing), an unbounded loop
+/// would turn a would-be abort into a hang, which is a strictly worse failure mode.
+/// This is generous enough to never trigger on any legitimate document — feeds are
+/// already bounded by `ParserLimits::max_feed_size_bytes` well before this many
+/// events could occur — so it only protects against the pathological case.
+const MAX_DRAIN_EVENTS: u32 = 1_000_000;
+
+/// Drain the reader to the closing tag matching `tag` (fully-qualified name,
+/// including any namespace prefix), or `Eof`.
+///
+/// Used to resynchronize the reader after a field-level parse error is caught
+/// and swallowed as bozo instead of propagated: without draining, any
+/// leftover children of the failing element (e.g. `<textInput>`'s own
+/// `<title>`) would be read by the *parent* loop next and could be
+/// misdispatched as if they were siblings of the failing element, silently
+/// corrupting unrelated fields. Tolerates further malformed XML while
+/// draining — never propagates an error — so it is always safe to call from
+/// an error-recovery path without risking another unbounded abort.
+///
+/// Tracks nesting via `Start`/`End` events that match `tag` by name, so a
+/// same-named descendant (e.g. `<textInput>` containing another `<textInput>`)
+/// does not stop the drain at its inner closing tag. This is a strict
+/// improvement over a naive first-match search, not a total fix: if the
+/// original error occurred *inside* an already-open same-named descendant
+/// whose own `Start` this function never observed (it only starts counting
+/// from its own entry point), the nesting count can still be off by one. That
+/// residual case is narrow enough (an error nested inside a self-nesting
+/// container, which is itself rare in real-world feeds) to accept rather than
+/// chase further.
+pub fn skip_to_end_qualified(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>, tag: &[u8]) {
+    let mut nested: u32 = 0;
+    for _ in 0..MAX_DRAIN_EVENTS {
+        match reader.read_event_into(buf) {
+            Ok(Event::Start(e)) if e.name().as_ref() == tag => nested += 1,
+            Ok(Event::End(e)) if e.name().as_ref() == tag => {
+                if nested == 0 {
+                    break;
+                }
+                nested -= 1;
+            }
+            Ok(Event::Eof) => break,
+            Err(_) | Ok(_) => {}
+        }
+        buf.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
