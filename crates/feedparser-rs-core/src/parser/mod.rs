@@ -1,5 +1,6 @@
 pub mod atom;
 mod common;
+mod context;
 mod detect;
 pub mod json;
 pub mod namespace_detection;
