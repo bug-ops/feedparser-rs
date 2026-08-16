@@ -525,3 +525,73 @@ fn test_max_value_recipients() {
         value.recipients.len()
     );
 }
+
+// ── Entries: malformed content past the limit (#463 S2) ────────────────────────
+//
+// When `max_entries` is hit, over-limit items/entries are skipped via
+// `skip_element` instead of fully parsed. If a skipped item/entry itself
+// contains ill-formed XML (e.g. a bare `&`), `skip_element` can fail. That
+// failure must be recorded as bozo and recovered from, not allowed to abort
+// the whole channel/feed and discard entries already collected under the
+// limit.
+
+#[test]
+fn test_rss20_entry_limit_with_malformed_over_limit_item_preserves_earlier_entries() {
+    let xml = br#"<rss version="2.0"><channel>
+<title>Feed</title>
+<item><title>Item 1</title></item>
+<item><title>Item 2</title></item>
+<item><title>Bad & Item</title></item>
+<item><title>Item 4</title></item>
+</channel></rss>"#;
+
+    let limits = ParserLimits {
+        max_entries: 2,
+        ..Default::default()
+    };
+    let feed = parse_with_limits(xml, limits).expect("parse should not fail catastrophically");
+
+    assert!(
+        feed.bozo,
+        "bozo must be set: entry limit exceeded and the skipped item was ill-formed"
+    );
+    assert_eq!(
+        feed.entries.len(),
+        2,
+        "entries collected before the limit was hit must survive a malformed over-limit item, \
+         not be discarded by an aborted channel parse"
+    );
+    assert_eq!(feed.entries[0].title.as_deref(), Some("Item 1"));
+    assert_eq!(feed.entries[1].title.as_deref(), Some("Item 2"));
+}
+
+#[test]
+fn test_atom_entry_limit_with_malformed_over_limit_entry_preserves_earlier_entries() {
+    let xml = br#"<?xml version="1.0"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>Feed</title>
+<entry><title>Entry 1</title><id>1</id></entry>
+<entry><title>Entry 2</title><id>2</id></entry>
+<entry><title>Bad & Entry</title><id>3</id></entry>
+<entry><title>Entry 4</title><id>4</id></entry>
+</feed>"#;
+
+    let limits = ParserLimits {
+        max_entries: 2,
+        ..Default::default()
+    };
+    let feed = parse_with_limits(xml, limits).expect("parse should not fail catastrophically");
+
+    assert!(
+        feed.bozo,
+        "bozo must be set: entry limit exceeded and the skipped entry was ill-formed"
+    );
+    assert_eq!(
+        feed.entries.len(),
+        2,
+        "entries collected before the limit was hit must survive a malformed over-limit entry, \
+         not be discarded by an aborted feed parse"
+    );
+    assert_eq!(feed.entries[0].title.as_deref(), Some("Entry 1"));
+    assert_eq!(feed.entries[1].title.as_deref(), Some("Entry 2"));
+}

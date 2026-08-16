@@ -28,7 +28,8 @@ use super::common::{
     check_depth, extract_namespaces, extract_xml_lang, find_attribute, init_feed, is_content_tag,
     is_dc_tag, is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_syn_tag,
     is_thr_tag, is_wfw_tag, itunes_entry_meta, itunes_feed_meta, parse_georss_where,
-    podcast_feed_meta, read_text, read_text_str, skip_element, text_construct_from_content,
+    podcast_feed_meta, read_text, read_text_str, skip_element, skip_to_end_qualified,
+    text_construct_from_content,
 };
 
 /// Error message for malformed XML attributes (shared constant)
@@ -315,7 +316,7 @@ fn parse_channel(
                     base_ctx,
                     channel_lang,
                     is_empty,
-                )?;
+                );
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(e)) if e.local_name().as_ref() == b"channel" => {
@@ -339,6 +340,44 @@ fn parse_channel(
     Ok(())
 }
 
+/// Record a channel/feed-level field parse failure as bozo instead of propagating it.
+///
+/// Invariant: channel/feed-level field parse failures must not abort sibling
+/// item/entry recovery — mirrors the catch-and-continue already applied to
+/// `<item>`/`<entry>` parsing (see `parse_channel_item`).
+///
+/// First error wins: `bozo_exception` is only set the first time, matching the
+/// convention used by `parse_channel_item`/`parse_rdf_item`, so a later, less
+/// informative failure does not clobber the original diagnostic.
+fn record_channel_bozo(feed: &mut ParsedFeed, err: &FeedError) {
+    if !feed.bozo {
+        feed.bozo_exception = Some(err.to_string());
+    }
+    feed.bozo = true;
+}
+
+/// Recover from a channel-level field parse error caught by `dispatch_channel_tag`.
+///
+/// Records the error as bozo (see [`record_channel_bozo`]), then drains the reader
+/// to `tag`'s own closing tag and restores `depth` to its pre-dispatch value. Without
+/// draining, a partially-consumed container's leftover children (e.g. `<textInput>`'s
+/// own `<title>`/`<description>`) would be read next by the enclosing `parse_channel`
+/// loop and misdispatched as if they were real channel-level siblings, silently
+/// overwriting unrelated feed metadata (#463).
+fn recover_channel_field_error(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    depth: &mut usize,
+    depth_before: usize,
+    feed: &mut ParsedFeed,
+    err: &FeedError,
+) {
+    record_channel_bozo(feed, err);
+    skip_to_end_qualified(reader, buf, tag);
+    *depth = depth_before;
+}
+
 /// Dispatch a single `<channel>` child element to its handler.
 #[allow(clippy::too_many_arguments)]
 fn dispatch_channel_tag(
@@ -353,14 +392,24 @@ fn dispatch_channel_tag(
     base_ctx: &mut BaseUrlContext,
     channel_lang: Option<&str>,
     is_empty: bool,
-) -> Result<()> {
+) {
+    // Snapshot of `depth` on entry: restored after a caught error so a partially
+    // consumed nested element (e.g. `<image>`'s children) can never leak a leftover
+    // increment into the enclosing `parse_channel` loop's own depth bookkeeping.
+    let depth_before = *depth;
+
     // Use full qualified name to distinguish standard RSS tags from namespaced tags
     match tag {
+        // `category` is folded in here (rather than kept as its own arm) specifically
+        // to pick up the `!is_empty` guard: `parse_channel_standard`'s text read and
+        // `recover_channel_field_error`'s drain both assume a matching closing tag
+        // exists, which a self-closing `<category/>` doesn't have.
         b"title" | b"link" | b"description" | b"language" | b"pubDate" | b"lastBuildDate"
         | b"managingEditor" | b"webMaster" | b"generator" | b"ttl" | b"docs" | b"copyright"
+        | b"category"
             if !is_empty =>
         {
-            parse_channel_standard(
+            if let Err(e) = parse_channel_standard(
                 reader,
                 buf,
                 tag,
@@ -369,36 +418,30 @@ fn dispatch_channel_tag(
                 limits,
                 base_ctx,
                 channel_lang,
-            )?;
-        }
-        b"category" => {
-            parse_channel_standard(
-                reader,
-                buf,
-                tag,
-                attrs,
-                feed,
-                limits,
-                base_ctx,
-                channel_lang,
-            )?;
-        }
-        b"image" if !is_empty => {
-            if let Ok(image) = parse_image(reader, buf, limits, depth) {
-                feed.feed.image = Some(image);
+            ) {
+                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
             }
         }
+        b"image" if !is_empty => match parse_image(reader, buf, limits, depth) {
+            Ok(image) => feed.feed.image = Some(image),
+            Err(e) => recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e),
+        },
         b"cloud" => {
             feed.feed.cloud = Some(parse_cloud(attrs));
         }
-        b"textInput" if !is_empty => {
-            feed.feed.textinput = Some(parse_text_input(reader, buf, limits)?);
-        }
+        b"textInput" if !is_empty => match parse_text_input(reader, buf, limits) {
+            Ok(ti) => feed.feed.textinput = Some(ti),
+            Err(e) => recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e),
+        },
         b"skipHours" if !is_empty => {
-            parse_skip_hours(reader, buf, limits, &mut feed.feed.skiphours)?;
+            if let Err(e) = parse_skip_hours(reader, buf, limits, &mut feed.feed.skiphours) {
+                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            }
         }
         b"skipDays" if !is_empty => {
-            parse_skip_days(reader, buf, limits, &mut feed.feed.skipdays)?;
+            if let Err(e) = parse_skip_days(reader, buf, limits, &mut feed.feed.skipdays) {
+                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            }
         }
         b"item" if !is_empty => {
             parse_channel_item(
@@ -410,13 +453,16 @@ fn dispatch_channel_tag(
                 depth,
                 base_ctx,
                 channel_lang,
-            )?;
+            );
         }
         _ => {
-            parse_channel_extension(reader, buf, tag, attrs, feed, limits, depth, is_empty)?;
+            if let Err(e) =
+                parse_channel_extension(reader, buf, tag, attrs, feed, limits, depth, is_empty)
+            {
+                recover_channel_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            }
         }
     }
-    Ok(())
 }
 
 /// Parse <item> element within channel
@@ -434,12 +480,29 @@ fn parse_channel_item(
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
     channel_lang: Option<&str>,
-) -> Result<()> {
-    if !feed.check_entry_limit(reader, buf, limits, depth)? {
-        return Ok(());
+) {
+    match feed.check_entry_limit(reader, buf, limits, depth) {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(e) => {
+            // `skip_element` inside `check_entry_limit` failed (nesting overflow or
+            // ill-formed XML while skipping an over-limit item) — record bozo and
+            // resync to </item> instead of letting the error abort the whole channel
+            // (same invariant as #463's field-level fix, reached via a different
+            // path). `check_entry_limit` already set `feed.bozo` before attempting
+            // the skip, so first-error-wins naturally keeps "Entry limit exceeded".
+            if !feed.bozo {
+                feed.bozo_exception = Some(e.to_string());
+            }
+            feed.bozo = true;
+            skip_to_end_qualified(reader, buf, b"item");
+            *depth = depth.saturating_sub(1);
+            return;
+        }
     }
 
     let effective_lang = item_lang.or(channel_lang);
+    let depth_before = *depth;
 
     match parse_item(
         reader,
@@ -474,12 +537,21 @@ fn parse_channel_item(
             feed.entries.push(entry);
         }
         Err(e) => {
+            // `parse_item` failed partway through the item's own content (e.g. a
+            // malformed entity in one of its fields) and left the reader positioned
+            // mid-item. Without draining, the item's remaining children — several of
+            // which share tag names with real channel-level fields (`title`, `link`,
+            // `description`, `pubDate`, `category`) — would be read next by the
+            // enclosing `parse_channel` loop and misdispatched as channel siblings,
+            // corrupting feed metadata with values ripped out of this item (#463 S3).
+            if !feed.bozo {
+                feed.bozo_exception = Some(e.to_string());
+            }
             feed.bozo = true;
-            feed.bozo_exception = Some(e.to_string());
+            skip_to_end_qualified(reader, buf, b"item");
+            *depth = depth_before;
         }
     }
-
-    Ok(())
 }
 
 /// Parse channel extension elements (iTunes, Podcast, namespaces)
@@ -3545,6 +3617,184 @@ mod tests {
         assert_eq!(feed.entries[0].title.as_deref(), Some("Item 1"));
         assert_eq!(feed.entries[0].id.as_deref(), Some("item-1"));
         assert_eq!(feed.entries[1].title.as_deref(), Some("Item 2"));
+    }
+
+    // Regression tests for #463: a malformed entity in a channel-level field must
+    // not abort the whole parse — sibling <item>s must still be recovered.
+
+    #[test]
+    fn test_channel_title_malformed_entity_recovers_items() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Fish & Chips</title>
+                <item><title>Item 1</title></item>
+                <item><title>Item 2</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.bozo_exception.is_some());
+        assert_eq!(feed.entries.len(), 2);
+        assert_eq!(feed.entries[0].title.as_deref(), Some("Item 1"));
+        assert_eq!(feed.entries[1].title.as_deref(), Some("Item 2"));
+    }
+
+    #[test]
+    fn test_channel_description_malformed_entity_recovers_items() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <description>Fish & Chips</description>
+                <item><title>Item 1</title></item>
+                <item><title>Item 2</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.bozo_exception.is_some());
+        assert_eq!(feed.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_channel_image_malformed_entity_recovers_items() {
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <image>
+                    <url>http://example.com/img.png</url>
+                    <title>Fish & Chips</title>
+                </image>
+                <item><title>Item 1</title></item>
+                <item><title>Item 2</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.bozo_exception.is_some());
+        assert!(feed.feed.image.is_none());
+        // #463 C1: the failed <image>'s own <title> ("Fish & Chips") must not leak
+        // into the channel-level title.
+        assert_eq!(feed.feed.title.as_deref(), Some("Test"));
+        assert_eq!(feed.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_channel_self_closing_category_does_not_consume_following_items() {
+        // A self-closing <category/> has no matching closing tag; the `category`
+        // arm in `dispatch_channel_tag` must be guarded by `!is_empty` (like the
+        // other standard-field arms) so it never attempts to read text or drain to
+        // a `</category>` that doesn't exist, which would otherwise consume the
+        // following well-formed <item>s looking for one.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>Test</title>
+                <category domain="d"/>
+                <item><title>Item 1</title></item>
+                <item><title>Item 2</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert_eq!(feed.entries.len(), 2);
+        assert_eq!(feed.entries[0].title.as_deref(), Some("Item 1"));
+        assert_eq!(feed.entries[1].title.as_deref(), Some("Item 2"));
+    }
+
+    #[test]
+    fn test_channel_textinput_malformed_entity_does_not_leak_into_channel_fields() {
+        // #463 C1: <textInput>'s own <title>/<description> must not overwrite the
+        // real channel-level <title>/<description> after a malformed entity in an
+        // earlier textInput field (<name>) aborts textInput parsing partway through.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>REAL</title>
+                <description>REAL DESC</description>
+                <textInput>
+                    <name>a & b</name>
+                    <title>TI TITLE</title>
+                    <description>TI DESC</description>
+                    <link>http://example.com</link>
+                </textInput>
+                <item><title>Item 1</title></item>
+                <item><title>Item 2</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.bozo_exception.is_some());
+        assert_eq!(feed.feed.title.as_deref(), Some("REAL"));
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("REAL DESC"));
+        assert_eq!(feed.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_channel_textinput_nested_same_name_does_not_stop_drain_early() {
+        // #463 S4: a same-named nested <textInput> inside the failing <textInput>
+        // must not stop the error-recovery drain at the inner </textInput>, which
+        // would otherwise leak the outer textInput's own remaining <title>/
+        // <description> into the channel-level fields.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>REAL</title>
+                <description>REAL DESC</description>
+                <textInput>
+                    <name>a & b</name>
+                    <textInput>junk</textInput>
+                    <title>LEAKED TITLE</title>
+                    <description>LEAKED DESC</description>
+                    <link>http://example.com</link>
+                </textInput>
+                <item><title>Item 1</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert_eq!(feed.feed.title.as_deref(), Some("REAL"));
+        assert_eq!(feed.feed.subtitle.as_deref(), Some("REAL DESC"));
+        assert_eq!(feed.entries.len(), 1);
+    }
+
+    #[test]
+    fn test_item_malformed_entity_does_not_leak_into_channel_fields() {
+        // #463 S3: a malformed entity inside a normal <item> (not an over-limit one)
+        // must not leak that item's own <title>/<link> into the channel-level
+        // fields — the pre-existing defect the issue used item-level recovery as
+        // the reference-correct behavior for, but which was itself still broken via
+        // this path.
+        let xml = br#"<?xml version="1.0"?>
+        <rss version="2.0">
+            <channel>
+                <title>REAL CHANNEL TITLE</title>
+                <link>http://real-channel.example/</link>
+                <item>
+                    <description>ITEM & DESC</description>
+                    <title>ITEM TITLE</title>
+                    <link>http://item.link/</link>
+                </item>
+                <item><title>Item Two OK</title></item>
+            </channel>
+        </rss>"#;
+
+        let feed = parse_rss20(xml).unwrap();
+        assert!(feed.bozo);
+        assert_eq!(feed.feed.title.as_deref(), Some("REAL CHANNEL TITLE"));
+        assert_eq!(
+            feed.feed.link.as_deref(),
+            Some("http://real-channel.example/")
+        );
+        assert_eq!(feed.entries.len(), 1);
+        assert_eq!(feed.entries[0].title.as_deref(), Some("Item Two OK"));
     }
 
     #[test]

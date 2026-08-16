@@ -26,7 +26,8 @@ use super::common::{
     extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
     is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
     itunes_entry_meta, itunes_feed_meta, parse_georss_where, read_text, read_text_str,
-    read_xhtml_content_str, skip_element, skip_to_end, text_construct_from_content,
+    read_xhtml_content_str, skip_element, skip_to_end, skip_to_end_qualified,
+    text_construct_from_content,
 };
 
 /// Parse Atom 1.0 feed from raw bytes
@@ -215,6 +216,43 @@ fn apply_itunes_entry_promotions(entry: &mut Entry) {
     }
 }
 
+/// Record a feed-level field parse failure as bozo instead of propagating it.
+///
+/// Invariant: feed-level field parse failures must not abort sibling `<entry>`
+/// recovery — mirrors the catch-and-continue already applied to `<entry>` parsing
+/// (see `parse_feed_entry`).
+///
+/// First error wins: `bozo_exception` is only set the first time, matching the
+/// convention used by `parse_feed_entry`, so a later, less informative failure
+/// does not clobber the original diagnostic.
+fn record_feed_bozo(feed: &mut ParsedFeed, err: &FeedError) {
+    if !feed.bozo {
+        feed.bozo_exception = Some(err.to_string());
+    }
+    feed.bozo = true;
+}
+
+/// Recover from a feed-level field parse error caught by `parse_feed_element`.
+///
+/// Records the error as bozo (see [`record_feed_bozo`]), then drains the reader to
+/// `tag`'s own closing tag and restores `depth` to its pre-dispatch value. Without
+/// draining, a partially-consumed container's leftover children would be read next
+/// by the enclosing loop and misdispatched as if they were real feed-level siblings,
+/// silently overwriting unrelated feed metadata (#463).
+fn recover_feed_field_error(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    tag: &[u8],
+    depth: &mut usize,
+    depth_before: usize,
+    feed: &mut ParsedFeed,
+    err: &FeedError,
+) {
+    record_feed_bozo(feed, err);
+    skip_to_end_qualified(reader, buf, tag);
+    *depth = depth_before;
+}
+
 /// Parse <feed> element
 fn parse_feed_element(
     reader: &mut Reader<&[u8]>,
@@ -238,43 +276,10 @@ fn parse_feed_element(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 let element = e.to_owned();
-                // Use name() instead of local_name() to preserve namespace prefixes
-                //
-                // NOTE: the tag lists below must stay in sync with the inner `match` in
-                // each handler (parse_feed_core_text, parse_feed_link_or_category,
-                // parse_feed_person) — a tag routed here that the handler doesn't also
-                // match falls through the handler's silent `_ => {}` and consumes no
-                // events, desyncing the event stream.
-                match element.name().as_ref() {
-                    b"title" | b"subtitle" | b"tagline" | b"id" | b"updated" | b"modified"
-                    | b"published" | b"issued" | b"rights" | b"copyright" | b"generator"
-                    | b"icon" | b"logo"
-                        if !is_empty =>
-                    {
-                        parse_feed_core_text(
-                            reader, &mut buf, &element, feed, limits, base_ctx, feed_lang,
-                        )?;
-                    }
-                    b"link" | b"category" => {
-                        parse_feed_link_or_category(
-                            reader, &mut buf, &element, feed, limits, base_ctx, is_empty,
-                        )?;
-                    }
-                    b"author" | b"contributor" if !is_empty => {
-                        parse_feed_person(reader, &mut buf, &element, feed, limits, depth)?;
-                    }
-                    b"entry" if !is_empty => {
-                        if !parse_feed_entry(
-                            reader, &mut buf, &element, feed, limits, depth, base_ctx, feed_lang,
-                        )? {
-                            continue;
-                        }
-                    }
-                    tag => {
-                        parse_feed_namespace(
-                            reader, &mut buf, tag, &element, feed, limits, depth, is_empty,
-                        )?;
-                    }
+                if !dispatch_feed_tag(
+                    reader, &mut buf, &element, feed, limits, depth, base_ctx, feed_lang, is_empty,
+                )? {
+                    continue;
                 }
                 *depth = depth.saturating_sub(1);
             }
@@ -292,6 +297,80 @@ fn parse_feed_element(
     }
 
     Ok(())
+}
+
+/// Dispatch a single `<feed>` child element to its handler.
+///
+/// Returns `Ok(true)` for normal flow (the caller decrements `depth` and later
+/// clears its event buffer as usual). Returns `Ok(false)` only for the `entry`
+/// branch's entry-limit-skip path, which has already adjusted `depth` itself —
+/// the caller must `continue` its loop without touching `depth`/`buf` again
+/// (mirrors `parse_feed_entry`'s own return-value convention).
+#[allow(clippy::too_many_arguments)]
+fn dispatch_feed_tag(
+    reader: &mut Reader<&[u8]>,
+    buf: &mut Vec<u8>,
+    element: &BytesStart<'_>,
+    feed: &mut ParsedFeed,
+    limits: &ParserLimits,
+    depth: &mut usize,
+    base_ctx: &BaseUrlContext,
+    feed_lang: Option<&str>,
+    is_empty: bool,
+) -> Result<bool> {
+    // Snapshot of `depth` after entering this element: restored after a caught
+    // error so a partially consumed nested element can never leak a leftover
+    // increment into the caller's own depth bookkeeping.
+    let depth_before = *depth;
+
+    // Use name() instead of local_name() to preserve namespace prefixes
+    //
+    // NOTE: the tag lists below must stay in sync with the inner `match` in each
+    // handler (parse_feed_core_text, parse_feed_link_or_category, parse_feed_person)
+    // — a tag routed here that the handler doesn't also match falls through the
+    // handler's silent `_ => {}` and consumes no events, desyncing the event stream.
+    match element.name().as_ref() {
+        tag @ (b"title" | b"subtitle" | b"tagline" | b"id" | b"updated" | b"modified"
+        | b"published" | b"issued" | b"rights" | b"copyright" | b"generator" | b"icon"
+        | b"logo")
+            if !is_empty =>
+        {
+            if let Err(e) =
+                parse_feed_core_text(reader, buf, element, feed, limits, base_ctx, feed_lang)
+            {
+                recover_feed_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            }
+        }
+        // NOTE: not guarded by `!is_empty` here (matches pre-existing behavior), but
+        // `parse_feed_link_or_category` only calls `skip_to_end` — the sole source of
+        // `Err` below — when `!is_empty` itself, so `recover_feed_field_error`'s drain
+        // always has a matching closing tag to find when this arm's `Err` fires.
+        tag @ (b"link" | b"category") => {
+            if let Err(e) =
+                parse_feed_link_or_category(reader, buf, element, feed, limits, base_ctx, is_empty)
+            {
+                recover_feed_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            }
+        }
+        b"author" | b"contributor" if !is_empty => {
+            parse_feed_person(reader, buf, element, feed, limits, depth)?;
+        }
+        b"entry" if !is_empty => {
+            if !parse_feed_entry(
+                reader, buf, element, feed, limits, depth, base_ctx, feed_lang,
+            ) {
+                return Ok(false);
+            }
+        }
+        tag => {
+            if let Err(e) =
+                parse_feed_namespace(reader, buf, tag, element, feed, limits, depth, is_empty)
+            {
+                recover_feed_field_error(reader, buf, tag, depth, depth_before, feed, &e);
+            }
+        }
+    }
+    Ok(true)
 }
 
 /// Parse extension namespace tags at feed level (Dublin Core, Content, Media RSS,
@@ -479,9 +558,12 @@ fn parse_feed_person(
 
 /// Parse a feed-level `<entry>` element and push it onto `feed.entries`.
 ///
-/// Returns `Ok(false)` when the caller must `continue` the event loop WITHOUT
-/// decrementing depth and WITHOUT `buf.clear()` (entry-limit path) — the
-/// `check_entry_limit` call already decremented depth internally on that path.
+/// Returns `false` when the caller must `continue` the event loop WITHOUT
+/// decrementing depth and WITHOUT `buf.clear()` — this function has already
+/// decremented depth internally, either because the entry limit was hit
+/// (`check_entry_limit` returned `Ok(false)`) or because `check_entry_limit`'s
+/// internal `skip_element` itself failed while skipping an over-limit entry
+/// (caught here as bozo instead of propagated, per #463).
 #[allow(clippy::too_many_arguments)]
 fn parse_feed_entry(
     reader: &mut Reader<&[u8]>,
@@ -492,9 +574,25 @@ fn parse_feed_entry(
     depth: &mut usize,
     base_ctx: &BaseUrlContext,
     feed_lang: Option<&str>,
-) -> Result<bool> {
-    if !feed.check_entry_limit(reader, buf, limits, depth)? {
-        return Ok(false);
+) -> bool {
+    match feed.check_entry_limit(reader, buf, limits, depth) {
+        Ok(true) => {}
+        Ok(false) => return false,
+        Err(e) => {
+            // `skip_element` inside `check_entry_limit` failed (nesting overflow or
+            // ill-formed XML while skipping an over-limit entry) — record bozo and
+            // resync to </entry> instead of letting the error abort the whole feed
+            // (same invariant as #463's field-level fix, reached via a different
+            // path). `check_entry_limit` already set `feed.bozo` before attempting
+            // the skip, so first-error-wins naturally keeps "Entry limit exceeded".
+            if !feed.bozo {
+                feed.bozo_exception = Some(e.to_string());
+            }
+            feed.bozo = true;
+            skip_to_end_qualified(reader, buf, b"entry");
+            *depth = depth.saturating_sub(1);
+            return false;
+        }
     }
 
     let mut entry_ctx = base_ctx.child();
@@ -507,6 +605,7 @@ fn parse_feed_entry(
     let effective_lang = entry_lang_owned.as_deref().or(feed_lang);
 
     let mut entry_bozo = false;
+    let depth_before = *depth;
     match parse_entry(
         reader,
         buf,
@@ -543,11 +642,22 @@ fn parse_feed_entry(
             feed.entries.push(entry);
         }
         Err(e) => {
+            // `parse_entry` failed partway through the entry's own content (e.g. a
+            // malformed entity in one of its fields) and left the reader positioned
+            // mid-entry. Without draining, the entry's remaining children — several
+            // of which share tag names with real feed-level fields (`title`, `link`,
+            // `category`) — would be read next by the enclosing `parse_feed_element`
+            // loop and misdispatched as feed siblings, corrupting feed metadata with
+            // values ripped out of this entry (#463 S3).
+            if !feed.bozo {
+                feed.bozo_exception = Some(e.to_string());
+            }
             feed.bozo = true;
-            feed.bozo_exception = Some(e.to_string());
+            skip_to_end_qualified(reader, buf, b"entry");
+            *depth = depth_before;
         }
     }
-    Ok(true)
+    true
 }
 
 /// Parse Dublin Core and Content namespace tags at feed level.
@@ -2389,6 +2499,63 @@ mod tests {
         assert_eq!(feed.entries.len(), 2);
         assert_eq!(feed.entries[0].title.as_deref(), Some("Entry 1"));
         assert_eq!(feed.entries[0].id.as_deref(), Some("entry1"));
+    }
+
+    // Regression tests for #463: a malformed entity in a feed-level field must
+    // not abort the whole parse — sibling <entry>s must still be recovered.
+
+    #[test]
+    fn test_feed_title_malformed_entity_recovers_entries() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Fish & Chips</title>
+            <entry><title>Entry 1</title><id>entry1</id></entry>
+            <entry><title>Entry 2</title><id>entry2</id></entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.bozo_exception.is_some());
+        assert_eq!(feed.entries.len(), 2);
+        assert_eq!(feed.entries[0].title.as_deref(), Some("Entry 1"));
+        assert_eq!(feed.entries[1].title.as_deref(), Some("Entry 2"));
+    }
+
+    #[test]
+    fn test_feed_category_malformed_entity_recovers_entries() {
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Test</title>
+            <category term="x">Fish & Chips</category>
+            <entry><title>Entry 1</title><id>entry1</id></entry>
+            <entry><title>Entry 2</title><id>entry2</id></entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(feed.bozo);
+        assert!(feed.bozo_exception.is_some());
+        assert_eq!(feed.entries.len(), 2);
+    }
+
+    #[test]
+    fn test_entry_malformed_entity_does_not_leak_into_feed_fields() {
+        // #463 S3: a malformed entity inside a normal <entry> (not an over-limit
+        // one) must not leak that entry's own <title> into the feed-level fields —
+        // the pre-existing defect the issue used entry-level recovery as the
+        // reference-correct behavior for, but which was itself still broken via
+        // this path.
+        let xml = br#"<?xml version="1.0"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>REAL FEED TITLE</title>
+            <entry><summary>E & S</summary><title>ENTRY TITLE</title><id>entry1</id></entry>
+            <entry><title>Entry Two OK</title><id>entry2</id></entry>
+        </feed>"#;
+
+        let feed = parse_atom10(xml).unwrap();
+        assert!(feed.bozo);
+        assert_eq!(feed.feed.title.as_deref(), Some("REAL FEED TITLE"));
+        assert_eq!(feed.entries.len(), 1);
+        assert_eq!(feed.entries[0].title.as_deref(), Some("Entry Two OK"));
     }
 
     #[test]
