@@ -15,8 +15,9 @@ High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node
 
 - **Multi-format support** -- RSS 0.9x, 1.0, 2.0 / Atom 0.3, 1.0 / JSON Feed 1.0, 1.1
 - **Tolerant parsing** -- Handles malformed feeds gracefully with the `bozo` flag pattern, propagated at both feed and entry level
+- **HTML sanitization** -- HTML-bearing fields (titles, summaries, `content:encoded`, etc.) are sanitized by default to strip dangerous markup; opt out per-call for fully-trusted sources
 - **HTTP fetching** -- Built-in URL fetching with compression (gzip, deflate, brotli) and conditional GET (ETag/Last-Modified)
-- **Podcast support** -- iTunes and Podcast 2.0 namespace extensions
+- **Podcast support** -- iTunes and Podcast 2.0 namespace extensions, including `podcast:value`/`valueTimeSplit` (feed- and item-level), `podcast:chat`, and `podcast:podping`
 - **Security** -- DoS protection via `ParserLimits`, SSRF protection, input size validation
 - **Multi-language bindings** -- Native Python (PyO3) and Node.js (napi-rs) bindings
 - **feedparser drop-in** -- Dict-style access, field aliases, same API patterns as Python feedparser
@@ -37,9 +38,9 @@ High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node
 | Content | Encoded HTML content |
 | Media RSS | Media attachments and metadata (`media:content`, `media:thumbnail`, `media:title`, `media:description`, `media:credit`, `media:copyright`, `media:rating`, `media:keywords`) |
 | iTunes | Podcast metadata (author, duration, explicit) |
-| Podcast 2.0 | Chapters, transcripts, funding |
+| Podcast 2.0 | Chapters, transcripts, funding, value/valueTimeSplit, chat, podping |
 | Syndication | Update schedule (period, frequency, base) |
-| GeoRSS | Geographic location data (point, line, polygon, box) |
+| GeoRSS | Geographic location data (Simple: point, line, polygon, box; GML profile: `gml:Point`/`LineString`/`Polygon`/`Envelope`/`MultiSurface` with `srsName` axis normalization) |
 | Creative Commons | License information with `rel="license"` links |
 | Slash | Comment count (`slash:comments`) |
 | WFW | Comment feed URL (`wfw:commentRss`) |
@@ -57,7 +58,7 @@ Or add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-feedparser-rs = "0.5"
+feedparser-rs = "0.6"
 ```
 
 > [!IMPORTANT]
@@ -84,6 +85,9 @@ pnpm add feedparser-rs
 > Requires Node.js 18 or later.
 
 ## Usage
+
+> [!IMPORTANT]
+> HTML-bearing fields are sanitized by default (matching Python feedparser's sanitizer). Use `parse_with_options`/`parseWithOptions`/`parse(..., sanitize_html=False)` to opt out for fully-trusted feed sources.
 
 ### Rust
 
@@ -133,6 +137,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 > [!TIP]
 > Use `parse_url` for URL fetching with automatic compression handling (gzip, deflate, brotli) and conditional GET via the `etag`/`modified` parameters.
+
+#### Full control with `ParseOptions`
+
+```rust
+use feedparser_rs::{parse_with_options, ParseOptions, ParserLimits};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let xml = b"<rss version=\"2.0\"><channel><title>Example</title></channel></rss>";
+
+    let options = ParseOptions {
+        sanitize_html: false, // Trust this feed source
+        resolve_relative_uris: true,
+        limits: ParserLimits::strict(),
+    };
+
+    let feed = parse_with_options(xml, &options)?;
+    Ok(())
+}
+```
+
+`parse_url_with_options` is the URL-fetching counterpart. See [`feedparser-rs-core`](crates/feedparser-rs-core) for details.
 
 ### Python
 
@@ -187,7 +212,7 @@ To disable HTTP support and reduce dependencies:
 
 ```toml
 [dependencies]
-feedparser-rs = { version = "0.5", default-features = false }
+feedparser-rs = { version = "0.6", default-features = false }
 ```
 
 ## Workspace Structure

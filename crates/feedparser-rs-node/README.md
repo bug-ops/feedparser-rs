@@ -12,6 +12,7 @@ Drop-in replacement for Python's `feedparser` library, offering 10-100x performa
 
 - **Fast**: Written in Rust, 10-100x faster than Python feedparser
 - **Tolerant**: Handles malformed feeds with bozo flag (like feedparser)
+- **Sanitized by default**: HTML-bearing fields are sanitized against XSS unless explicitly disabled via `parseWithOptions`
 - **Multi-format**: RSS 0.9x/1.0/2.0, Atom 0.3/1.0, JSON Feed 1.0/1.1
 - **HTTP fetching**: Built-in URL fetching with compression support
 - **TypeScript**: Full TypeScript definitions included
@@ -99,10 +100,25 @@ Parse a feed from bytes or string.
 **Throws:**
 - `Error` if the input exceeds the size limit or parsing fails catastrophically
 
-### `parseWithOptions(source: Buffer | string, maxSize?: number): ParsedFeed`
+### `parseWithOptions(source: Buffer | string, options?: ParseOptions): ParsedFeed`
 
-Like `parse`, with a custom maximum feed size in bytes (default: 100 MB). Guards against
-DoS via oversized input.
+Like `parse`, with full control over parsing behavior via a `ParseOptions` object:
+
+```typescript
+interface ParseOptions {
+  maxSize?: number;             // Maximum feed size in bytes (default: 100 MB)
+  sanitizeHtml?: boolean;       // Sanitize HTML-bearing fields (default: true)
+  resolveRelativeUris?: boolean; // Resolve relative URLs against the feed's base URL (default: true)
+}
+```
+
+```javascript
+const feed = parseWithOptions(xml, { maxSize: 10_485_760, sanitizeHtml: false });
+```
+
+> **Important:** All fields are optional and independently overridable; omitted fields keep
+> their default. `sanitizeHtml` defaults to `true` — disable it only for feed sources you fully
+> trust.
 
 ### `parseUrl(url: string, etag?: string, modified?: string, userAgent?: string): ParsedFeed`
 
@@ -120,9 +136,10 @@ Fetch and parse a feed from an HTTP/HTTPS URL, with conditional GET support. **S
 
 > **Note:** Only available when the `http` Cargo feature is enabled (the default for the published npm package).
 
-### `parseUrlWithOptions(url: string, etag?: string, modified?: string, userAgent?: string, maxSize?: number): ParsedFeed`
+### `parseUrlWithOptions(url: string, etag?: string, modified?: string, userAgent?: string, options?: ParseOptions): ParsedFeed`
 
-Like `parseUrl`, with a custom maximum feed size in bytes.
+Like `parseUrl`, with full control over parsing behavior via the same `ParseOptions` object as
+`parseWithOptions` above (`maxSize`, `sanitizeHtml`, `resolveRelativeUris`).
 
 ### `detectFormat(source: Buffer | string): string`
 

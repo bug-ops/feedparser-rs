@@ -12,6 +12,7 @@ High-performance RSS/Atom/JSON Feed parser for Python with feedparser-compatible
 - **HTTP fetching**: Built-in URL fetching with compression (gzip, deflate, brotli)
 - **Conditional GET**: ETag/Last-Modified support for efficient polling
 - **Tolerant parsing**: Bozo flag for graceful handling of malformed feeds
+- **Sanitized by default**: HTML-bearing fields are sanitized against XSS unless explicitly disabled via `sanitize_html=False`
 - **Multi-format**: RSS 0.9x/1.0/2.0, Atom 0.3/1.0, JSON Feed 1.0/1.1
 - **Podcast support**: iTunes and Podcast 2.0 namespace extensions
 - **feedparser-compatible**: Dict-style access, field aliases, same API patterns
@@ -75,6 +76,24 @@ d = feedparser_rs.parse_with_limits("https://example.com/feed.xml", limits=limit
 ```
 
 > **Tip:** URL fetching supports automatic compression (gzip, deflate, brotli) and follows redirects.
+
+### HTML Sanitization
+
+HTML-bearing fields (titles, summaries, `content:encoded`, etc.) are sanitized by default to
+strip dangerous markup, matching feedparser's sanitizer coverage:
+
+```python
+import feedparser_rs
+
+# Default: sanitize_html=True, resolve_relative_uris=True
+d = feedparser_rs.parse(feed_data)
+
+# Trust this feed source; skip the sanitizer pass
+d = feedparser_rs.parse(feed_data, sanitize_html=False)
+```
+
+> **Important:** Disabling `sanitize_html` is **not recommended** unless you fully trust the feed
+> source and have other security measures in place.
 
 ## Migration from feedparser
 
@@ -152,16 +171,20 @@ if d.feed.itunes:
 for entry in d.entries:
     if entry.itunes:
         print(f"Duration: {entry.itunes.duration}")  # e.g. "01:30:00"
+
+    # Podcast 2.0: episode-level value split, chat rooms, etc.
+    if entry.podcast and entry.podcast.value:
+        print(f"Time splits: {len(entry.podcast.value.time_splits)}")
 ```
 
 ## API Reference
 
 ### Functions
 
-- `parse(source, etag=None, modified=None, user_agent=None)` — Parse feed from bytes, str, or URL (auto-detected)
-- `parse_url(url, etag=None, modified=None, user_agent=None)` — Fetch and parse feed from URL
-- `parse_with_limits(source, etag=None, modified=None, user_agent=None, limits=None)` — Parse with custom resource limits
-- `parse_url_with_limits(url, etag=None, modified=None, user_agent=None, limits=None)` — Fetch and parse with custom limits
+- `parse(source, etag=None, modified=None, user_agent=None, sanitize_html=True, resolve_relative_uris=True)` — Parse feed from bytes, str, or URL (auto-detected)
+- `parse_url(url, etag=None, modified=None, user_agent=None, sanitize_html=True, resolve_relative_uris=True)` — Fetch and parse feed from URL
+- `parse_with_limits(source, etag=None, modified=None, user_agent=None, limits=None, sanitize_html=True, resolve_relative_uris=True)` — Parse with custom resource limits
+- `parse_url_with_limits(url, etag=None, modified=None, user_agent=None, limits=None, sanitize_html=True, resolve_relative_uris=True)` — Fetch and parse with custom limits
 - `detect_format(source)` — Detect feed format without full parsing
 
 ### Classes
