@@ -11,6 +11,7 @@ use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use std::collections::HashMap;
 
+use feedparser_rs::types::PodcastRemoteItem as CorePodcastRemoteItem;
 use feedparser_rs::{
     self as core, Cloud as CoreCloud, Content as CoreContent, Enclosure as CoreEnclosure,
     Entry as CoreEntry, FeedMeta as CoreFeedMeta, Generator as CoreGenerator, Image as CoreImage,
@@ -20,11 +21,12 @@ use feedparser_rs::{
     MediaCopyright as CoreMediaCopyright, MediaCredit as CoreMediaCredit,
     MediaRating as CoreMediaRating, MediaThumbnail as CoreMediaThumbnail,
     ParsedFeed as CoreParsedFeed, ParserLimits, Person as CorePerson,
-    PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
-    PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
-    PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
-    PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
-    PodcastValueRecipient as CorePodcastValueRecipient, Source as CoreSource,
+    PodcastChapters as CorePodcastChapters, PodcastChat as CorePodcastChat,
+    PodcastEntryMeta as CorePodcastEntryMeta, PodcastFunding as CorePodcastFunding,
+    PodcastMeta as CorePodcastMeta, PodcastPerson as CorePodcastPerson,
+    PodcastSoundbite as CorePodcastSoundbite, PodcastTranscript as CorePodcastTranscript,
+    PodcastValue as CorePodcastValue, PodcastValueRecipient as CorePodcastValueRecipient,
+    PodcastValueTimeSplit as CorePodcastValueTimeSplit, Source as CoreSource,
     SyndicationMeta as CoreSyndicationMeta, Tag as CoreTag, TextConstruct as CoreTextConstruct,
     TextInput as CoreTextInput, TextType,
 };
@@ -1495,6 +1497,12 @@ pub struct PodcastMeta {
     pub locked: Option<String>,
     /// Email of the lock owner (podcast:locked owner attribute)
     pub locked_owner: Option<String>,
+    /// Chat room references (podcast:chat)
+    pub chat: Vec<PodcastChat>,
+    /// Whether the podcast uses Podping for update notifications
+    /// (podcast:podping `usesPodping` attribute)
+    #[napi(js_name = "podpingUsesPodping")]
+    pub podping_uses_podping: Option<bool>,
 }
 
 impl From<CorePodcastMeta> for PodcastMeta {
@@ -1512,6 +1520,8 @@ impl From<CorePodcastMeta> for PodcastMeta {
             medium: core.medium,
             locked: core.locked,
             locked_owner: core.locked_owner,
+            chat: core.chat.into_iter().map(PodcastChat::from).collect(),
+            podping_uses_podping: core.podping_uses_podping,
         }
     }
 }
@@ -1528,6 +1538,9 @@ pub struct PodcastValue {
     pub suggested: Option<String>,
     /// List of payment recipients with split percentages
     pub recipients: Vec<PodcastValueRecipient>,
+    /// Time-bounded payment splits for pre-recorded remote content
+    #[napi(js_name = "timeSplits")]
+    pub time_splits: Vec<PodcastValueTimeSplit>,
 }
 
 impl From<CorePodcastValue> for PodcastValue {
@@ -1541,6 +1554,106 @@ impl From<CorePodcastValue> for PodcastValue {
                 .into_iter()
                 .map(PodcastValueRecipient::from)
                 .collect(),
+            time_splits: core
+                .time_splits
+                .into_iter()
+                .map(PodcastValueTimeSplit::from)
+                .collect(),
+        }
+    }
+}
+
+/// Podcast 2.0 value time split for pre-recorded remote content
+#[napi(object)]
+pub struct PodcastValueTimeSplit {
+    /// Start time in seconds within the episode
+    #[napi(js_name = "startTime")]
+    pub start_time: f64,
+    /// Duration in seconds of this split
+    pub duration: f64,
+    /// Start time within the remote item, in seconds
+    #[napi(js_name = "remoteStartTime")]
+    pub remote_start_time: f64,
+    /// Percentage of the payment routed to this split
+    #[napi(js_name = "remotePercentage")]
+    pub remote_percentage: f64,
+    /// Payment recipients for this split
+    pub recipients: Vec<PodcastValueRecipient>,
+    /// Remote item this split routes payment to, if any
+    #[napi(js_name = "remoteItem")]
+    pub remote_item: Option<PodcastRemoteItem>,
+}
+
+impl From<CorePodcastValueTimeSplit> for PodcastValueTimeSplit {
+    fn from(core: CorePodcastValueTimeSplit) -> Self {
+        Self {
+            start_time: core.start_time,
+            duration: core.duration,
+            remote_start_time: core.remote_start_time,
+            remote_percentage: core.remote_percentage,
+            recipients: core
+                .recipients
+                .into_iter()
+                .map(PodcastValueRecipient::from)
+                .collect(),
+            remote_item: core.remote_item.map(PodcastRemoteItem::from),
+        }
+    }
+}
+
+/// Podcast 2.0 remote item reference
+#[napi(object)]
+pub struct PodcastRemoteItem {
+    /// Feed GUID
+    #[napi(js_name = "feedGuid")]
+    pub feed_guid: Option<String>,
+    /// Feed URL
+    ///
+    /// Note: URL from untrusted feed input. Validate before fetching.
+    #[napi(js_name = "feedUrl")]
+    pub feed_url: Option<String>,
+    /// Item GUID
+    #[napi(js_name = "itemGuid")]
+    pub item_guid: Option<String>,
+    /// Content medium type
+    pub medium: Option<String>,
+    /// Display title
+    pub title: Option<String>,
+}
+
+impl From<CorePodcastRemoteItem> for PodcastRemoteItem {
+    fn from(core: CorePodcastRemoteItem) -> Self {
+        Self {
+            feed_guid: core.feed_guid,
+            feed_url: core.feed_url.map(core::Url::into_inner),
+            item_guid: core.item_guid,
+            medium: core.medium,
+            title: core.title,
+        }
+    }
+}
+
+/// Podcast 2.0 chat room reference (podcast:chat)
+#[napi(object)]
+pub struct PodcastChat {
+    /// Chat server address
+    pub server: String,
+    /// Chat protocol: "matrix", "xmpp", etc.
+    pub protocol: String,
+    /// Account identifier on the chat server
+    #[napi(js_name = "accountId")]
+    pub account_id: Option<String>,
+    /// Space identifier, for protocols that group rooms
+    pub space: Option<String>,
+}
+
+impl From<CorePodcastChat> for PodcastChat {
+    fn from(core: CorePodcastChat) -> Self {
+        Self {
+            server: core.server,
+            protocol: core.protocol,
+            account_id: core.account_id,
+            space: core.space,
         }
     }
 }
@@ -1610,6 +1723,8 @@ pub struct PodcastEntryMeta {
     pub season: Option<String>,
     /// Episode number (podcast:episode number attribute)
     pub episode: Option<String>,
+    /// Chat room references (podcast:chat)
+    pub chat: Vec<PodcastChat>,
 }
 
 impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
@@ -1630,6 +1745,7 @@ impl From<CorePodcastEntryMeta> for PodcastEntryMeta {
             medium: core.medium,
             season: core.season,
             episode: core.episode,
+            chat: core.chat.into_iter().map(PodcastChat::from).collect(),
         }
     }
 }

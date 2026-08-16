@@ -727,6 +727,18 @@ export interface PodcastChapters {
   type: string
 }
 
+/** Podcast 2.0 chat room reference (podcast:chat) */
+export interface PodcastChat {
+  /** Chat server address */
+  server: string
+  /** Chat protocol: "matrix", "xmpp", etc. */
+  protocol: string
+  /** Account identifier on the chat server */
+  accountId?: string
+  /** Space identifier, for protocols that group rooms */
+  space?: string
+}
+
 /** Podcast 2.0 episode metadata */
 export interface PodcastEntryMeta {
   /** Episode transcripts */
@@ -743,6 +755,8 @@ export interface PodcastEntryMeta {
   season?: string
   /** Episode number (podcast:episode number attribute) */
   episode?: string
+  /** Chat room references (podcast:chat) */
+  chat: Array<PodcastChat>
 }
 
 /** Podcast funding link */
@@ -775,6 +789,13 @@ export interface PodcastMeta {
   locked?: string
   /** Email of the lock owner (podcast:locked owner attribute) */
   lockedOwner?: string
+  /** Chat room references (podcast:chat) */
+  chat: Array<PodcastChat>
+  /**
+   * Whether the podcast uses Podping for update notifications
+   * (podcast:podping `usesPodping` attribute)
+   */
+  podpingUsesPodping?: boolean
 }
 
 /** Podcast person metadata */
@@ -797,6 +818,24 @@ export interface PodcastPerson {
    * Note: URL from untrusted feed input. Validate before fetching.
    */
   href?: string
+}
+
+/** Podcast 2.0 remote item reference */
+export interface PodcastRemoteItem {
+  /** Feed GUID */
+  feedGuid?: string
+  /**
+   * Feed URL
+   *
+   * Note: URL from untrusted feed input. Validate before fetching.
+   */
+  feedUrl?: string
+  /** Item GUID */
+  itemGuid?: string
+  /** Content medium type */
+  medium?: string
+  /** Display title */
+  title?: string
 }
 
 /** Podcast soundbite */
@@ -835,6 +874,8 @@ export interface PodcastValue {
   suggested?: string
   /** List of payment recipients with split percentages */
   recipients: Array<PodcastValueRecipient>
+  /** Time-bounded payment splits for pre-recorded remote content */
+  timeSplits: Array<PodcastValueTimeSplit>
 }
 
 /** Value recipient for payment splitting */
@@ -849,6 +890,22 @@ export interface PodcastValueRecipient {
   split: number
   /** Whether this is a fee recipient */
   fee?: boolean
+}
+
+/** Podcast 2.0 value time split for pre-recorded remote content */
+export interface PodcastValueTimeSplit {
+  /** Start time in seconds within the episode */
+  startTime: number
+  /** Duration in seconds of this split */
+  duration: number
+  /** Start time within the remote item, in seconds */
+  remoteStartTime: number
+  /** Percentage of the payment routed to this split */
+  remotePercentage: number
+  /** Payment recipients for this split */
+  recipients: Array<PodcastValueRecipient>
+  /** Remote item this split routes payment to, if any */
+  remoteItem?: PodcastRemoteItem
 }
 
 /** Source reference (for entries) */

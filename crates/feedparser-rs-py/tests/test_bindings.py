@@ -308,6 +308,163 @@ def test_dublin_core_subject():
     assert "Rust" in entry.dc_subject
 
 
+def test_podcast_chat_feed_level():
+    """Test Podcast 2.0 chat at feed level"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:chat server="matrix.example.com" protocol="matrix" accountId="@podcast:example.com" space="!room:example.com"/>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    chat = result.feed.podcast.chat
+
+    assert len(chat) == 1
+    assert chat[0].server == "matrix.example.com"
+    assert chat[0].protocol == "matrix"
+    assert chat[0].account_id == "@podcast:example.com"
+    assert chat[0].space == "!room:example.com"
+
+
+def test_podcast_chat_entry_level():
+    """Test Podcast 2.0 chat at entry level"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <item>
+                <title>Episode</title>
+                <podcast:chat server="xmpp.example.com" protocol="xmpp"/>
+            </item>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    chat = result.entries[0].podcast.chat
+
+    assert len(chat) == 1
+    assert chat[0].server == "xmpp.example.com"
+    assert chat[0].protocol == "xmpp"
+
+
+def test_podcast_podping_uses_podping():
+    """Test Podcast 2.0 podping usesPodping attribute"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:podping usesPodping="true"/>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+
+    assert result.feed.podcast.podping_uses_podping is True
+
+
+def test_podcast_value_time_split_with_recipients():
+    """Test Podcast 2.0 valueTimeSplit with nested valueRecipient"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:value type="lightning" method="keysend">
+                <podcast:valueTimeSplit startTime="60" duration="30">
+                    <podcast:valueRecipient type="node" address="addr1" split="100"/>
+                </podcast:valueTimeSplit>
+            </podcast:value>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    time_splits = result.feed.podcast.value.time_splits
+
+    assert len(time_splits) == 1
+    split = time_splits[0]
+    assert split.start_time == 60.0
+    assert split.duration == 30.0
+    assert split.remote_percentage == 100.0
+    assert len(split.recipients) == 1
+    assert split.recipients[0].address == "addr1"
+    assert split.remote_item is None
+
+
+def test_podcast_value_time_split_with_remote_item():
+    """Test Podcast 2.0 valueTimeSplit with nested remoteItem"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:value type="lightning" method="keysend">
+                <podcast:valueTimeSplit startTime="10" duration="20" remoteStartTime="5" remotePercentage="50">
+                    <podcast:remoteItem feedGuid="feed-guid-1" feedUrl="https://example.com/feed.xml" itemGuid="abc123" medium="podcast" title="Remote Episode"/>
+                </podcast:valueTimeSplit>
+            </podcast:value>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+    split = result.feed.podcast.value.time_splits[0]
+
+    assert split.remote_start_time == 5.0
+    assert split.remote_percentage == 50.0
+    assert split.remote_item is not None
+    assert split.remote_item.feed_guid == "feed-guid-1"
+    assert split.remote_item.feed_url == "https://example.com/feed.xml"
+    assert split.remote_item.item_guid == "abc123"
+    assert split.remote_item.medium == "podcast"
+    assert split.remote_item.title == "Remote Episode"
+
+
+def test_podcast_chat_podping_time_splits_absent():
+    """Test chat/podping_uses_podping/time_splits default when absent from the feed"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:guid>abc-123-def</podcast:guid>
+            <podcast:value type="lightning" method="keysend">
+                <podcast:valueRecipient type="node" address="addr1" split="100"/>
+            </podcast:value>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+
+    assert result.feed.podcast.chat == []
+    assert result.feed.podcast.podping_uses_podping is None
+    assert result.feed.podcast.value.time_splits == []
+
+
+def test_podcast_value_time_split_self_closing_dropped():
+    """Test a self-closing podcast:valueTimeSplit is silently dropped without swallowing the feed"""
+    xml = b"""<?xml version="1.0"?>
+    <rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel>
+            <title>Feed</title>
+            <podcast:value type="lightning" method="keysend">
+                <podcast:valueTimeSplit startTime="1" duration="2"/>
+                <podcast:valueRecipient type="node" address="addr1" split="100"/>
+            </podcast:value>
+        </channel>
+    </rss>
+    """
+
+    result = feedparser_rs.parse(xml)
+
+    assert not result.bozo
+    assert result.feed.podcast.value.time_splits == []
+    assert len(result.feed.podcast.value.recipients) == 1
+
+
 def test_podcast_chapters():
     """Test Podcast 2.0 chapters"""
     xml = b"""<?xml version="1.0"?>

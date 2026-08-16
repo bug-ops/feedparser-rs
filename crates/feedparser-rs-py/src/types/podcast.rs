@@ -1,11 +1,13 @@
+use feedparser_rs::types::PodcastRemoteItem as CorePodcastRemoteItem;
 use feedparser_rs::{
     ItunesCategory as CoreItunesCategory, ItunesEntryMeta as CoreItunesEntryMeta,
     ItunesFeedMeta as CoreItunesFeedMeta, ItunesOwner as CoreItunesOwner,
-    PodcastChapters as CorePodcastChapters, PodcastEntryMeta as CorePodcastEntryMeta,
-    PodcastFunding as CorePodcastFunding, PodcastMeta as CorePodcastMeta,
-    PodcastPerson as CorePodcastPerson, PodcastSoundbite as CorePodcastSoundbite,
-    PodcastTranscript as CorePodcastTranscript, PodcastValue as CorePodcastValue,
-    PodcastValueRecipient as CorePodcastValueRecipient,
+    PodcastChapters as CorePodcastChapters, PodcastChat as CorePodcastChat,
+    PodcastEntryMeta as CorePodcastEntryMeta, PodcastFunding as CorePodcastFunding,
+    PodcastMeta as CorePodcastMeta, PodcastPerson as CorePodcastPerson,
+    PodcastSoundbite as CorePodcastSoundbite, PodcastTranscript as CorePodcastTranscript,
+    PodcastValue as CorePodcastValue, PodcastValueRecipient as CorePodcastValueRecipient,
+    PodcastValueTimeSplit as CorePodcastValueTimeSplit,
 };
 use pyo3::prelude::*;
 
@@ -469,6 +471,20 @@ impl PyPodcastMeta {
             .map(|v| PyPodcastValue::from_core(v.clone()))
     }
 
+    #[getter]
+    fn chat(&self) -> Vec<PyPodcastChat> {
+        self.inner
+            .chat
+            .iter()
+            .map(|c| PyPodcastChat::from_core(c.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn podping_uses_podping(&self) -> Option<bool> {
+        self.inner.podping_uses_podping
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastMeta(guid='{}', persons={}, medium='{}')",
@@ -783,6 +799,15 @@ impl PyPodcastEntryMeta {
         self.inner.episode.as_deref()
     }
 
+    #[getter]
+    fn chat(&self) -> Vec<PyPodcastChat> {
+        self.inner
+            .chat
+            .iter()
+            .map(|c| PyPodcastChat::from_core(c.clone()))
+            .collect()
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "PodcastEntryMeta(transcripts={}, chapters={}, soundbites={}, persons={}, season={}, episode={})",
@@ -836,6 +861,15 @@ impl PyPodcastValue {
             .recipients
             .iter()
             .map(|r| PyPodcastValueRecipient::from_core(r.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn time_splits(&self) -> Vec<PyPodcastValueTimeSplit> {
+        self.inner
+            .time_splits
+            .iter()
+            .map(|s| PyPodcastValueTimeSplit::from_core(s.clone()))
             .collect()
     }
 
@@ -898,6 +932,159 @@ impl PyPodcastValueRecipient {
             "PodcastValueRecipient(name='{}', split={})",
             self.inner.name.as_deref().unwrap_or("unknown"),
             self.inner.split
+        )
+    }
+}
+
+#[pyclass(
+    name = "PodcastValueTimeSplit",
+    module = "feedparser_rs",
+    from_py_object
+)]
+#[derive(Clone)]
+pub struct PyPodcastValueTimeSplit {
+    inner: CorePodcastValueTimeSplit,
+}
+
+impl PyPodcastValueTimeSplit {
+    pub fn from_core(core: CorePodcastValueTimeSplit) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastValueTimeSplit {
+    #[getter]
+    fn start_time(&self) -> f64 {
+        self.inner.start_time
+    }
+
+    #[getter]
+    fn duration(&self) -> f64 {
+        self.inner.duration
+    }
+
+    #[getter]
+    fn remote_start_time(&self) -> f64 {
+        self.inner.remote_start_time
+    }
+
+    #[getter]
+    fn remote_percentage(&self) -> f64 {
+        self.inner.remote_percentage
+    }
+
+    #[getter]
+    fn recipients(&self) -> Vec<PyPodcastValueRecipient> {
+        self.inner
+            .recipients
+            .iter()
+            .map(|r| PyPodcastValueRecipient::from_core(r.clone()))
+            .collect()
+    }
+
+    #[getter]
+    fn remote_item(&self) -> Option<PyPodcastRemoteItem> {
+        self.inner
+            .remote_item
+            .as_ref()
+            .map(|r| PyPodcastRemoteItem::from_core(r.clone()))
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastValueTimeSplit(start_time={}, duration={}, remote_percentage={})",
+            self.inner.start_time, self.inner.duration, self.inner.remote_percentage
+        )
+    }
+}
+
+#[pyclass(name = "PodcastRemoteItem", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastRemoteItem {
+    inner: CorePodcastRemoteItem,
+}
+
+impl PyPodcastRemoteItem {
+    pub fn from_core(core: CorePodcastRemoteItem) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastRemoteItem {
+    #[getter]
+    fn feed_guid(&self) -> Option<&str> {
+        self.inner.feed_guid.as_deref()
+    }
+
+    #[getter]
+    fn feed_url(&self) -> Option<&str> {
+        self.inner.feed_url.as_deref()
+    }
+
+    #[getter]
+    fn item_guid(&self) -> Option<&str> {
+        self.inner.item_guid.as_deref()
+    }
+
+    #[getter]
+    fn medium(&self) -> Option<&str> {
+        self.inner.medium.as_deref()
+    }
+
+    #[getter]
+    fn title(&self) -> Option<&str> {
+        self.inner.title.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastRemoteItem(feed_guid='{}', title='{}')",
+            self.inner.feed_guid.as_deref().unwrap_or("none"),
+            self.inner.title.as_deref().unwrap_or("none")
+        )
+    }
+}
+
+#[pyclass(name = "PodcastChat", module = "feedparser_rs", from_py_object)]
+#[derive(Clone)]
+pub struct PyPodcastChat {
+    inner: CorePodcastChat,
+}
+
+impl PyPodcastChat {
+    pub fn from_core(core: CorePodcastChat) -> Self {
+        Self { inner: core }
+    }
+}
+
+#[pymethods]
+impl PyPodcastChat {
+    #[getter]
+    fn server(&self) -> &str {
+        &self.inner.server
+    }
+
+    #[getter]
+    fn protocol(&self) -> &str {
+        &self.inner.protocol
+    }
+
+    #[getter]
+    fn account_id(&self) -> Option<&str> {
+        self.inner.account_id.as_deref()
+    }
+
+    #[getter]
+    fn space(&self) -> Option<&str> {
+        self.inner.space.as_deref()
+    }
+
+    fn __repr__(&self) -> String {
+        format!(
+            "PodcastChat(server='{}', protocol='{}')",
+            self.inner.server, self.inner.protocol
         )
     }
 }
