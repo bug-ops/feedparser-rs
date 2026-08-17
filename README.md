@@ -18,6 +18,7 @@ High-performance RSS/Atom/JSON Feed parser written in Rust, with Python and Node
 - **HTML sanitization** -- HTML-bearing fields (titles, summaries, `content:encoded`, etc.) are sanitized by default to strip dangerous markup; opt out per-call for fully-trusted sources
 - **HTTP fetching** -- Built-in URL fetching with compression (gzip, deflate, brotli) and conditional GET (ETag/Last-Modified)
 - **Podcast support** -- iTunes and Podcast 2.0 namespace extensions, including `podcast:value`/`valueTimeSplit` (feed- and item-level), `podcast:chat`, and `podcast:podping`
+- **JSON Feed extension objects** -- generic capture of spec-sanctioned underscore-prefixed custom objects (e.g. `_cast`) at feed- and item-level, exposed as `json_extensions`
 - **Security** -- DoS protection via `ParserLimits`, SSRF protection, input size validation
 - **Multi-language bindings** -- Native Python (PyO3) and Node.js (napi-rs) bindings
 - **feedparser drop-in** -- Dict-style access, field aliases, same API patterns as Python feedparser

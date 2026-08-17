@@ -4,7 +4,10 @@ use pyo3::exceptions::{PyAttributeError, PyKeyError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use super::common::{PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct};
+use super::common::{
+    PyContent, PyEnclosure, PyLink, PyPerson, PySource, PyTag, PyTextConstruct,
+    json_extensions_to_py_dict,
+};
 use super::compat::ENTRY_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
 use super::media::{
@@ -46,14 +49,30 @@ fn geo_location_to_py_dict(py: Python<'_>, geo: &CoreGeoLocation) -> PyResult<Py
 }
 
 #[pyclass(name = "Entry", module = "feedparser_rs", from_py_object)]
-#[derive(Clone)]
 pub struct PyEntry {
     inner: CoreEntry,
+    json_extensions: Py<PyDict>,
+}
+
+impl Clone for PyEntry {
+    fn clone(&self) -> Self {
+        Python::attach(|py| Self {
+            inner: self.inner.clone(),
+            json_extensions: self.json_extensions.clone_ref(py),
+        })
+    }
 }
 
 impl PyEntry {
-    pub fn from_core(core: CoreEntry) -> Self {
-        Self { inner: core }
+    /// Builds a `PyEntry`, eagerly converting `json_extensions` to a
+    /// `Py<PyDict>` once (matching `PyParsedFeed::namespaces`) so the getter
+    /// only needs to `clone_ref` rather than re-converting on every access.
+    pub fn from_core(py: Python<'_>, core: CoreEntry) -> PyResult<Self> {
+        let json_extensions = json_extensions_to_py_dict(py, &core.json_extensions)?;
+        Ok(Self {
+            inner: core,
+            json_extensions,
+        })
     }
 }
 
@@ -342,6 +361,11 @@ impl PyEntry {
     }
 
     #[getter]
+    fn json_extensions(&self, py: Python<'_>) -> Py<PyDict> {
+        self.json_extensions.clone_ref(py)
+    }
+
+    #[getter]
     fn dc_date(&self) -> Option<String> {
         self.inner.dc_date.map(|dt| dt.to_rfc3339())
     }
@@ -533,6 +557,7 @@ impl PyEntry {
             "thr_in_reply_to",
             "thr_total",
             "guidislink",
+            "json_extensions",
         ];
         let mut result = Vec::new();
         for &key in ALL_KEYS {
@@ -1157,6 +1182,7 @@ impl PyEntry {
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
+            "json_extensions" => Ok(self.json_extensions.clone_ref(py).into()),
             // Check for deprecated field name aliases
             _ => {
                 if let Some(new_names) = ENTRY_FIELD_MAP.get(key) {

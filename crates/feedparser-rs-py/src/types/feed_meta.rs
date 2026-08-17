@@ -6,6 +6,7 @@ use pyo3::types::PyDict;
 
 use super::common::{
     PyCloud, PyGenerator, PyImage, PyLink, PyPerson, PyTag, PyTextConstruct, PyTextInput,
+    json_extensions_to_py_dict,
 };
 use super::compat::FEED_FIELD_MAP;
 use super::datetime::optional_datetime_to_struct_time;
@@ -44,14 +45,30 @@ fn geo_location_to_py_dict(py: Python<'_>, geo: &CoreGeoLocation) -> PyResult<Py
 }
 
 #[pyclass(name = "FeedMeta", module = "feedparser_rs", from_py_object)]
-#[derive(Clone)]
 pub struct PyFeedMeta {
     inner: CoreFeedMeta,
+    json_extensions: Py<PyDict>,
+}
+
+impl Clone for PyFeedMeta {
+    fn clone(&self) -> Self {
+        Python::attach(|py| Self {
+            inner: self.inner.clone(),
+            json_extensions: self.json_extensions.clone_ref(py),
+        })
+    }
 }
 
 impl PyFeedMeta {
-    pub fn from_core(core: CoreFeedMeta) -> Self {
-        Self { inner: core }
+    /// Builds a `PyFeedMeta`, eagerly converting `json_extensions` to a
+    /// `Py<PyDict>` once (matching `PyParsedFeed::namespaces`) so the getter
+    /// only needs to `clone_ref` rather than re-converting on every access.
+    pub fn from_core(py: Python<'_>, core: CoreFeedMeta) -> PyResult<Self> {
+        let json_extensions = json_extensions_to_py_dict(py, &core.json_extensions)?;
+        Ok(Self {
+            inner: core,
+            json_extensions,
+        })
     }
 }
 
@@ -376,6 +393,11 @@ impl PyFeedMeta {
         Ok(list.unbind())
     }
 
+    #[getter]
+    fn json_extensions(&self, py: Python<'_>) -> Py<PyDict> {
+        self.json_extensions.clone_ref(py)
+    }
+
     /// Returns the value for `key` if present, otherwise returns `default` (None if omitted).
     ///
     /// Provides `dict.get()` compatibility for Python feedparser consumers.
@@ -439,6 +461,7 @@ impl PyFeedMeta {
             "textinput",
             "skiphours",
             "skipdays",
+            "json_extensions",
         ];
         let mut result = Vec::new();
         for &key in ALL_KEYS {
@@ -996,6 +1019,7 @@ impl PyFeedMeta {
                     pyo3::types::PyList::new(py, self.inner.skipdays.iter().map(|s| s.as_str()))?;
                 Ok(list.into_any().unbind())
             }
+            "json_extensions" => Ok(self.json_extensions.clone_ref(py).into()),
             // Check for deprecated field name aliases
             _ => {
                 if let Some(new_names) = FEED_FIELD_MAP.get(key) {

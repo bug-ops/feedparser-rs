@@ -15,8 +15,9 @@ crate-type = ["cdylib"]
 [dependencies]
 chrono = { workspace = true, features = ["std"] }
 feedparser-rs = { path = "../feedparser-rs-core" }
-napi = { workspace = true, features = ["napi9", "error_anyhow"] }
+napi = { workspace = true, features = ["napi9", "error_anyhow", "serde-json"] }
 napi-derive = { workspace = true }
+serde_json = { workspace = true }
 
 [features]
 default = ["http"]
@@ -27,7 +28,6 @@ napi-build = "2.4"
 
 [dev-dependencies]
 quick-xml = { workspace = true }
-serde_json = { workspace = true }
 url = { workspace = true }
 
 [lints]

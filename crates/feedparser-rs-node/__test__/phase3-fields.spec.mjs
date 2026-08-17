@@ -874,4 +874,63 @@ describe('Field Bindings', () => {
       assert.ok(Array.isArray(entry.mediaThumbnails));
     });
   });
+
+  describe('JSON Feed extension objects', () => {
+    it('should capture feed-level and item-level underscore-prefixed extensions', () => {
+      const json = JSON.stringify({
+        version: 'https://jsonfeed.org/version/1.1',
+        title: 'Podcast Feed',
+        _cast: { subcategory: 'Tech News' },
+        items: [{ id: '1', title: 'Episode 1', _explicit: true }],
+      });
+
+      const feed = parse(json);
+      assert.strictEqual(feed.feed.jsonExtensions._cast.subcategory, 'Tech News');
+      assert.strictEqual(feed.entries[0].jsonExtensions._explicit, true);
+    });
+
+    it('should leave jsonExtensions empty when no underscore-prefixed keys are present', () => {
+      const json = JSON.stringify({
+        version: 'https://jsonfeed.org/version/1.1',
+        title: 'Plain Feed',
+        items: [{ id: '1', title: 'Item' }],
+      });
+
+      const feed = parse(json);
+      assert.deepStrictEqual(feed.feed.jsonExtensions, {});
+      assert.deepStrictEqual(feed.entries[0].jsonExtensions, {});
+    });
+
+    it('should not produce a BigInt that crashes JSON.stringify for out-of-u32-range integers', () => {
+      // Raw JSON text (not JSON.stringify on a JS object) so the number is embedded verbatim.
+      const json = `{
+        "version": "https://jsonfeed.org/version/1.1",
+        "title": "Test",
+        "_big": 4294967296,
+        "items": []
+      }`;
+
+      const feed = parse(json);
+      assert.strictEqual(feed.feed.jsonExtensions._big, '4294967296');
+      assert.doesNotThrow(() => JSON.stringify(feed));
+    });
+
+    it('should strip a nested __proto__ key instead of rewriting the object prototype', () => {
+      // Raw JSON text: a JS object literal with `__proto__: {...}` would set the
+      // prototype at construction time instead of creating an own property, which
+      // would defeat the point of this regression test.
+      const json = `{
+        "version": "https://jsonfeed.org/version/1.1",
+        "title": "Test",
+        "_evil": {"__proto__": {"isAdmin": true}, "ok": 1},
+        "items": []
+      }`;
+
+      const feed = parse(json);
+      const evil = feed.feed.jsonExtensions._evil;
+      assert.deepStrictEqual(Object.keys(evil), ['ok']);
+      assert.strictEqual(evil.isAdmin, undefined);
+      assert.strictEqual(Object.getPrototypeOf(evil), Object.prototype);
+    });
+  });
 });

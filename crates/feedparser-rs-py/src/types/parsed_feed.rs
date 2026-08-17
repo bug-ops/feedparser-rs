@@ -26,12 +26,12 @@ pub struct PyParsedFeed {
 
 impl PyParsedFeed {
     pub fn from_core(py: Python<'_>, core: CoreParsedFeed) -> PyResult<Self> {
-        let feed = Py::new(py, PyFeedMeta::from_core(core.feed))?;
+        let feed = Py::new(py, PyFeedMeta::from_core(py, core.feed)?)?;
 
         let entries: PyResult<Vec<_>> = core
             .entries
             .into_iter()
-            .map(|e| Py::new(py, PyEntry::from_core(e)))
+            .map(|e| Py::new(py, PyEntry::from_core(py, e)?))
             .collect();
 
         let namespaces = PyDict::new(py);

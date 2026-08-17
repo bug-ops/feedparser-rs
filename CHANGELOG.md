@@ -7,14 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Node.js JSON Feed extension values (`jsonExtensions`) are now sanitized before crossing the napi serde bridge: a nested `__proto__`/`constructor`/`prototype` object key inside a captured value previously reached napi's map serializer untouched, which uses V8 `[[Set]]` semantics (`set_named_property`) rather than `JSON.parse`'s `[[DefineOwnProperty]]` — a feed-controlled `{"_evil": {"__proto__": {"isAdmin": true}}}` could silently rewrite the containing object's prototype instead of becoming a normal property. Such keys are now dropped recursively within captured extension subtrees. Top-level extension keys were never affected (`_evil` itself is filtered by the existing `_` + letter naming rule).
+- Node.js JSON Feed extension values containing a non-negative integer above `u32::MAX` (e.g. `_big: 4294967296`) previously became a JS `BigInt` (napi's `serialize_u64` fast-paths values `<= u32::MAX` to a plain Number and otherwise calls `napi_create_bigint_uint64`), and a single `BigInt` anywhere in the returned object graph makes `JSON.stringify()` throw for the *entire* parse result. Such integers are now converted to their decimal string form before reaching napi.
+
 ### Changed
 
 - `feedparser-rs-py`: migrated `compat.rs`'s field-alias maps from `once_cell::sync::Lazy` to `std::sync::LazyLock`, matching the pattern already used in `feedparser-rs-core`. `LazyLock` has been stable since Rust 1.80, well below this project's MSRV (1.88.0), so `once_cell` is no longer a direct dependency of any workspace crate and was removed from `[workspace.dependencies]` (#489).
 - **Breaking**: raised the workspace MSRV from 1.88.0 to 1.91.0 (#490). Per this project's policy, an MSRV bump requires a minor version bump, so this must ship as **0.7.0**, not 0.6.1 — a consumer pinned to `feedparser-rs = "0.6"` will not pull this in via a semver-compatible upgrade. This unlocks `Ipv4Addr::from_octets`/`Ipv6Addr::from_segments`, now used in `util/ssrf.rs` in place of `Ipv4Addr::new`/`Ipv6Addr::new` for a clearer octet/segment-array round-trip with the existing `octets()`/`segments()` getters, and `Duration::from_mins`/`from_hours` in a couple of test-only call sites in `http/client.rs`/`tests/http_integration.rs` (both surfaced by the new clippy `duration_suboptimal_units` lint now in-MSRV); behavior is unchanged in all cases.
 
+### Added
+
+- JSON Feed extension objects (underscore-prefixed custom keys, e.g. `_cast`): a new `json_extensions: HashMap<String, serde_json::Value>` field on `FeedMeta` and `Entry` captures spec-sanctioned custom objects (JSON Feed 1.1 §Extensions — a key starting with `_` followed by a letter) at feed-root and item-root scope, keyed by the raw JSON key including the leading underscore (#487). Only the JSON Feed parser populates this field; RSS and Atom feeds always leave it empty. Values are captured verbatim and never interpreted, and capture never sets `bozo`. Nested scopes (`authors[]`, `attachments[]`, `hubs[]`) are not captured in this pass — an MVP limitation, not an oversight. Exposed in Node.js as `jsonExtensions: Record<string, any>` (sanitized for safe JS exposure, see Security above) and in Python as a native `dict` via `feed.json_extensions`/`entry.json_extensions` (eagerly converted once per parse, matching the existing `namespaces` getter pattern)
+- **Breaking**: `ParserLimits` gained a new field, `max_json_extensions` (default 100, strict 20, permissive 500), bounding how many extension keys are captured per scope; per-value size is bounded by the existing `max_text_length`. Callers constructing `ParserLimits` with an exhaustive struct literal instead of `..Default::default()` need to add this field
+
 ### Fixed
 
 - CI: the `release.yml` npm build/publish jobs used `npm ci` against a stale `package-lock.json` that had drifted from `package.json`'s devDependencies, failing every npm platform build during the v0.6.0 release. Switched those jobs to `pnpm` (matching `ci.yml` and the `cargo-make` Node.js tasks) and removed `package-lock.json`, so the workspace has a single Node.js lockfile (`pnpm-lock.yaml`) instead of two that can drift out of sync. Also switched the `security` CI job's `npm audit` back to `pnpm audit`, which had regressed to `npm audit` despite `pnpm` already being installed in that job.
+- Python bindings: `feedparser-rs-py/src/limits.rs`'s `PyParserLimits::to_core_limits` built the core `ParserLimits` via an exhaustive struct literal with four stale hardcoded values that had drifted from `ParserLimits::default()`. Switching that literal's tail to `..CoreParserLimits::default()` (done as part of the `max_json_extensions` field addition above) raised those four limits to match core's actual defaults: `max_podcast_alternate_enclosures` 10→20, `max_podcast_podroll` 20→50, `max_podcast_social_interact` 10→20, `max_podcast_follow` 10→20. Python callers relying on `feedparser_rs.ParserLimits()`'s implicit values for these four fields will now see more permissive limits.
 
 ## [0.6.0] - 2026-08-17
 

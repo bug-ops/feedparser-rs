@@ -329,6 +329,23 @@ fn test_feed_with_standard_entities_no_bozo() {
 }
 
 #[test]
+fn test_parse_json_feed_extensions_fixture() {
+    let json = load_fixture("json/extensions.json");
+    let result = parse(&json);
+
+    assert!(result.is_ok(), "Failed to parse extensions fixture");
+    let feed = result.unwrap();
+
+    assert_eq!(feed.version, FeedVersion::JsonFeed11);
+    assert!(!feed.bozo);
+    assert_eq!(
+        feed.feed.json_extensions["_cast"]["subcategory"],
+        "Tech News"
+    );
+    assert_eq!(feed.entries[0].json_extensions["_explicit"], true);
+}
+
+#[test]
 fn test_parse_json_feed_next_url_banner_fixture() {
     let json = load_fixture("json/next-url-banner.json");
     let result = parse(&json);
