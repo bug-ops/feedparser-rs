@@ -180,7 +180,7 @@ impl Entry {
             links: Vec::with_capacity(2),
             content: Vec::with_capacity(1),
             authors: Vec::with_capacity(1),
-            contributors: Vec::with_capacity(0),
+            contributors: Vec::new(),
             tags: Vec::with_capacity(3),
             enclosures: Vec::with_capacity(1),
             dc_subject: Vec::with_capacity(2),
