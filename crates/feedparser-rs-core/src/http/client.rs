@@ -558,7 +558,7 @@ mod tests {
         let timeout = Duration::from_secs(7);
         let client = FeedHttpClient::new().unwrap().with_timeout(timeout);
         let request = client
-            .build_request("http://example.test/feed.xml", HeaderMap::new())
+            .build_request("https://example.test/feed.xml", HeaderMap::new())
             .unwrap();
         assert_eq!(request.timeout(), Some(&timeout));
     }
