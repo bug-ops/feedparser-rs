@@ -68,7 +68,7 @@ fn collect_attributes(e: &quick_xml::events::BytesStart) -> (Vec<(Vec<u8>, Strin
         match result {
             Ok(attr) => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
-                    attrs.push((attr.key.as_ref().to_vec(), v.to_string()));
+                    attrs.push((attr.key.as_ref().as_bytes().to_vec(), v.to_string()));
                 } else {
                     has_errors = true;
                 }
@@ -143,10 +143,10 @@ pub fn parse_rss20_with_options(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.local_name().as_ref() == b"rss" => {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == "rss" => {
                 extract_namespaces(&e, &mut feed, &limits);
             }
-            Ok(Event::Start(e)) if e.local_name().as_ref() == b"channel" => {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == "channel" => {
                 // Some feeds declare xmlns on <channel> rather than <rss>
                 extract_namespaces(&e, &mut feed, &limits);
                 let channel_lang =
@@ -317,7 +317,7 @@ fn parse_channel(
                 // NOTE: Allocation here is necessary due to borrow checker constraints.
                 // We need owned tag data to pass &mut buf to helper functions simultaneously.
                 // Potential future optimization: restructure helpers to avoid this allocation.
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 let (attrs, has_attr_errors) = collect_attributes(e);
                 if has_attr_errors {
                     feed.bozo = true;
@@ -339,7 +339,7 @@ fn parse_channel(
                 );
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"channel" => {
+            Ok(Event::End(e)) if e.local_name().as_ref() == "channel" => {
                 break;
             }
             Ok(Event::Eof) => {
@@ -1016,12 +1016,16 @@ fn parse_itunes_category(
         loop {
             match ctx.xml.reader.read_event_into(ctx.xml.buf) {
                 Ok(Event::Start(sub_e))
-                    if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces) =>
+                    if is_itunes_tag(
+                        sub_e.name().as_ref().as_bytes(),
+                        b"category",
+                        &feed.namespaces,
+                    ) =>
                 {
                     nesting += 1;
                     if nesting == 1 {
                         for attr in sub_e.attributes().flatten() {
-                            if attr.key.as_ref() == b"text"
+                            if attr.key.as_ref() == "text"
                                 && let Ok(value) =
                                     attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             {
@@ -1037,11 +1041,14 @@ fn parse_itunes_category(
                     }
                 }
                 Ok(Event::Empty(sub_e))
-                    if is_itunes_tag(sub_e.name().as_ref(), b"category", &feed.namespaces)
-                        && subcategory_text.is_none() =>
+                    if is_itunes_tag(
+                        sub_e.name().as_ref().as_bytes(),
+                        b"category",
+                        &feed.namespaces,
+                    ) && subcategory_text.is_none() =>
                 {
                     for attr in sub_e.attributes().flatten() {
-                        if attr.key.as_ref() == b"text"
+                        if attr.key.as_ref() == "text"
                             && let Ok(value) =
                                 attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                         {
@@ -1056,7 +1063,11 @@ fn parse_itunes_category(
                     }
                 }
                 Ok(Event::End(end_e))
-                    if is_itunes_tag(end_e.name().as_ref(), b"category", &feed.namespaces) =>
+                    if is_itunes_tag(
+                        end_e.name().as_ref().as_bytes(),
+                        b"category",
+                        &feed.namespaces,
+                    ) =>
                 {
                     if nesting == 0 {
                         break;
@@ -1474,7 +1485,7 @@ fn parse_item(
                 // NOTE: Allocation here is necessary due to borrow checker constraints.
                 // We need owned tag data to pass &mut buf to helper functions simultaneously.
                 // Potential future optimization: restructure helpers to avoid this allocation.
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 let (attrs, attr_error) = collect_attributes(e);
                 if attr_error {
                     has_attr_errors = true;
@@ -1491,7 +1502,7 @@ fn parse_item(
                 )?;
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"item" => {
+            Ok(Event::End(e)) if e.local_name().as_ref() == "item" => {
                 break;
             }
             Ok(Event::Eof) => break,
@@ -2191,7 +2202,7 @@ fn parse_podcast_podroll(
     loop {
         match reader.read_event_into(buf) {
             Ok(Event::Start(e) | Event::Empty(e))
-                if e.name().as_ref().starts_with(b"podcast:remoteItem") =>
+                if e.name().as_ref().starts_with("podcast:remoteItem") =>
             {
                 let (item_attrs, _) = collect_attributes(&e);
                 let item = parse_remote_item_attrs(&item_attrs, limits);
@@ -2205,7 +2216,7 @@ fn parse_podcast_podroll(
                         .try_push_limited(item, limits.max_podcast_podroll);
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"podcast:podroll" => break,
+            Ok(Event::End(e)) if e.name().as_ref() == "podcast:podroll" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -2396,7 +2407,7 @@ fn parse_alternate_enclosure_children(
             Ok(Event::Start(e) | Event::Empty(e)) => {
                 let tag_name = e.name();
                 let tag_bytes = tag_name.as_ref();
-                if tag_bytes.starts_with(b"podcast:source") {
+                if tag_bytes.starts_with("podcast:source") {
                     let (src_attrs, _) = collect_attributes(&e);
                     let uri = find_attribute(&src_attrs, b"uri")
                         .map(|v| truncate_to_length(v, limits.max_attribute_length))
@@ -2412,7 +2423,7 @@ fn parse_alternate_enclosure_children(
                             limits.max_podcast_alternate_enclosure_sources,
                         );
                     }
-                } else if tag_bytes.starts_with(b"podcast:integrity") {
+                } else if tag_bytes.starts_with("podcast:integrity") {
                     let (int_attrs, is_empty_int) = collect_attributes(&e);
                     let int_type = find_attribute(&int_attrs, b"type")
                         .map(|v| truncate_to_length(v, limits.max_attribute_length))
@@ -2431,7 +2442,7 @@ fn parse_alternate_enclosure_children(
                     }
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"podcast:alternateEnclosure" => {
+            Ok(Event::End(e)) if e.name().as_ref() == "podcast:alternateEnclosure" => {
                 break;
             }
             Ok(Event::Eof) => break,
@@ -2898,7 +2909,7 @@ fn parse_media_group(ctx: &mut EntryCtx, entry: &mut Entry, depth: usize) -> Res
             Ok(Event::Start(e)) => {
                 inner_depth += 1;
                 check_depth(inner_depth, ctx.xml.limits.max_nesting_depth)?;
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 let (attrs, _) = collect_attributes(&e);
                 if let Some(media_element) = is_media_tag(&tag, ctx.namespaces) {
                     parse_item_media(ctx, media_element, &attrs, entry, inner_depth, false)?;
@@ -2908,7 +2919,7 @@ fn parse_media_group(ctx: &mut EntryCtx, entry: &mut Entry, depth: usize) -> Res
                 inner_depth = inner_depth.saturating_sub(1);
             }
             Ok(Event::Empty(e)) => {
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 let (attrs, _) = collect_attributes(&e);
                 if let Some(media_element) = is_media_tag(&tag, ctx.namespaces) {
                     parse_item_media(ctx, media_element, &attrs, entry, inner_depth, true)?;
@@ -2933,7 +2944,7 @@ fn parse_media_content_children(ctx: &mut EntryCtx, entry: &mut Entry, depth: us
             Ok(Event::Start(e)) => {
                 inner_depth += 1;
                 check_depth(inner_depth, ctx.xml.limits.max_nesting_depth)?;
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let (attrs, _) = collect_attributes(&e);
                     let url = find_attribute(&attrs, b"url")
@@ -2958,7 +2969,7 @@ fn parse_media_content_children(ctx: &mut EntryCtx, entry: &mut Entry, depth: us
                 inner_depth = inner_depth.saturating_sub(1);
             }
             Ok(Event::Empty(e)) => {
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let (attrs, _) = collect_attributes(&e);
                     let url = find_attribute(&attrs, b"url")
@@ -3008,7 +3019,7 @@ fn parse_text_input(
     loop {
         match reader.read_event_into(buf) {
             Ok(Event::Start(e)) => {
-                let tag = e.local_name().as_ref().to_vec();
+                let tag = e.local_name().as_ref().as_bytes().to_vec();
                 match tag.as_slice() {
                     b"title" => ti.title = Some(read_text_str(reader, buf, limits)?),
                     b"description" => ti.description = Some(read_text_str(reader, buf, limits)?),
@@ -3017,7 +3028,7 @@ fn parse_text_input(
                     _ => {}
                 }
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"textInput" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "textInput" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -3036,7 +3047,7 @@ fn parse_skip_hours(
 ) -> Result<()> {
     loop {
         match reader.read_event_into(buf) {
-            Ok(Event::Start(e)) if e.local_name().as_ref() == b"hour" => {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == "hour" => {
                 let text = read_text_str(reader, buf, limits)?;
                 if let Ok(h) = text.trim().parse::<u32>()
                     && h <= 23
@@ -3045,7 +3056,7 @@ fn parse_skip_hours(
                     hours.push(h);
                 }
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"skipHours" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "skipHours" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -3064,14 +3075,14 @@ fn parse_skip_days(
 ) -> Result<()> {
     loop {
         match reader.read_event_into(buf) {
-            Ok(Event::Start(e)) if e.local_name().as_ref() == b"day" => {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == "day" => {
                 let text = read_text_str(reader, buf, limits)?;
                 let day = text.trim().to_string();
                 if !day.is_empty() && !days.contains(&day) {
                     days.push(day);
                 }
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"skipDays" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "skipDays" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -3102,25 +3113,25 @@ fn parse_image(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"url" => url = read_text_str(reader, buf, limits)?,
-                    b"title" => title = Some(read_text_str(reader, buf, limits)?),
-                    b"link" => link = Some(read_text_str(reader, buf, limits)?),
-                    b"width" => {
+                    "url" => url = read_text_str(reader, buf, limits)?,
+                    "title" => title = Some(read_text_str(reader, buf, limits)?),
+                    "link" => link = Some(read_text_str(reader, buf, limits)?),
+                    "width" => {
                         if let Ok(w) = read_text_str(reader, buf, limits)?.parse() {
                             width = Some(w);
                         }
                     }
-                    b"height" => {
+                    "height" => {
                         if let Ok(h) = read_text_str(reader, buf, limits)?.parse() {
                             height = Some(h);
                         }
                     }
-                    b"description" => description = Some(read_text_str(reader, buf, limits)?),
+                    "description" => description = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"image" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "image" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -3192,9 +3203,9 @@ fn parse_itunes_owner(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 let tag_name = e.local_name();
-                if tag_name.as_ref() == b"name" {
+                if tag_name.as_ref() == "name" {
                     owner.name = Some(read_text_str(reader, buf, limits)?);
-                } else if tag_name.as_ref() == b"email" {
+                } else if tag_name.as_ref() == "email" {
                     owner.email = Some(read_text_str(reader, buf, limits)?);
                 } else {
                     skip_element(reader, buf, limits, *depth)?;
@@ -3296,14 +3307,14 @@ fn parse_podcast_value_time_split(
                 let next_depth = depth + 1;
                 check_depth(next_depth, ctx.limits.max_nesting_depth)?;
 
-                if child_tag.as_ref().starts_with(b"podcast:valueRecipient") {
+                if child_tag.as_ref().starts_with("podcast:valueRecipient") {
                     let (recipient_attrs, _) = collect_attributes(e);
                     recipients.try_push_limited(
                         parse_value_recipient_attrs(&recipient_attrs, ctx.limits),
                         ctx.limits.max_value_recipients,
                     );
                 } else if remote_item.is_none()
-                    && child_tag.as_ref().starts_with(b"podcast:remoteItem")
+                    && child_tag.as_ref().starts_with("podcast:remoteItem")
                 {
                     let (item_attrs, _) = collect_attributes(e);
                     remote_item = Some(parse_remote_item_attrs(&item_attrs, ctx.limits));
@@ -3311,7 +3322,7 @@ fn parse_podcast_value_time_split(
                     skip_element(ctx.reader, ctx.buf, ctx.limits, next_depth)?;
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"podcast:valueTimeSplit" => break,
+            Ok(Event::End(e)) if e.name().as_ref() == "podcast:valueTimeSplit" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -3367,7 +3378,7 @@ fn parse_podcast_value_content(
                 // NOTE: Allocation here is necessary due to borrow checker constraints
                 // (see parse_channel/parse_item for the same pattern) — we need owned
                 // tag/attribute data to call the sub-parsers with `reader`/`buf` free.
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 let (child_attrs, _) = collect_attributes(e);
 
                 let next_depth = depth + 1;
@@ -3389,7 +3400,7 @@ fn parse_podcast_value_content(
                     skip_element(ctx.reader, ctx.buf, ctx.limits, next_depth)?;
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"podcast:value" => break,
+            Ok(Event::End(e)) if e.name().as_ref() == "podcast:value" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}

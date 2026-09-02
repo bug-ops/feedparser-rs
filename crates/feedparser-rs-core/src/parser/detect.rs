@@ -115,21 +115,21 @@ fn detect_xml_format(data: &[u8]) -> FeedVersion {
                 let name = e.local_name();
 
                 match name.as_ref() {
-                    b"rss" => {
+                    "rss" => {
                         // Check version attribute
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"version" {
+                            if attr.key.as_ref() == "version" {
                                 return match attr.value.as_ref() {
-                                    b"0.90" => FeedVersion::Rss090,
-                                    b"0.91" => {
+                                    "0.90" => FeedVersion::Rss090,
+                                    "0.91" => {
                                         if has_netscape_doctype {
                                             FeedVersion::Rss091Netscape
                                         } else {
                                             FeedVersion::Rss091Userland
                                         }
                                     }
-                                    b"0.92" => FeedVersion::Rss092,
-                                    b"2.0" => FeedVersion::Rss20,
+                                    "0.92" => FeedVersion::Rss092,
+                                    "2.0" => FeedVersion::Rss20,
                                     _ => FeedVersion::Unknown,
                                 };
                             }
@@ -137,18 +137,18 @@ fn detect_xml_format(data: &[u8]) -> FeedVersion {
                         // No version attribute, assume 2.0
                         return FeedVersion::Rss20;
                     }
-                    b"rdf:RDF" | b"RDF" => {
+                    "rdf:RDF" | "RDF" => {
                         // RSS 1.0 uses RDF
                         return FeedVersion::Rss10;
                     }
-                    b"feed" => {
+                    "feed" => {
                         // Atom - check xmlns attribute
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"xmlns" {
+                            if attr.key.as_ref() == "xmlns" {
                                 let ns = attr.value.as_ref();
-                                if ns == b"http://www.w3.org/2005/Atom" {
+                                if ns == "http://www.w3.org/2005/Atom" {
                                     return FeedVersion::Atom10;
-                                } else if ns == b"http://purl.org/atom/ns#" {
+                                } else if ns == "http://purl.org/atom/ns#" {
                                     return FeedVersion::Atom03;
                                 }
                             }

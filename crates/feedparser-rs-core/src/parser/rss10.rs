@@ -168,21 +168,21 @@ fn dispatch_rdf_element(
     let name = element.local_name();
     let full_name = element.name();
 
-    if name.as_ref() == b"RDF" || full_name.as_ref() == b"rdf:RDF" {
+    if name.as_ref() == "RDF" || full_name.as_ref() == "rdf:RDF" {
         handle_rdf_root(ctx, element, feed);
-    } else if name.as_ref() == b"channel" {
+    } else if name.as_ref() == "channel" {
         handle_rdf_channel(ctx, element, feed, depth);
         *depth = depth.saturating_sub(1);
-    } else if name.as_ref() == b"item" {
+    } else if name.as_ref() == "item" {
         parse_rdf_item(ctx, element, is_empty, feed, depth)?;
-    } else if name.as_ref() == b"image" {
+    } else if name.as_ref() == "image" {
         if !is_empty
             && let Ok(image) = parse_image(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth)
         {
             feed.feed.image = Some(image);
         }
         *depth = depth.saturating_sub(1);
-    } else if name.as_ref() == b"textinput" || name.as_ref() == b"textInput" {
+    } else if name.as_ref() == "textinput" || name.as_ref() == "textInput" {
         // Skip textinput element (rarely used); self-closing refs need no skip
         if !is_empty {
             skip_element(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, *depth)?;
@@ -223,7 +223,7 @@ fn handle_rdf_channel(
     depth: &mut usize,
 ) {
     for attr in element.attributes().flatten() {
-        if (attr.key.as_ref() == b"rdf:about" || attr.key.local_name().as_ref() == b"about")
+        if (attr.key.as_ref() == "rdf:about" || attr.key.local_name().as_ref() == "about")
             && let Ok(value) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
         {
             feed.feed.id = Some(value.as_ref().into());
@@ -265,7 +265,7 @@ fn parse_rdf_item(
 
     // Extract rdf:about as item ID first (before releasing borrow on buf)
     let item_id = element.attributes().flatten().find_map(|attr| {
-        if attr.key.as_ref() == b"rdf:about" || attr.key.local_name().as_ref() == b"about" {
+        if attr.key.as_ref() == "rdf:about" || attr.key.local_name().as_ref() == "about" {
             attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                 .ok()
                 .map(|v| v.to_string())
@@ -347,7 +347,7 @@ fn parse_channel(
                 let full_name = e.name();
 
                 match name.as_ref() {
-                    b"title" if !is_empty => {
+                    "title" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.title = Some(text.clone());
                         // RSS 1.0 has no per-element type attribute; treated as
@@ -359,12 +359,12 @@ fn parse_channel(
                             base: None,
                         });
                     }
-                    b"link" if !is_empty => {
+                    "link" if !is_empty => {
                         let link_text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed
                             .set_alternate_link(link_text, limits.max_links_per_feed);
                     }
-                    b"description" if !is_empty => {
+                    "description" if !is_empty => {
                         let text = read_text_str(reader, &mut buf, limits)?;
                         feed.feed.subtitle = Some(text.clone());
                         feed.feed.subtitle_detail = Some(TextConstruct {
@@ -374,14 +374,14 @@ fn parse_channel(
                             base: None,
                         });
                     }
-                    b"items" => {
+                    "items" => {
                         // RSS 1.0 has an <items> element containing rdf:Seq with rdf:li references
                         // We skip this as items are parsed at the RDF root level
                         if !is_empty {
                             skip_element(reader, &mut buf, limits, *depth)?;
                         }
                     }
-                    b"image" | b"textinput" | b"textInput" => {
+                    "image" | "textinput" | "textInput" => {
                         // Self-closing refs (e.g. <image rdf:resource="..."/>) need no skip
                         if !is_empty {
                             skip_element(reader, &mut buf, limits, *depth)?;
@@ -392,7 +392,7 @@ fn parse_channel(
                             // NOTE: Allocation here is necessary due to borrow checker
                             // constraints — full_name borrows from buf, which the
                             // namespace dispatcher also needs mutably.
-                            let full_name_owned = full_name.as_ref().to_vec();
+                            let full_name_owned = full_name.as_ref().as_bytes().to_vec();
                             parse_rss10_channel_namespace(
                                 &mut XmlCtx {
                                     reader: &mut *reader,
@@ -409,7 +409,7 @@ fn parse_channel(
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"channel" => {
+            Ok(Event::End(e)) if e.local_name().as_ref() == "channel" => {
                 break;
             }
             Ok(Event::Eof) => break,
@@ -518,15 +518,15 @@ fn parse_item(
                 // parse_rss10_item_standard — a tag routed there that the handler
                 // doesn't also match falls through its silent `_ => {}` and consumes
                 // no events, desyncing the event stream.
-                match name.as_ref() {
+                match name.as_ref().as_bytes() {
                     b"title" | b"link" | b"description" if !is_empty => {
-                        parse_rss10_item_standard(&mut ctx, name.as_ref(), &mut entry)?;
+                        parse_rss10_item_standard(&mut ctx, name.as_ref().as_bytes(), &mut entry)?;
                     }
                     _ => {
                         parse_rss10_item_namespace(
                             &mut ctx,
                             &element,
-                            full_name.as_ref(),
+                            full_name.as_ref().as_bytes(),
                             &mut entry,
                             *depth,
                             is_empty,
@@ -535,7 +535,7 @@ fn parse_item(
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"item" => {
+            Ok(Event::End(e)) if e.local_name().as_ref() == "item" => {
                 break;
             }
             Ok(Event::Eof) => break,
@@ -742,15 +742,15 @@ fn parse_image(
 
                 if !is_empty {
                     match e.local_name().as_ref() {
-                        b"url" => url = read_text_str(reader, buf, limits)?,
-                        b"title" => title = Some(read_text_str(reader, buf, limits)?),
-                        b"link" => link = Some(read_text_str(reader, buf, limits)?),
+                        "url" => url = read_text_str(reader, buf, limits)?,
+                        "title" => title = Some(read_text_str(reader, buf, limits)?),
+                        "link" => link = Some(read_text_str(reader, buf, limits)?),
                         _ => skip_element(reader, buf, limits, *depth)?,
                     }
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"image" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "image" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}

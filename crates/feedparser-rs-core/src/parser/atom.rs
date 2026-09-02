@@ -22,9 +22,9 @@ use quick_xml::{
 };
 
 use super::common::{
-    EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, bytes_to_string, check_depth,
-    extract_namespaces, extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag,
-    is_geo_tag, is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
+    EVENT_BUFFER_CAPACITY, FromAttributes, LimitedCollectionExt, check_depth, extract_namespaces,
+    extract_xml_base, extract_xml_lang, init_feed, is_content_tag, is_dc_tag, is_geo_tag,
+    is_georss_tag, is_itunes_tag, is_media_tag, is_slash_tag, is_thr_tag, is_wfw_tag,
     itunes_entry_meta, itunes_feed_meta, parse_georss_where, read_text, read_text_str,
     read_xhtml_content_str, skip_element, skip_to_end, skip_to_end_qualified,
     text_construct_from_content,
@@ -108,7 +108,7 @@ pub fn parse_atom10_with_options(
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.local_name().as_ref() == b"feed" => {
+            Ok(Event::Start(e)) if e.local_name().as_ref() == "feed" => {
                 if let Some(xml_base) = extract_xml_base(&e, limits.max_attribute_length) {
                     base_ctx.update_base(&xml_base);
                 }
@@ -328,7 +328,7 @@ fn parse_feed_element(
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"feed" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "feed" => break,
             Ok(Event::Eof) => {
                 feed.bozo = true;
                 feed.bozo_exception =
@@ -369,7 +369,7 @@ fn dispatch_feed_tag(
     // handler (parse_feed_core_text, parse_feed_link_or_category, parse_feed_person)
     // — a tag routed here that the handler doesn't also match falls through the
     // handler's silent `_ => {}` and consumes no events, desyncing the event stream.
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         tag @ (b"title" | b"subtitle" | b"tagline" | b"id" | b"updated" | b"modified"
         | b"published" | b"issued" | b"rights" | b"copyright" | b"generator" | b"icon"
         | b"logo")
@@ -447,7 +447,7 @@ fn parse_feed_core_text(
     feed: &mut ParsedFeed,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_feed_element
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         b"title" => {
             let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             feed.feed.set_title(text);
@@ -503,7 +503,7 @@ fn parse_feed_link_or_category(
     is_empty: bool,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_feed_element
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         b"link" => {
             if let Some(mut link) = Link::from_attributes(
                 element.attributes().flatten(),
@@ -555,7 +555,7 @@ fn parse_feed_person(
     depth: &mut usize,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_feed_element
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         b"author" => {
             if let Ok(person) = parse_person(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
                 if feed.feed.author.is_none() {
@@ -751,7 +751,7 @@ fn parse_feed_media(
                 let scheme = element
                     .attributes()
                     .flatten()
-                    .find(|a| a.key.as_ref() == b"scheme")
+                    .find(|a| a.key.as_ref() == "scheme")
                     .and_then(|a| {
                         a.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                             .ok()
@@ -988,7 +988,7 @@ fn parse_entry(
                 // parse_entry_person) — a tag routed here that the handler doesn't also
                 // match falls through the handler's silent `_ => {}` and consumes no
                 // events, desyncing the event stream.
-                match element.name().as_ref() {
+                match element.name().as_ref().as_bytes() {
                     b"title" | b"id" | b"updated" | b"modified" | b"published" | b"issued"
                     | b"created" | b"subtitle" | b"tagline" | b"rights" | b"copyright"
                     | b"summary"
@@ -1020,7 +1020,7 @@ fn parse_entry(
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"entry" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "entry" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -1069,7 +1069,7 @@ fn parse_entry_core_text(
     entry: &mut Entry,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_entry
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         b"title" => {
             let text = parse_text_construct(&mut ctx.xml, element, ctx.lang, ctx.base)?;
             entry.set_title(text);
@@ -1141,7 +1141,7 @@ fn parse_entry_link_or_category(
     is_empty: bool,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_entry
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         b"link" => {
             if let Some(mut link) = Link::from_attributes(
                 element.attributes().flatten(),
@@ -1200,7 +1200,7 @@ fn parse_entry_person(
     depth: &mut usize,
 ) -> Result<()> {
     // keep tag list in sync with the dispatcher arm in parse_entry
-    match element.name().as_ref() {
+    match element.name().as_ref().as_bytes() {
         b"author" => {
             if let Ok(person) = parse_person(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits, depth) {
                 if entry.author.is_none() {
@@ -1623,8 +1623,8 @@ fn attr_raw(element: &BytesStart<'_>, key: &[u8]) -> Option<String> {
     element
         .attributes()
         .flatten()
-        .find(|a| a.key.as_ref() == key)
-        .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned))
+        .find(|a| a.key.as_ref().as_bytes() == key)
+        .map(|a| a.value.to_string())
 }
 
 /// Read an attribute value with entity normalization and truncation to `max` bytes.
@@ -1634,7 +1634,7 @@ fn attr_normalized(element: &BytesStart<'_>, key: &[u8], max: usize) -> Option<S
     element
         .attributes()
         .flatten()
-        .find(|a| a.key.as_ref() == key)
+        .find(|a| a.key.as_ref().as_bytes() == key)
         .and_then(|a| a.normalized_value(quick_xml::XmlVersion::Implicit1_0).ok())
         .map(|v| truncate_to_length(&v, max))
 }
@@ -1689,15 +1689,15 @@ fn parse_text_construct(
             continue;
         }
         match attr.key.as_ref() {
-            b"type" => content_type = TextType::from_type_attr(&bytes_to_string(&attr.value)),
-            b"xml:base" | b"base" => {
+            "type" => content_type = TextType::from_type_attr(attr.value.as_ref()),
+            "xml:base" | "base" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
                     elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
-            b"xml:lang" | b"lang" => {
+            "xml:lang" | "lang" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     elem_lang = Some(v.to_string());
                 }
@@ -1744,16 +1744,16 @@ fn parse_person(
                 check_depth(*depth, limits.max_nesting_depth)?;
 
                 match e.local_name().as_ref() {
-                    b"name" => name = Some(read_text_str(reader, buf, limits)?.into()),
-                    b"email" => email = Some(read_text_str(reader, buf, limits)?.into()),
-                    b"uri" => uri = Some(read_text_str(reader, buf, limits)?),
+                    "name" => name = Some(read_text_str(reader, buf, limits)?.into()),
+                    "email" => email = Some(read_text_str(reader, buf, limits)?.into()),
+                    "uri" => uri = Some(read_text_str(reader, buf, limits)?),
                     _ => skip_element(reader, buf, limits, *depth)?,
                 }
                 *depth = depth.saturating_sub(1);
             }
             Ok(Event::End(e))
-                if e.local_name().as_ref() == b"author"
-                    || e.local_name().as_ref() == b"contributor" =>
+                if e.local_name().as_ref() == "author"
+                    || e.local_name().as_ref() == "contributor" =>
             {
                 break;
             }
@@ -1787,8 +1787,8 @@ fn parse_generator(
             continue;
         }
         match attr.key.as_ref() {
-            b"uri" => uri = Some(bytes_to_string(&attr.value)),
-            b"version" => version = Some(bytes_to_string(&attr.value).into()),
+            "uri" => uri = Some(attr.value.to_string()),
+            "version" => version = Some(attr.value.to_string().into()),
             _ => {}
         }
     }
@@ -1816,20 +1816,20 @@ fn parse_content(ctx: &mut EntryCtx, e: &quick_xml::events::BytesStart) -> Resul
             continue;
         }
         match attr.key.as_ref() {
-            b"type" => {
-                let normalized = normalize_atom_content_type(&bytes_to_string(&attr.value));
+            "type" => {
+                let normalized = normalize_atom_content_type(attr.value.as_ref());
                 is_xhtml = normalized == "application/xhtml+xml";
                 content_type = Some(normalized.into());
             }
-            b"src" => src = Some(bytes_to_string(&attr.value)),
-            b"xml:base" | b"base" => {
+            "src" => src = Some(attr.value.to_string()),
+            "xml:base" | "base" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
                     elem_base = ctx.base.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
-            b"xml:lang" | b"lang" => {
+            "xml:lang" | "lang" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     elem_lang = Some(v.to_string());
                 }
@@ -1905,17 +1905,17 @@ fn parse_atom_media_group(ctx: &mut EntryCtx, entry: &mut Entry, depth: &mut usi
         ctx.xml.buf.clear();
         match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(Event::Empty(e)) => {
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 handle_atom_media_group_child(&tag, &e, entry, ctx.xml.limits, ctx.namespaces);
             }
             Ok(Event::Start(e)) => {
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 if is_media_tag(&tag, ctx.namespaces) == Some("title") {
                     let type_attr = e
                         .attributes()
                         .flatten()
-                        .find(|a| a.key.as_ref() == b"type")
-                        .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned));
+                        .find(|a| a.key.as_ref() == "type")
+                        .map(|a| a.value.to_string());
                     let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                     ctx.bozo |= had_bozo;
                     let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
@@ -1929,8 +1929,8 @@ fn parse_atom_media_group(ctx: &mut EntryCtx, entry: &mut Entry, depth: &mut usi
                     let type_attr = e
                         .attributes()
                         .flatten()
-                        .find(|a| a.key.as_ref() == b"type")
-                        .and_then(|a| std::str::from_utf8(&a.value).ok().map(str::to_owned));
+                        .find(|a| a.key.as_ref() == "type")
+                        .map(|a| a.value.to_string());
                     let (text, had_bozo) = read_text(ctx.xml.reader, ctx.xml.buf, ctx.xml.limits)?;
                     ctx.bozo |= had_bozo;
                     let is_plain = type_attr.as_deref().is_none_or(|t| t == "plain");
@@ -1971,7 +1971,7 @@ fn parse_atom_media_content_children(
         ctx.xml.buf.clear();
         match ctx.xml.reader.read_event_into(ctx.xml.buf) {
             Ok(Event::Empty(e)) => {
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let thumbnail = MediaThumbnail::from_attributes(
                         e.attributes().flatten(),
@@ -1985,7 +1985,7 @@ fn parse_atom_media_content_children(
                 }
             }
             Ok(Event::Start(e)) => {
-                let tag = e.name().as_ref().to_vec();
+                let tag = e.name().as_ref().as_bytes().to_vec();
                 if is_media_tag(&tag, ctx.namespaces) == Some("thumbnail") {
                     let thumbnail = MediaThumbnail::from_attributes(
                         e.attributes().flatten(),
@@ -2066,19 +2066,18 @@ fn parse_content_empty(
             continue;
         }
         match attr.key.as_ref() {
-            b"type" => {
-                content_type =
-                    Some(normalize_atom_content_type(&bytes_to_string(&attr.value)).into());
+            "type" => {
+                content_type = Some(normalize_atom_content_type(attr.value.as_ref()).into());
             }
-            b"src" => src = Some(bytes_to_string(&attr.value)),
-            b"xml:base" | b"base" => {
+            "src" => src = Some(attr.value.to_string()),
+            "xml:base" | "base" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
                     && !v.is_empty()
                 {
                     elem_base = base_ctx.child_with_base(&v).base().map(ToString::to_string);
                 }
             }
-            b"xml:lang" | b"lang" => {
+            "xml:lang" | "lang" => {
                 if let Ok(v) = attr.normalized_value(quick_xml::XmlVersion::Implicit1_0) {
                     elem_lang = Some(v.to_string());
                 }
@@ -2204,7 +2203,7 @@ fn parse_atom_source(
 
                 let element = e.to_owned();
                 // Use name() instead of local_name() to preserve namespace prefixes
-                match element.name().as_ref() {
+                match element.name().as_ref().as_bytes() {
                     b"title" if !is_empty => {
                         fields.title = Some(read_text_str(reader, buf, limits)?);
                     }
@@ -2233,7 +2232,7 @@ fn parse_atom_source(
                 }
                 *depth = depth.saturating_sub(1);
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"source" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "source" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -2250,8 +2249,8 @@ fn extract_href_attr(
     limits: &ParserLimits,
 ) -> Option<String> {
     for attr in element.attributes().flatten() {
-        if attr.key.as_ref() == b"href" && attr.value.len() <= limits.max_attribute_length {
-            return String::from_utf8(attr.value.into_owned()).ok();
+        if attr.key.as_ref() == "href" && attr.value.len() <= limits.max_attribute_length {
+            return Some(attr.value.into_owned());
         }
     }
     None
@@ -2272,9 +2271,9 @@ fn parse_atom_itunes_owner(
                 *depth += 1;
                 check_depth(*depth, limits.max_nesting_depth)?;
                 let tag_name = e.local_name();
-                if tag_name.as_ref() == b"name" {
+                if tag_name.as_ref() == "name" {
                     owner.name = Some(read_text_str(reader, buf, limits)?);
-                } else if tag_name.as_ref() == b"email" {
+                } else if tag_name.as_ref() == "email" {
                     owner.email = Some(read_text_str(reader, buf, limits)?);
                 } else {
                     skip_element(reader, buf, limits, *depth)?;
@@ -2299,8 +2298,8 @@ fn parse_atom_itunes_category(
     let text = element
         .attributes()
         .flatten()
-        .find(|a| a.key.as_ref() == b"text")
-        .and_then(|a| String::from_utf8(a.value.into_owned()).ok())
+        .find(|a| a.key.as_ref() == "text")
+        .map(|a| a.value.into_owned())
         .unwrap_or_default();
 
     if text.is_empty() {
@@ -2317,22 +2316,30 @@ fn parse_atom_itunes_category(
             ctx.xml.buf.clear();
             match ctx.xml.reader.read_event_into(ctx.xml.buf) {
                 Ok(Event::Empty(e))
-                    if is_itunes_tag(e.name().as_ref(), b"category", &feed.namespaces) =>
+                    if is_itunes_tag(
+                        e.name().as_ref().as_bytes(),
+                        b"category",
+                        &feed.namespaces,
+                    ) =>
                 {
                     subcategory = e
                         .attributes()
                         .flatten()
-                        .find(|a| a.key.as_ref() == b"text")
-                        .and_then(|a| String::from_utf8(a.value.into_owned()).ok());
+                        .find(|a| a.key.as_ref() == "text")
+                        .map(|a| a.value.into_owned());
                 }
                 Ok(Event::Start(e))
-                    if is_itunes_tag(e.name().as_ref(), b"category", &feed.namespaces) =>
+                    if is_itunes_tag(
+                        e.name().as_ref().as_bytes(),
+                        b"category",
+                        &feed.namespaces,
+                    ) =>
                 {
                     subcategory = e
                         .attributes()
                         .flatten()
-                        .find(|a| a.key.as_ref() == b"text")
-                        .and_then(|a| String::from_utf8(a.value.into_owned()).ok());
+                        .find(|a| a.key.as_ref() == "text")
+                        .map(|a| a.value.into_owned());
                     skip_to_end(ctx.xml.reader, ctx.xml.buf, b"category")?;
                 }
                 Ok(Event::End(_) | Event::Eof) => break,
