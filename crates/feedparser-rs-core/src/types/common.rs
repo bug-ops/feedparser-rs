@@ -1,5 +1,5 @@
 use super::generics::{FromAttributes, ParseFrom};
-use crate::util::{date::parse_date, text::bytes_to_string};
+use crate::util::date::parse_date;
 use chrono::{DateTime, Utc};
 use compact_str::CompactString;
 use serde_json::Value;
@@ -922,17 +922,17 @@ impl FromAttributes for Link {
                 continue;
             }
             match attr.key.as_ref() {
-                b"href" => href = Some(bytes_to_string(&attr.value)),
-                b"rel" => rel = Some(bytes_to_string(&attr.value)),
-                b"type" => link_type = Some(bytes_to_string(&attr.value)),
-                b"title" => title = Some(bytes_to_string(&attr.value)),
-                b"hreflang" => hreflang = Some(bytes_to_string(&attr.value)),
-                b"length" => length = Some(bytes_to_string(&attr.value)),
-                b"thr:count" => {
-                    thr_count = bytes_to_string(&attr.value).trim().parse::<u32>().ok();
+                "href" => href = Some(attr.value.to_string()),
+                "rel" => rel = Some(attr.value.to_string()),
+                "type" => link_type = Some(attr.value.to_string()),
+                "title" => title = Some(attr.value.to_string()),
+                "hreflang" => hreflang = Some(attr.value.to_string()),
+                "length" => length = Some(attr.value.to_string()),
+                "thr:count" => {
+                    thr_count = attr.value.to_string().trim().parse::<u32>().ok();
                 }
-                b"thr:updated" => {
-                    thr_updated = parse_date(bytes_to_string(&attr.value).trim());
+                "thr:updated" => {
+                    thr_updated = parse_date(attr.value.to_string().trim());
                 }
                 _ => {}
             }
@@ -976,9 +976,9 @@ impl FromAttributes for Tag {
             }
 
             match attr.key.as_ref() {
-                b"term" => term = Some(bytes_to_string(&attr.value)),
-                b"scheme" | b"domain" => scheme = Some(bytes_to_string(&attr.value)),
-                b"label" => label = Some(bytes_to_string(&attr.value)),
+                "term" => term = Some(attr.value.to_string()),
+                "scheme" | "domain" => scheme = Some(attr.value.to_string()),
+                "label" => label = Some(attr.value.to_string()),
                 _ => {}
             }
         }
@@ -1006,9 +1006,9 @@ impl FromAttributes for Enclosure {
             }
 
             match attr.key.as_ref() {
-                b"url" => url = Some(bytes_to_string(&attr.value)),
-                b"length" => length = Some(bytes_to_string(&attr.value)),
-                b"type" => enclosure_type = Some(bytes_to_string(&attr.value)),
+                "url" => url = Some(attr.value.to_string()),
+                "length" => length = Some(attr.value.to_string()),
+                "type" => enclosure_type = Some(attr.value.to_string()),
                 _ => {}
             }
         }
@@ -1040,10 +1040,10 @@ impl FromAttributes for MediaThumbnail {
             }
 
             match attr.key.as_ref() {
-                b"url" => url = Some(bytes_to_string(&attr.value)),
-                b"width" => width = Some(bytes_to_string(&attr.value)),
-                b"height" => height = Some(bytes_to_string(&attr.value)),
-                b"time" => time = Some(bytes_to_string(&attr.value)),
+                "url" => url = Some(attr.value.to_string()),
+                "width" => width = Some(attr.value.to_string()),
+                "height" => height = Some(attr.value.to_string()),
+                "time" => time = Some(attr.value.to_string()),
                 _ => {}
             }
         }
@@ -1084,21 +1084,21 @@ impl FromAttributes for MediaContent {
             }
 
             match attr.key.as_ref() {
-                b"url" => url = Some(bytes_to_string(&attr.value)),
-                b"type" => content_type = Some(bytes_to_string(&attr.value)),
-                b"medium" => medium = Some(bytes_to_string(&attr.value)),
-                b"fileSize" => filesize = Some(bytes_to_string(&attr.value)),
-                b"width" => width = Some(bytes_to_string(&attr.value)),
-                b"height" => height = Some(bytes_to_string(&attr.value)),
-                b"duration" => duration = Some(bytes_to_string(&attr.value)),
-                b"bitrate" => bitrate = Some(bytes_to_string(&attr.value)),
-                b"lang" => lang = Some(bytes_to_string(&attr.value)),
-                b"channels" => channels = Some(bytes_to_string(&attr.value)),
-                b"codec" => codec = Some(bytes_to_string(&attr.value)),
-                b"expression" => expression = Some(bytes_to_string(&attr.value)),
-                b"isDefault" => isdefault = Some(bytes_to_string(&attr.value)),
-                b"samplingrate" => samplingrate = Some(bytes_to_string(&attr.value)),
-                b"framerate" => framerate = Some(bytes_to_string(&attr.value)),
+                "url" => url = Some(attr.value.to_string()),
+                "type" => content_type = Some(attr.value.to_string()),
+                "medium" => medium = Some(attr.value.to_string()),
+                "fileSize" => filesize = Some(attr.value.to_string()),
+                "width" => width = Some(attr.value.to_string()),
+                "height" => height = Some(attr.value.to_string()),
+                "duration" => duration = Some(attr.value.to_string()),
+                "bitrate" => bitrate = Some(attr.value.to_string()),
+                "lang" => lang = Some(attr.value.to_string()),
+                "channels" => channels = Some(attr.value.to_string()),
+                "codec" => codec = Some(attr.value.to_string()),
+                "expression" => expression = Some(attr.value.to_string()),
+                "isDefault" => isdefault = Some(attr.value.to_string()),
+                "samplingrate" => samplingrate = Some(attr.value.to_string()),
+                "framerate" => framerate = Some(attr.value.to_string()),
                 _ => {}
             }
         }

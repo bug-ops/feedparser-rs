@@ -69,10 +69,10 @@ pub fn parse_in_reply_to_from_attrs<'a>(
             continue;
         };
         match attr.key.as_ref() {
-            b"ref" => ref_ = non_empty(&value).map(|s| s.to_string().into()),
-            b"href" => href = non_empty(&value).map(|s| s.to_string().into()),
-            b"type" => type_ = non_empty(&value).map(|s| s.to_string().into()),
-            b"source" => source = non_empty(&value).map(|s| s.to_string().into()),
+            "ref" => ref_ = non_empty(&value).map(|s| s.to_string().into()),
+            "href" => href = non_empty(&value).map(|s| s.to_string().into()),
+            "type" => type_ = non_empty(&value).map(|s| s.to_string().into()),
+            "source" => source = non_empty(&value).map(|s| s.to_string().into()),
             _ => {}
         }
     }

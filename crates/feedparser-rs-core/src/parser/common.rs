@@ -23,7 +23,6 @@ use quick_xml::{
 use std::{collections::HashMap, io::Write as _};
 
 pub use crate::types::{FromAttributes, LimitedCollectionExt};
-pub use crate::util::text::bytes_to_string;
 
 /// Initial capacity for XML event buffer (fits most elements)
 pub const EVENT_BUFFER_CAPACITY: usize = 1024;
@@ -412,7 +411,7 @@ pub fn extract_xml_base(
         .flatten()
         .find(|attr| {
             let key = attr.key.as_ref();
-            key == b"xml:base" || key == b"base"
+            key == "xml:base" || key == "base"
         })
         .filter(|attr| attr.value.len() <= max_attr_length)
         .and_then(|attr| {
@@ -456,7 +455,7 @@ pub fn extract_xml_lang(
         .flatten()
         .find(|attr| {
             let key = attr.key.as_ref();
-            key == b"xml:lang" || key == b"lang"
+            key == "xml:lang" || key == "lang"
         })
         .filter(|attr| attr.value.len() <= max_attr_length)
         .and_then(|attr| {
@@ -494,16 +493,10 @@ pub fn extract_namespaces(
         let key = attr.key.as_ref();
 
         // Determine namespace prefix: "" for xmlns, "prefix" for xmlns:prefix
-        let prefix = if key == b"xmlns" {
+        let prefix = if key == "xmlns" {
             String::new()
-        } else if let Some(suffix) = key.strip_prefix(b"xmlns:") {
-            if let Ok(s) = std::str::from_utf8(suffix) {
-                s.to_string()
-            } else {
-                feed.bozo = true;
-                feed.bozo_exception = Some("Namespace prefix contains invalid UTF-8".to_string());
-                continue;
-            }
+        } else if let Some(suffix) = key.strip_prefix("xmlns:") {
+            suffix.to_string()
         } else {
             continue;
         };
@@ -563,7 +556,7 @@ pub fn read_text(
             Ok(Event::GeneralRef(e)) => {
                 let (resolved, is_bozo) = resolve_entity(&e);
                 had_bozo |= is_bozo;
-                append_bytes(&mut text, resolved.as_bytes(), limits.max_text_length)?;
+                append_bytes(&mut text, &resolved, limits.max_text_length)?;
             }
             Ok(Event::End(_) | Event::Eof) => break,
             Err(e) => return Err(e.into()),
@@ -585,36 +578,32 @@ fn resolve_entity(e: &BytesRef<'_>) -> (String, bool) {
         Ok(None) => {} // Not a numeric reference; fall through to named entities.
         Err(_) => {
             // Invalid character reference — preserve as-is (bozo condition).
-            let name = String::from_utf8_lossy(e.as_ref());
+            let name = e.as_ref();
             return (format!("&{name};"), true);
         }
     }
     // These are the only 5 allowed XML named entities
     match e.as_ref() {
-        b"amp" => ("&".to_string(), false),
-        b"lt" => ("<".to_string(), false),
-        b"gt" => (">".to_string(), false),
-        b"quot" => ("\"".to_string(), false),
-        b"apos" => ("'".to_string(), false),
+        "amp" => ("&".to_string(), false),
+        "lt" => ("<".to_string(), false),
+        "gt" => (">".to_string(), false),
+        "quot" => ("\"".to_string(), false),
+        "apos" => ("'".to_string(), false),
         other => {
             // Unknown entity — preserve as-is (bozo condition).
-            let name = String::from_utf8_lossy(other).into_owned();
-            (format!("&{name};"), true)
+            (format!("&{other};"), true)
         }
     }
 }
 
 #[inline]
-fn append_bytes(text: &mut String, bytes: &[u8], max_len: usize) -> Result<()> {
-    if text.len() + bytes.len() > max_len {
+fn append_bytes(text: &mut String, s: &str, max_len: usize) -> Result<()> {
+    if text.len() + s.len() > max_len {
         return Err(FeedError::InvalidFormat(format!(
             "Text field exceeds maximum length of {max_len} bytes"
         )));
     }
-    match std::str::from_utf8(bytes) {
-        Ok(s) => text.push_str(s),
-        Err(_) => text.push_str(&String::from_utf8_lossy(bytes)),
-    }
+    text.push_str(s);
     Ok(())
 }
 
@@ -752,7 +741,7 @@ pub fn parse_georss_where(
                     skip_element(reader, buf, limits, next_depth)?;
                 }
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == b"where" => break,
+            Ok(Event::End(e)) if e.local_name().as_ref() == "where" => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -776,7 +765,7 @@ fn gml_geometry_start(
     limits: &ParserLimits,
 ) -> Option<(GeoType, Vec<u8>, Option<String>, usize)> {
     let name = start.name();
-    let local = is_gml_tag(name.as_ref())?;
+    let local = is_gml_tag(name.as_ref().as_bytes())?;
     let geo_type = match local {
         "Point" => GeoType::Point,
         "LineString" => GeoType::Line,
@@ -785,7 +774,7 @@ fn gml_geometry_start(
         _ => return None,
     };
 
-    let srs_name = gml_attr(start, b"srsName", limits.max_attribute_length)
+    let srs_name = gml_attr(start, "srsName", limits.max_attribute_length)
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
     let dims = gml_srs_dimension(start, limits, 2);
@@ -794,7 +783,7 @@ fn gml_geometry_start(
 }
 
 /// Read an attribute's normalized value by case-insensitive key match.
-fn gml_attr(start: &BytesStart<'_>, key: &[u8], max_len: usize) -> Option<String> {
+fn gml_attr(start: &BytesStart<'_>, key: &str, max_len: usize) -> Option<String> {
     start
         .attributes()
         .flatten()
@@ -812,7 +801,7 @@ fn gml_attr(start: &BytesStart<'_>, key: &[u8], max_len: usize) -> Option<String
 /// rejected, corrupting coordinates that `srsDimension` was never meant to
 /// affect.
 fn gml_srs_dimension(start: &BytesStart<'_>, limits: &ParserLimits, inherited: usize) -> usize {
-    gml_attr(start, b"srsDimension", limits.max_attribute_length)
+    gml_attr(start, "srsDimension", limits.max_attribute_length)
         .and_then(|v| v.trim().parse::<usize>().ok())
         .filter(|d| (2..=3).contains(d))
         .unwrap_or(inherited)
@@ -857,7 +846,7 @@ fn find_gml_coord_text(
             Ok(Event::Start(e)) => {
                 let next_depth = depth + 1;
                 check_depth(next_depth, limits.max_nesting_depth)?;
-                let local = is_gml_tag(e.name().as_ref()).map(str::to_owned);
+                let local = is_gml_tag(e.name().as_ref().as_bytes()).map(str::to_owned);
                 // srsDimension is legal on any GML element (e.g. LinearRing,
                 // Polygon under surfaceMember), not just pos/posList.
                 let elem_dims = gml_srs_dimension(&e, limits, dims);
@@ -891,7 +880,7 @@ fn find_gml_coord_text(
                     skip_element(reader, buf, limits, next_depth)?;
                 }
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == end_tag => break,
+            Ok(Event::End(e)) if e.local_name().as_ref().as_bytes() == end_tag => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -938,7 +927,7 @@ fn find_gml_envelope_corners(
                 let next_depth = depth + 1;
                 check_depth(next_depth, limits.max_nesting_depth)?;
                 let name = e.name();
-                let local = is_gml_tag(name.as_ref());
+                let local = is_gml_tag(name.as_ref().as_bytes());
                 let corner_dims = gml_srs_dimension(&e, limits, dims);
 
                 match local {
@@ -957,7 +946,7 @@ fn find_gml_envelope_corners(
                     _ => skip_element(reader, buf, limits, next_depth)?,
                 }
             }
-            Ok(Event::End(e)) if e.local_name().as_ref() == end_tag => break,
+            Ok(Event::End(e)) if e.local_name().as_ref().as_bytes() == end_tag => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -1052,15 +1041,15 @@ fn serialize_inner_xml(
                     // All other entity refs are re-emitted verbatim.
                     let inner = writer.get_mut();
                     match e.as_ref() {
-                        b"apos" => {
+                        "apos" => {
                             let _ = inner.write_all(b"'");
                         }
-                        b"quot" => {
+                        "quot" => {
                             let _ = inner.write_all(b"\"");
                         }
                         _ => {
                             let _ = inner.write_all(b"&");
-                            let _ = inner.write_all(e.as_ref());
+                            let _ = inner.write_all(e.as_ref().as_bytes());
                             let _ = inner.write_all(b";");
                         }
                     }
@@ -1198,7 +1187,7 @@ pub fn build_media_content(
 pub fn skip_to_end(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>, tag: &[u8]) -> Result<()> {
     loop {
         match reader.read_event_into(buf) {
-            Ok(Event::End(e)) if e.local_name().as_ref() == tag => break,
+            Ok(Event::End(e)) if e.local_name().as_ref().as_bytes() == tag => break,
             Ok(Event::Eof) => break,
             Err(e) => return Err(e.into()),
             _ => {}
@@ -1245,8 +1234,8 @@ pub fn skip_to_end_qualified(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>, tag:
     let mut nested: u32 = 0;
     for _ in 0..MAX_DRAIN_EVENTS {
         match reader.read_event_into(buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == tag => nested += 1,
-            Ok(Event::End(e)) if e.name().as_ref() == tag => {
+            Ok(Event::Start(e)) if e.name().as_ref().as_bytes() == tag => nested += 1,
+            Ok(Event::End(e)) if e.name().as_ref().as_bytes() == tag => {
                 if nested == 0 {
                     break;
                 }
@@ -1262,19 +1251,6 @@ pub fn skip_to_end_qualified(reader: &mut Reader<&[u8]>, buf: &mut Vec<u8>, tag:
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_bytes_to_string_valid_utf8() {
-        let bytes = b"Hello, World!";
-        assert_eq!(bytes_to_string(bytes), "Hello, World!");
-    }
-
-    #[test]
-    fn test_bytes_to_string_invalid_utf8() {
-        let bytes = &[0xff, 0xfe, 0x48, 0x65, 0x6c, 0x6c, 0x6f];
-        let result = bytes_to_string(bytes);
-        assert!(result.contains("Hello"));
-    }
 
     #[test]
     fn test_read_text_basic() {
