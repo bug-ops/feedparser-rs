@@ -16,9 +16,7 @@ chrono = { workspace = true, features = ["std", "clock"] }
 compact_str.workspace = true
 encoding_rs.workspace = true
 html-escape.workspace = true
-memchr.workspace = true
 quick-xml.workspace = true
-regex.workspace = true
 reqwest = { workspace = true, features = [
     "blocking",
     "gzip",

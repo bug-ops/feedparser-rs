@@ -582,7 +582,7 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "feedparser-rs"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "ammonia",
  "chrono",
@@ -592,10 +592,8 @@ dependencies = [
  "encoding_rs",
  "flate2",
  "html-escape",
- "memchr",
  "mockito",
  "quick-xml",
- "regex",
  "reqwest",
  "serde",
  "serde_json",
@@ -606,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "feedparser-rs-node"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "feedparser-rs",
@@ -620,7 +618,7 @@ dependencies = [
 
 [[package]]
 name = "feedparser-rs-py"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "chrono",
  "feedparser-rs",

@@ -14,6 +14,7 @@ Drop-in replacement for Python's `feedparser` library, offering 10-100x performa
 - **Tolerant**: Handles malformed feeds with bozo flag (like feedparser)
 - **Sanitized by default**: HTML-bearing fields are sanitized against XSS unless explicitly disabled via `parseWithOptions`
 - **Multi-format**: RSS 0.9x/1.0/2.0, Atom 0.3/1.0, JSON Feed 1.0/1.1
+- **JSON Feed extensions**: `_`-prefixed custom objects (e.g. `_cast`) captured as `feed.jsonExtensions`/`entry.jsonExtensions`
 - **HTTP fetching**: Built-in URL fetching with compression support
 - **TypeScript**: Full TypeScript definitions included
 - **Zero-copy**: Efficient parsing with minimal allocations
@@ -201,6 +202,7 @@ interface FeedMeta {
   ttl?: string;               // Kept as string for feedparser compatibility
   itunes?: ItunesFeedMeta;
   podcast?: PodcastMeta;
+  jsonExtensions: Record<string, unknown>;  // JSON Feed `_`-prefixed custom objects; empty for RSS/Atom
   // ...and more: subtitleDetail, summary, contributors, publisher, rights,
   // generator, icon, logo, syndication, media*, cloud, textinput, etc.
 }
@@ -227,6 +229,7 @@ interface Entry {
   mediaTitle?: string;
   itunes?: ItunesEntryMeta;   // Episode duration, explicit, image, episode/season number
   podcast?: PodcastEntryMeta; // Podcast 2.0: transcripts, chapters, soundbites, persons
+  jsonExtensions: Record<string, unknown>;  // JSON Feed `_`-prefixed custom objects; empty for RSS/Atom
   // ...and more: titleDetail, subtitleDetail, rights, created*, expired*,
   // publisher, contributors, comments, source, media*, thr*, dc*, etc.
 }
