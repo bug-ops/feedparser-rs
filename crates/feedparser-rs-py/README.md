@@ -15,6 +15,7 @@ High-performance RSS/Atom/JSON Feed parser for Python with feedparser-compatible
 - **Sanitized by default**: HTML-bearing fields are sanitized against XSS unless explicitly disabled via `sanitize_html=False`
 - **Multi-format**: RSS 0.9x/1.0/2.0, Atom 0.3/1.0, JSON Feed 1.0/1.1
 - **Podcast support**: iTunes and Podcast 2.0 namespace extensions
+- **JSON Feed extensions**: `_`-prefixed custom objects (e.g. `_cast`) captured as `feed.json_extensions`/`entry.json_extensions` dicts
 - **feedparser-compatible**: Dict-style access, field aliases, same API patterns
 - **DoS protection**: Built-in resource limits
 
