@@ -12,11 +12,11 @@ importers:
   .:
     devDependencies:
       '@biomejs/biome':
-        specifier: ^2.5.14
+        specifier: ^2.5.8
         version: 2.5.14
       '@napi-rs/cli':
-        specifier: ^3.10.4
-        version: 3.10.4(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)
+        specifier: ^3.8.6
+        version: 3.10.4(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
       c8:
         specifier: ^12.0.0
         version: 12.0.0
@@ -1128,7 +1128,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@napi-rs/cli@3.10.4(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)':
+  '@napi-rs/cli@3.10.4(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
     dependencies:
       '@inquirer/prompts': 8.7.2
       '@napi-rs/cross-toolchain': 1.0.3
@@ -1143,8 +1143,8 @@ snapshots:
       typanion: 3.14.0
       typescript: 6.0.3
     optionalDependencies:
-      '@emnapi/core': 1.9.2
-      '@emnapi/runtime': 1.9.2
+      '@emnapi/core': 1.11.2
+      '@emnapi/runtime': 1.11.2
     transitivePeerDependencies:
       - '@napi-rs/cross-toolchain-arm64-target-aarch64'
       - '@napi-rs/cross-toolchain-arm64-target-armv7'
