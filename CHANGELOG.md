@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Allowed `clippy::assert_is_empty` workspace-wide to unblock lint on Rust 1.99 (#515)
+
 ## [0.7.0] - 2026-09-04
 
 ### Security
