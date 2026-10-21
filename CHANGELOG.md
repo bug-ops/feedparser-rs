@@ -7,9 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-21
+
 ### Fixed
 
 - Allowed `clippy::assert_is_empty` workspace-wide to unblock lint on Rust 1.99 (#515)
+
+### Changed
+
+- Dependency updates: `ammonia` 4.2.0 (#508), `html-escape` 0.3, `napi` and `@napi-rs/cli` (#509, #517, #518), plus routine patch/minor bumps of Rust and npm dependencies (#503-#507, #510-#514, #516)
 
 ## [0.7.0] - 2026-09-04
 
@@ -631,7 +637,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...v0.6.0
 [0.5.6]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.5...v0.5.6
