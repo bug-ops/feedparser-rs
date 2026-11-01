@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Pinned transitive `minimatch` to >=11.0.1 in the Node bindings dev tree (GHSA-g3hv-75wg-m249)
+- Pinned transitive `minimatch` to >=11.0.1 in the Node bindings dev tree (GHSA-g3hv-75wg-m249) (#524)
 
 ### Changed
 
