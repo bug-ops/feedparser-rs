@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-01
+
 ### Security
 
 - Pinned transitive `minimatch` to >=11.0.1 in the Node bindings dev tree (GHSA-g3hv-75wg-m249) (#524)
 
 ### Changed
 
-- Bumped `napi` to 3.16 and `napi-derive` to 3.7 (#523)
+- Bumped `napi` to 3.16, `napi-derive` to 3.7, `@napi-rs/cli` to 3.10.9 and patch-level Rust dependencies (#520, #521, #522, #523)
 
 ## [0.7.1] - 2026-10-21
 
@@ -645,7 +647,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive test coverage
 - Documentation with examples
 
-[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/bug-ops/feedparser-rs/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/bug-ops/feedparser-rs/compare/v0.5.6...v0.6.0
