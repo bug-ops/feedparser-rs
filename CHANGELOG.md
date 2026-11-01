@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Pinned transitive `minimatch` to >=11.0.1 in the Node bindings dev tree (GHSA-g3hv-75wg-m249)
+
 ### Changed
 
 - Bumped `napi` to 3.16 and `napi-derive` to 3.7 (#523)
