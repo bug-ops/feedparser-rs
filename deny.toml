@@ -10,6 +10,8 @@ ignore = [
     # RUSTSEC-2026-0097 no longer applies: the ammonia 4.1.3 upgrade moved
     # string_cache/web_atoms off phf 0.11.x, dropping the transitive rand 0.8.5
     # dependency that carried the ThreadRng unsoundness.
+    # chrono is unmaintained with no safe upgrade; migration to jiff/time tracked in #532.
+    "RUSTSEC-2026-0543",
 ]
 
 [licenses]
