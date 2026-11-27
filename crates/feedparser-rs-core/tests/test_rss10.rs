@@ -9,8 +9,8 @@
 //! - RDF structure handling
 //! - Malformed feed tolerance (bozo pattern)
 
-use chrono::{Datelike, Timelike};
 use feedparser_rs::{FeedVersion, ParserLimits, namespace::syndication::UpdatePeriod, parse};
+use jiff::tz::Offset;
 use std::fmt::Write as _;
 
 #[test]
@@ -116,6 +116,7 @@ fn test_rss10_with_dublin_core() {
     );
 
     if let Some(updated) = entry.updated {
+        let updated = Offset::UTC.to_datetime(updated);
         assert_eq!(updated.year(), 2024);
         assert_eq!(updated.month(), 12);
         assert_eq!(updated.day(), 18);

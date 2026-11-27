@@ -1,12 +1,12 @@
 //! Regression tests for issue #140: timezone string preservation in date fields.
 //!
 //! Verifies that `published_str` / `updated_str` on `Entry` and `FeedMeta` retain the
-//! original timezone string from the feed, while `published` / `updated` (`DateTime<Utc>`)
+//! original timezone string from the feed, while `published` / `updated` (`jiff::Timestamp`)
 //! remain correctly normalized to UTC.
 #![allow(missing_docs, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use chrono::Timelike as _;
 use feedparser_rs::parse;
+use jiff::tz::Offset;
 
 fn load_fixture(path: &str) -> Vec<u8> {
     let fixture_path = format!("../../tests/fixtures/{path}");
@@ -40,11 +40,11 @@ fn test_rss_entry_published_utc_normalized_plus0200() {
     let feed = parse(&xml).expect("parse failed");
 
     let entry = &feed.entries[0];
-    let published = entry.published.expect("published DateTime missing");
+    let published = Offset::UTC.to_datetime(entry.published.expect("published Timestamp missing"));
 
     // Feed date is "Sat, 14 Dec 2024 11:00:00 +0200" → UTC is 09:00:00
-    assert_eq!(published.naive_utc().hour(), 9);
-    assert_eq!(published.naive_utc().minute(), 0);
+    assert_eq!(published.hour(), 9);
+    assert_eq!(published.minute(), 0);
 }
 
 #[test]
@@ -85,11 +85,11 @@ fn test_rss_entry_published_utc_normalized_minus0500() {
     let feed = parse(&xml).expect("parse failed");
 
     let entry = &feed.entries[0];
-    let published = entry.published.expect("published DateTime missing");
+    let published = Offset::UTC.to_datetime(entry.published.expect("published Timestamp missing"));
 
     // Feed date is "Sat, 14 Dec 2024 04:00:00 -0500" → UTC is 09:00:00
-    assert_eq!(published.naive_utc().hour(), 9);
-    assert_eq!(published.naive_utc().minute(), 0);
+    assert_eq!(published.hour(), 9);
+    assert_eq!(published.minute(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,11 +131,11 @@ fn test_atom_entry_updated_utc_normalized_minus0800() {
     let feed = parse(&xml).expect("parse failed");
 
     let entry = &feed.entries[0];
-    let updated = entry.updated.expect("updated DateTime missing");
+    let updated = Offset::UTC.to_datetime(entry.updated.expect("updated Timestamp missing"));
 
     // Feed date is "2024-12-14T09:00:00-08:00" → UTC is 17:00:00
-    assert_eq!(updated.naive_utc().hour(), 17);
-    assert_eq!(updated.naive_utc().minute(), 0);
+    assert_eq!(updated.hour(), 17);
+    assert_eq!(updated.minute(), 0);
 }
 
 #[test]

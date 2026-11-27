@@ -13,8 +13,8 @@ description = "Node.js bindings for feedparser-rs-core"
 crate-type = ["cdylib"]
 
 [dependencies]
-chrono = { workspace = true, features = ["std"] }
 feedparser-rs = { path = "../feedparser-rs-core" }
+jiff = { workspace = true, features = ["std"] }
 napi = { workspace = true, features = ["napi9", "error_anyhow", "serde-json"] }
 napi-derive = { workspace = true }
 serde_json = { workspace = true }

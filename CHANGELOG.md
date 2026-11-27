@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Migrated from unmaintained `chrono` (`0.4.45`, [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543)) to `jiff` `1.0.3` (`default-features = false`) across `feedparser-rs`, `feedparser-rs-node`, and `feedparser-rs-py`, removing the temporary `RUSTSEC-2026-0543` ignore entry from `deny.toml` (#532).
+
+### Changed
+
+- **Breaking**: Replaced `chrono::DateTime<Utc>` with `jiff::Timestamp` on `FeedMeta`, `Entry`, `Link`, `Source`, and `util::date::parse_date` in `feedparser-rs-core` (#532). Rust callers relying on `chrono` traits (`Datelike`, `Timelike`), methods (`naive_utc()`, `timestamp()`), or `Display` (`UTC` vs `Z` suffix) must update to `jiff::Timestamp` / `jiff::tz::Offset::UTC.to_datetime(ts)`. RFC 3339 timestamps with more than 9 fractional digits now return `None`; Node.js (`f64` milliseconds) and Python (`time.struct_time` and `AutoSi` `+00:00` RFC 3339 strings) binding outputs remain compatible.
+
 ## [0.7.2] - 2026-11-01
 
 ### Security

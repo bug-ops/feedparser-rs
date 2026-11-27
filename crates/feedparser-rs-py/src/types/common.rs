@@ -1,4 +1,4 @@
-use super::datetime::optional_datetime_to_struct_time;
+use super::datetime::{optional_datetime_to_struct_time, timestamp_to_rfc3339};
 use feedparser_rs::{
     Cloud as CoreCloud, Content as CoreContent, Enclosure as CoreEnclosure,
     Generator as CoreGenerator, Image as CoreImage, Link as CoreLink, Person as CorePerson,
@@ -203,7 +203,7 @@ impl PyLink {
 
     #[getter]
     fn thr_updated(&self) -> Option<String> {
-        self.inner.thr_updated.map(|dt| dt.to_rfc3339())
+        self.inner.thr_updated.map(timestamp_to_rfc3339)
     }
 
     #[getter]

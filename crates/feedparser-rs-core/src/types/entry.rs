@@ -7,7 +7,7 @@ use super::{
     podcast::{ItunesEntryMeta, PodcastEntryMeta, PodcastPerson, PodcastTranscript},
     thread::InReplyTo,
 };
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use std::collections::HashMap;
 
 /// Feed entry/item
@@ -38,19 +38,19 @@ pub struct Entry {
     /// Full content blocks
     pub content: Vec<Content>,
     /// Publication date
-    pub published: Option<DateTime<Utc>>,
+    pub published: Option<Timestamp>,
     /// Original publication date string as found in the feed (timezone preserved)
     pub published_str: Option<String>,
     /// Last update date
-    pub updated: Option<DateTime<Utc>>,
+    pub updated: Option<Timestamp>,
     /// Original update date string as found in the feed (timezone preserved)
     pub updated_str: Option<String>,
     /// Creation date
-    pub created: Option<DateTime<Utc>>,
+    pub created: Option<Timestamp>,
     /// Original creation date string as found in the feed (timezone preserved)
     pub created_str: Option<String>,
     /// Expiration date
-    pub expired: Option<DateTime<Utc>>,
+    pub expired: Option<Timestamp>,
     /// Primary author name (stored inline for names ≤24 bytes)
     pub author: Option<super::common::SmallString>,
     /// Detailed author information
@@ -76,7 +76,7 @@ pub struct Entry {
     /// Dublin Core creator (author fallback) - stored inline for names ≤24 bytes
     pub dc_creator: Option<super::common::SmallString>,
     /// Dublin Core date (publication date fallback)
-    pub dc_date: Option<DateTime<Utc>>,
+    pub dc_date: Option<Timestamp>,
     /// Dublin Core subjects (tags)
     pub dc_subject: Vec<String>,
     /// Dublin Core rights (copyright)

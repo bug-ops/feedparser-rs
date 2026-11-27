@@ -7,7 +7,7 @@ use super::{
 };
 use crate::namespace::syndication::SyndicationMeta;
 use crate::{ParserLimits, error::Result};
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 use quick_xml::Reader;
 use std::collections::HashMap;
 
@@ -31,11 +31,11 @@ pub struct FeedMeta {
     /// Detailed summary with metadata
     pub summary_detail: Option<TextConstruct>,
     /// Last update date
-    pub updated: Option<DateTime<Utc>>,
+    pub updated: Option<Timestamp>,
     /// Original update date string as found in the feed (timezone preserved)
     pub updated_str: Option<String>,
     /// Initial publication date (RSS pubDate, Atom published)
-    pub published: Option<DateTime<Utc>>,
+    pub published: Option<Timestamp>,
     /// Original publication date string as found in the feed (timezone preserved)
     pub published_str: Option<String>,
     /// Primary author name (stored inline for names ≤24 bytes)
