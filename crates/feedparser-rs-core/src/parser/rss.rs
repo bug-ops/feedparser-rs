@@ -3457,7 +3457,7 @@ fn parse_item_podcast_value(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Datelike;
+    use jiff::tz::Offset;
 
     #[test]
     fn test_parse_basic_rss() {
@@ -3698,7 +3698,7 @@ mod tests {
         assert!(feed.feed.published.is_some());
         assert!(feed.entries[0].published.is_some());
 
-        let dt = feed.feed.published.unwrap();
+        let dt = Offset::UTC.to_datetime(feed.feed.published.unwrap());
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 12);
         assert_eq!(dt.day(), 14);
@@ -3739,7 +3739,7 @@ mod tests {
             feed.feed.updated_str.as_deref(),
             Some("Sat, 14 Dec 2024 10:30:00 +0000")
         );
-        let dt = feed.feed.updated.unwrap();
+        let dt = Offset::UTC.to_datetime(feed.feed.updated.unwrap());
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 12);
         assert_eq!(dt.day(), 14);
@@ -6276,7 +6276,7 @@ mod tests {
 
         assert!(entry.updated.is_some());
         // dc:date is 2025-03-15, pubDate is 2025-03-10 — updated must use dc:date
-        let updated = entry.updated.unwrap();
+        let updated = Offset::UTC.to_datetime(entry.updated.unwrap());
         assert_eq!(updated.year(), 2025);
         assert_eq!(updated.month(), 3);
         assert_eq!(

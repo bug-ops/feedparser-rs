@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Utc};
+use jiff::Timestamp;
 
 use crate::{
     ParserLimits,
@@ -2114,7 +2114,7 @@ struct SourceFields {
     first_link_href: Option<String>,
     id: Option<String>,
     links: Vec<Link>,
-    updated: Option<DateTime<Utc>>,
+    updated: Option<Timestamp>,
     updated_str: Option<String>,
     rights: Option<String>,
     has_explicit_link: bool,
@@ -3971,7 +3971,7 @@ mod tests {
             "entry.created_str must preserve raw date string"
         );
         // 2024-11-30 00:00:00 UTC
-        assert_eq!(entry.created.unwrap().timestamp(), 1_732_924_800);
+        assert_eq!(entry.created.unwrap().as_second(), 1_732_924_800);
     }
 
     // TC-257-12B: Atom — itunes:subtitle only present (no <subtitle>) sets feed.subtitle

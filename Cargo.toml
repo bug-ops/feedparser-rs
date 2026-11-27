@@ -19,12 +19,12 @@ categories = ["parsing", "web-programming"]
 [workspace.dependencies]
 ammonia = "4.2"
 anyhow = "1.0"
-chrono = { version = "0.4", default-features = false }
 compact_str = { version = "0.10", features = ["serde"] }
 criterion = "0.8"
 encoding_rs = "0.8"
 flate2 = "1.1"
 html-escape = "0.3"
+jiff = { version = "1.0.3", default-features = false }
 mockito = "1.7"
 napi = "3.16"
 napi-derive = "3.7"

@@ -775,7 +775,7 @@ fn parse_image(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Datelike;
+    use jiff::tz::Offset;
 
     #[test]
     fn test_parse_basic_rss10() {
@@ -861,7 +861,7 @@ mod tests {
         let entry = &feed.entries[0];
         assert!(entry.updated.is_some());
         assert!(entry.published.is_some());
-        let dt = entry.updated.unwrap();
+        let dt = Offset::UTC.to_datetime(entry.updated.unwrap());
         assert_eq!(dt.year(), 2024);
         assert_eq!(dt.month(), 12);
         assert_eq!(dt.day(), 15);
@@ -1004,7 +1004,7 @@ mod tests {
             entry.published.is_some(),
             "entry.published should be set from dc:date as fallback"
         );
-        let dt = entry.updated.unwrap();
+        let dt = Offset::UTC.to_datetime(entry.updated.unwrap());
         assert_eq!(dt.year(), 2025);
         assert_eq!(dt.month(), 1);
         assert_eq!(dt.day(), 15);

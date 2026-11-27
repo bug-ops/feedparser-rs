@@ -5,8 +5,8 @@
 
 mod error;
 
-use chrono::{DateTime, Utc};
 use error::convert_feed_error;
+use jiff::{Timestamp, tz::Offset};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
@@ -45,9 +45,28 @@ const DEFAULT_MAX_FEED_SIZE: usize = 100 * 1024 * 1024;
 /// Converts a timestamp to milliseconds since the epoch as `f64`, the numeric type JS uses
 /// for all `Date` values. Precision loss only occurs for dates far beyond any real feed
 /// timestamp (`f64` exactly represents millisecond timestamps up to roughly year 287396).
-#[allow(clippy::cast_precision_loss)]
-const fn timestamp_millis_f64(dt: DateTime<Utc>) -> f64 {
-    dt.timestamp_millis() as f64
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "f64 exactly represents millisecond timestamps up to roughly year 287396"
+)]
+fn timestamp_millis_f64(ts: Timestamp) -> f64 {
+    ts.as_millisecond() as f64
+}
+
+/// Formats a UTC timestamp as RFC 3339 with `+00:00` suffix and `AutoSi` fractional-second
+/// precision (0, 3, 6, or 9 digits).
+fn timestamp_to_rfc3339(ts: Timestamp) -> String {
+    let ns = Offset::UTC.to_datetime(ts).subsec_nanosecond();
+    let disp = ts.display_with_offset(Offset::UTC);
+    if ns == 0 {
+        format!("{disp}")
+    } else if ns % 1_000_000 == 0 {
+        format!("{disp:.3}")
+    } else if ns % 1_000 == 0 {
+        format!("{disp:.6}")
+    } else {
+        format!("{disp:.9}")
+    }
 }
 
 /// Recursively sanitizes a captured JSON Feed extension value for safe exposure to
@@ -919,7 +938,7 @@ impl From<CoreEntry> for Entry {
             updated_parsed: core.updated.map(timestamp_millis_f64),
             created: core.created_str,
             created_parsed: core.created.map(timestamp_millis_f64),
-            expired: core.expired.as_ref().map(DateTime::to_rfc3339),
+            expired: core.expired.map(timestamp_to_rfc3339),
             expired_parsed: core.expired.map(timestamp_millis_f64),
             author: core.author.map(|s| s.to_string()),
             author_detail: core.author_detail.map(Person::from),
@@ -946,7 +965,7 @@ impl From<CoreEntry> for Entry {
             geo_lat: core.geo_lat,
             geo_long: core.geo_long,
             dc_creator: core.dc_creator.map(|s| s.to_string()),
-            dc_date: core.dc_date.map(|dt| dt.to_rfc3339()),
+            dc_date: core.dc_date.map(timestamp_to_rfc3339),
             dc_date_parsed: core.dc_date.map(timestamp_millis_f64),
             dc_subject: core.dc_subject,
             dc_rights: core.dc_rights,
@@ -1049,7 +1068,7 @@ impl From<CoreLink> for Link {
             length: core.length,
             hreflang: core.hreflang.map(|s| s.to_string()),
             thr_count: core.thr_count,
-            thr_updated: core.thr_updated.as_ref().map(DateTime::to_rfc3339),
+            thr_updated: core.thr_updated.map(timestamp_to_rfc3339),
             thr_updated_parsed: core.thr_updated.map(timestamp_millis_f64),
         }
     }

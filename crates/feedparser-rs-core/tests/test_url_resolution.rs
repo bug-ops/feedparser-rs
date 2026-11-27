@@ -1,8 +1,8 @@
 //! URL resolution integration tests for xml:base support.
 #![allow(missing_docs, clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use chrono::Datelike;
 use feedparser_rs::parse;
+use jiff::tz::Offset;
 
 #[test]
 fn test_atom_feed_level_xml_base() {
@@ -186,7 +186,7 @@ fn test_atom_feed_published_field() {
     let feed = parse(xml).unwrap();
 
     assert!(feed.feed.published.is_some());
-    let dt = feed.feed.published.unwrap();
+    let dt = Offset::UTC.to_datetime(feed.feed.published.unwrap());
     assert_eq!(dt.year(), 2025);
     assert_eq!(dt.month(), 1);
     assert_eq!(dt.day(), 1);
@@ -206,7 +206,7 @@ fn test_rss_channel_pubdate_maps_to_published() {
     let feed = parse(xml).unwrap();
 
     assert!(feed.feed.published.is_some());
-    let dt = feed.feed.published.unwrap();
+    let dt = Offset::UTC.to_datetime(feed.feed.published.unwrap());
     assert_eq!(dt.year(), 2024);
     assert_eq!(dt.month(), 12);
     assert_eq!(dt.day(), 18);

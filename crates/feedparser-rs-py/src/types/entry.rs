@@ -9,7 +9,7 @@ use super::common::{
     json_extensions_to_py_dict,
 };
 use super::compat::ENTRY_FIELD_MAP;
-use super::datetime::optional_datetime_to_struct_time;
+use super::datetime::{optional_datetime_to_struct_time, timestamp_to_rfc3339};
 use super::media::{
     PyMediaContent, PyMediaCopyright, PyMediaCredit, PyMediaRating, PyMediaThumbnail,
 };
@@ -177,7 +177,7 @@ impl PyEntry {
 
     #[getter]
     fn expired(&self) -> Option<String> {
-        self.inner.expired.map(|dt| dt.to_rfc3339())
+        self.inner.expired.map(timestamp_to_rfc3339)
     }
 
     #[getter]
@@ -367,7 +367,7 @@ impl PyEntry {
 
     #[getter]
     fn dc_date(&self) -> Option<String> {
-        self.inner.dc_date.map(|dt| dt.to_rfc3339())
+        self.inner.dc_date.map(timestamp_to_rfc3339)
     }
 
     #[getter]
@@ -767,7 +767,7 @@ impl PyEntry {
             "created" => Ok(self
                 .inner
                 .created
-                .map(|dt| dt.to_rfc3339())
+                .map(timestamp_to_rfc3339)
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -778,7 +778,7 @@ impl PyEntry {
             "expired" => Ok(self
                 .inner
                 .expired
-                .map(|dt| dt.to_rfc3339())
+                .map(timestamp_to_rfc3339)
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),
@@ -992,7 +992,7 @@ impl PyEntry {
             "dc_date" => Ok(self
                 .inner
                 .dc_date
-                .map(|dt| dt.to_rfc3339())
+                .map(timestamp_to_rfc3339)
                 .into_pyobject(py)?
                 .into_any()
                 .unbind()),

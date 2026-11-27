@@ -1,7 +1,7 @@
 use super::generics::{FromAttributes, ParseFrom};
 use crate::util::date::parse_date;
-use chrono::{DateTime, Utc};
 use compact_str::CompactString;
+use jiff::Timestamp;
 use serde_json::Value;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -444,7 +444,7 @@ pub struct Link {
     /// RFC 4685 §4: number of replies at the IRI
     pub thr_count: Option<u32>,
     /// RFC 4685 §4: when the reply resource was last modified
-    pub thr_updated: Option<DateTime<Utc>>,
+    pub thr_updated: Option<Timestamp>,
 }
 
 impl Link {
@@ -818,7 +818,7 @@ pub struct Source {
     /// All links from the source element
     pub links: Vec<Link>,
     /// Last update date (Atom `<updated>`)
-    pub updated: Option<DateTime<Utc>>,
+    pub updated: Option<Timestamp>,
     /// Original update date string (timezone preserved)
     pub updated_str: Option<String>,
     /// Rights/copyright statement (Atom `<rights>`)

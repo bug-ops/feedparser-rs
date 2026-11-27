@@ -16,8 +16,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 feedparser-rs = { path = "../feedparser-rs-core" }
-pyo3 = { workspace = true, features = ["extension-module", "chrono"] }
-chrono = { workspace = true, features = ["clock"] }
+jiff = { workspace = true, features = ["std"] }
+pyo3 = { workspace = true, features = ["extension-module"] }
 serde_json = { workspace = true }
 
 [features]
